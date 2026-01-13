@@ -18,7 +18,8 @@ class _InputTabState extends State<InputTab> {
   String _amountStr = "0";
   final TransactionRepository _repository = TransactionRepository();
 
-  int? _selectedExpenseIndex;
+  // 初期値は 0 (リストの先頭) にしておき、nullチェックの手間を減らす
+  int _selectedExpenseIndex = 0;
   DateTime _selectedDate = DateTime.now();
 
   bool _isCardPayment = false;
@@ -27,17 +28,53 @@ class _InputTabState extends State<InputTab> {
   @override
   void initState() {
     super.initState();
-    _loadCardSettings();
+    _loadSettings();
   }
 
-  Future<void> _loadCardSettings() async {
+  // 設定の読み込み（カード ＆ 費目）
+  Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
+      // 1. カード設定の復元
+      _isCardPayment = prefs.getBool('last_is_card') ?? false;
       _selectedCardIndex = prefs.getInt('last_card_index') ?? 0;
       if (_selectedCardIndex >= creditCardTags.length) {
         _selectedCardIndex = 0;
       }
+
+      // 2. 費目設定の復元
+      _selectedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
+      if (_selectedExpenseIndex >= expenseTags.length) {
+        _selectedExpenseIndex = 0;
+      }
     });
+  }
+
+  // 費目変更時に保存
+  Future<void> _changeExpenseIndex(int index) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _selectedExpenseIndex = index;
+    });
+    await prefs.setInt('last_expense_index', index);
+  }
+
+  // カードスイッチ切り替え時に保存
+  Future<void> _toggleCardPayment(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCardPayment = value;
+    });
+    await prefs.setBool('last_is_card', value);
+  }
+
+  // カード種類変更時に保存
+  Future<void> _changeCardIndex(int index) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _selectedCardIndex = index;
+    });
+    await prefs.setInt('last_card_index', index);
   }
 
   void _onNumberTap(String key) {
@@ -87,16 +124,16 @@ class _InputTabState extends State<InputTab> {
       return;
     }
 
-    // 内部データとしては便宜上「現金」として保存するが、画面には表示しない
     final String paymentMethod =
         _isCardPayment ? creditCardTags[_selectedCardIndex].label : '現金';
+
+    // 費目は必ず選択されている前提
+    final String expenseLabel = expenseTags[_selectedExpenseIndex].label;
 
     try {
       final newItem = TransactionItem(
         amount: amount,
-        expense: _selectedExpenseIndex != null
-            ? expenseTags[_selectedExpenseIndex!].label
-            : 'デフォルト',
+        expense: expenseLabel,
         payment: paymentMethod,
         date: DateTime(
           _selectedDate.year,
@@ -109,15 +146,17 @@ class _InputTabState extends State<InputTab> {
 
       await _repository.addTransaction(newItem);
 
+      // 保存時に念のため設定を再保存（冗長だが安全）
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('last_expense_index', _selectedExpenseIndex);
       if (_isCardPayment) {
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('last_card_index', _selectedCardIndex);
       }
+      await prefs.setBool('last_is_card', _isCardPayment);
 
       setState(() {
         _amountStr = "0";
-        _selectedExpenseIndex = null;
-        _isCardPayment = false;
+        // ▼▼ 変更: 費目のリセット(_selectedExpenseIndex = null)を削除し、位置をキープ ▼▼
       });
 
       _showSnackBar('保存しました', Colors.blue);
@@ -196,7 +235,8 @@ class _InputTabState extends State<InputTab> {
                   tags: expenseTags,
                   selectedIndex: _selectedExpenseIndex,
                   rowCount: 2,
-                  onSelected: (i) => setState(() => _selectedExpenseIndex = i),
+                  // ▼▼ 変更: 選択時に即時保存する関数を呼ぶ ▼▼
+                  onSelected: (i) => _changeExpenseIndex(i),
                 ),
 
                 const SizedBox(height: 10),
@@ -254,15 +294,12 @@ class _InputTabState extends State<InputTab> {
                               showCheckmark: false,
                               selectedColor: tag.color,
                               backgroundColor: Colors.grey.shade100,
-                              onSelected: (_) {
-                                setState(() => _selectedCardIndex = index);
-                              },
+                              onSelected: (_) => _changeCardIndex(index),
                               visualDensity: VisualDensity.compact,
                             ),
                           );
                         },
                       )
-                    // ▼▼ 変更: OFFの時は何も表示しない ▼▼
                     : const SizedBox.shrink(),
               ),
 
@@ -285,11 +322,7 @@ class _InputTabState extends State<InputTab> {
                       child: Switch(
                         value: _isCardPayment,
                         activeColor: Colors.blue,
-                        onChanged: (bool value) {
-                          setState(() {
-                            _isCardPayment = value;
-                          });
-                        },
+                        onChanged: (bool value) => _toggleCardPayment(value),
                       ),
                     ),
                   ],
