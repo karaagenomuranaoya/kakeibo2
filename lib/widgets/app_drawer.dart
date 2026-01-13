@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/category_tag.dart';
 import '../screens/monthly_report_screen.dart';
 import '../screens/history_screen.dart';
-import '../screens/settings/settings_screen.dart'; // 追加
+import '../screens/settings/settings_screen.dart';
 
 class AppDrawer extends StatelessWidget {
-  // 設定画面から戻った時にInputScreenを更新するためのコールバック
   final VoidCallback? onFavoritesUpdated;
 
   const AppDrawer({super.key, this.onFavoritesUpdated});
@@ -15,7 +14,6 @@ class AppDrawer extends StatelessWidget {
     return Drawer(
       child: Column(
         children: [
-          // --- メインコンテンツ部分 (Expandedで伸ばす) ---
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -27,9 +25,10 @@ class AppDrawer extends StatelessWidget {
                     style: TextStyle(color: Colors.white, fontSize: 24),
                   ),
                 ),
+                // 月別レポートはタブにあるので、ここから消してもいいが残しておく
                 ListTile(
                   leading: const Icon(Icons.calendar_month),
-                  title: const Text('月別レポート'),
+                  title: const Text('月別レポート (全画面)'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -41,48 +40,32 @@ class AppDrawer extends StatelessWidget {
                   },
                 ),
                 const Divider(),
-                _buildSectionHeader("費目別"),
-                _buildFilterTile(
-                  context,
-                  const CategoryTag('デフォルト', Colors.blueGrey),
-                  'expense',
-                ),
+                _buildSectionHeader("費目別 履歴"),
                 ...expenseTags.map(
                   (tag) => _buildFilterTile(context, tag, 'expense'),
                 ),
-                const SizedBox(height: 15),
                 const Divider(),
-                _buildSectionHeader("支払い方法別"),
-                _buildFilterTile(
-                  context,
-                  const CategoryTag('デフォルト', Colors.grey),
-                  'payment',
-                ),
+                _buildSectionHeader("支払い方法別 履歴"),
                 ...paymentTags.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
-                const SizedBox(height: 20),
               ],
             ),
           ),
-
-          // --- 最下部の設定ボタン ---
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.settings),
             title: const Text('設定'),
             onTap: () async {
               Navigator.pop(context); // ドロワーを閉じる
-              // 設定画面へ遷移し、戻ってくるまで待機
               await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
-              // 戻ってきたらコールバックを実行してInputScreenを更新
+              // MainScreenに更新を通知
               onFavoritesUpdated?.call();
             },
           ),
-          // iPhone等の下のバーとかぶらないように少し余白
           SizedBox(height: MediaQuery.of(context).padding.bottom + 10),
         ],
       ),
