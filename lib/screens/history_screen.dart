@@ -32,10 +32,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final allItems = await _repository.getAllTransactions();
     setState(() {
       _history = allItems.where((i) {
-        if (widget.filterKey == 'expense')
+        if (widget.filterKey == 'expense') {
           return i.expense == widget.filterValue;
-        if (widget.filterKey == 'payment')
+        }
+        if (widget.filterKey == 'payment') {
+          // 支払い方法フィルタの場合は、'現金'などの文字列と一致するかを見る
+          // ただし空文字で保存されたデータは、フィルタ一覧の「現金」と一致させたい場合の考慮が必要
+          // (今回はドロワーの「現金」がfilterValue='現金'で来るので、空文字データを対象にするか要検討だが
+          // シンプルに空文字データはフィルタ対象外、もしくは '現金' タップ時に空文字も拾うなどの対応ができる)
+          if (widget.filterValue == '現金' && i.payment.isEmpty) {
+            return true;
+          }
           return i.payment == widget.filterValue;
+        }
         return false;
       }).toList();
     });
@@ -77,11 +86,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
               itemBuilder: (c, i) {
                 final item = _history[i];
 
-                // ▼▼ 修正: 追加情報の表示ロジック ▼▼
                 String detail = "";
                 if (widget.filterKey == 'expense') {
                   // 費目でフィルタ中 → 支払い方法を表示
-                  if (item.payment != 'デフォルト') {
+                  // ▼▼ 変更: 空文字やデフォルトなら表示しない ▼▼
+                  if (item.payment.isNotEmpty &&
+                      item.payment != 'デフォルト' &&
+                      item.payment != '現金') {
                     detail = "  /  ${item.payment}";
                   }
                 } else {

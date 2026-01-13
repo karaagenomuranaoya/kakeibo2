@@ -5,7 +5,7 @@ import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
-import '../repositories/settings_repository.dart'; // 設定リポジトリ
+import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
 import '../widgets/custom_numeric_keyboard.dart';
 
@@ -20,9 +20,8 @@ class _InputTabState extends State<InputTab> {
   String _amountStr = "0";
   final TransactionRepository _repository = TransactionRepository();
   final GachaRepository _gachaRepository = GachaRepository();
-  final SettingsRepository _settingsRepository = SettingsRepository(); // 追加
+  final SettingsRepository _settingsRepository = SettingsRepository();
 
-  // 動的リスト
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
   bool _isLoading = true;
@@ -39,16 +38,12 @@ class _InputTabState extends State<InputTab> {
     _loadAllData();
   }
 
-  // データと設定をまとめて読み込む
   Future<void> _loadAllData() async {
-    // 1. リストの読み込み
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
 
-    // 2. 設定の復元
     final prefs = await SharedPreferences.getInstance();
 
-    // インデックスの復元と範囲チェック
     int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
     if (savedExpenseIndex >= expenses.length) savedExpenseIndex = 0;
 
@@ -134,7 +129,7 @@ class _InputTabState extends State<InputTab> {
   }
 
   Future<void> _saveData() async {
-    if (_isLoading) return; // ロード中は保存不可
+    if (_isLoading) return;
 
     final int amount = int.tryParse(_amountStr) ?? 0;
     if (amount == 0) {
@@ -142,15 +137,21 @@ class _InputTabState extends State<InputTab> {
       return;
     }
 
-    // 範囲チェック (万が一リストが空の場合など)
+    // ▼▼ 変更: カテゴリが無い場合のエラーメッセージ ▼▼
     if (_expenseList.isEmpty) {
-      _showSnackBar('費目が設定されていません', Colors.redAccent);
+      _showSnackBar('カテゴリがありません。設定から追加してください', Colors.redAccent);
       return;
     }
 
+    // 念のためインデックス範囲チェック
+    if (_selectedExpenseIndex >= _expenseList.length) {
+      _selectedExpenseIndex = 0;
+    }
+
+    // ▼▼ 変更: カードOFFなら空文字で保存 ▼▼
     final String paymentMethod = _isCardPayment
         ? (_cardList.isNotEmpty ? _cardList[_selectedCardIndex].label : 'カード')
-        : '現金';
+        : '';
 
     final String expenseLabel = _expenseList[_selectedExpenseIndex].label;
 
@@ -171,7 +172,6 @@ class _InputTabState extends State<InputTab> {
       await _repository.addTransaction(newItem);
       final newCredits = await _gachaRepository.addCredit();
 
-      // 設定の再保存
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
       if (_isCardPayment) {
@@ -186,7 +186,7 @@ class _InputTabState extends State<InputTab> {
       if (newCredits % 3 == 0) {
         _showSnackBar('ガチャが回せます！', Colors.orange);
       } else {
-        _showSnackBar('保存しました (あと${3 - (newCredits % 3)}回でガチャ)', Colors.blue);
+        _showSnackBar('保存しました', Colors.blue);
       }
     } catch (e) {
       _showSnackBar('保存エラー: $e', Colors.red);
@@ -260,7 +260,6 @@ class _InputTabState extends State<InputTab> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                // 動的リストを使用
                 CategorySelector(
                   tags: _expenseList,
                   selectedIndex: _selectedExpenseIndex,
@@ -296,7 +295,7 @@ class _InputTabState extends State<InputTab> {
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 8),
-                        itemCount: _cardList.length, // 動的リストを使用
+                        itemCount: _cardList.length,
                         itemBuilder: (context, index) {
                           final tag = _cardList[index];
                           final isSelected = _selectedCardIndex == index;
