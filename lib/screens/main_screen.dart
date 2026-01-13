@@ -13,6 +13,8 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // データ更新を管理するためのバージョン番号
+  int _dataVersion = 0;
 
   @override
   void initState() {
@@ -27,23 +29,32 @@ class _MainScreenState extends State<MainScreen>
     super.dispose();
   }
 
+  // 設定から戻ってきた時などにデータを更新する
+  void _refreshData() {
+    setState(() {
+      _dataVersion++;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Kakeibo')),
-      drawer: const AppDrawer(), // お気に入り更新のコールバックは不要になったので引数なし
+      // 設定変更後にデータを更新するためのコールバックを渡す
+      drawer: AppDrawer(onDataChanged: _refreshData),
       body: TabBarView(
         controller: _tabController,
         // スワイプで移動できないようにしたければ physics: NeverScrollableScrollPhysics() を追加
-        children: const [
+        children: [
           // 1. 入力タブ
-          InputTab(),
+          // dataVersionを渡すことで、変更があったときに再読み込みさせる
+          InputTab(dataVersion: _dataVersion),
 
           // 2. レポートタブ
-          MonthlyHistoryScreen(),
+          const MonthlyHistoryScreen(),
 
           // 3. ガチャタブ
-          GachaScreen(),
+          const GachaScreen(),
         ],
       ),
       bottomNavigationBar: Material(

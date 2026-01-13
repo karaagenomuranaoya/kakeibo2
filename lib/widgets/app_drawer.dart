@@ -6,9 +6,10 @@ import '../screens/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
 
 class AppDrawer extends StatefulWidget {
-  final VoidCallback? onFavoritesUpdated;
+  // MainScreenから渡される更新用コールバック
+  final VoidCallback? onDataChanged;
 
-  const AppDrawer({super.key, this.onFavoritesUpdated});
+  const AppDrawer({super.key, this.onDataChanged});
 
   @override
   State<AppDrawer> createState() => _AppDrawerState();
@@ -73,7 +74,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                // 現金は手動で追加 (const を削除)
+                // 現金は手動で追加
                 _buildFilterTile(context,
                     CategoryTag(label: '現金', color: Colors.grey), 'payment'),
                 // 動的なカードリストを展開
@@ -97,7 +98,8 @@ class _AppDrawerState extends State<AppDrawer> {
               );
               // 戻ってきたらタグ情報を再読み込み
               _loadTags();
-              widget.onFavoritesUpdated?.call();
+              // MainScreenにも通知して、InputTabなどを更新させる
+              widget.onDataChanged?.call();
             },
           ),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 10),

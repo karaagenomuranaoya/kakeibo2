@@ -10,7 +10,8 @@ import '../widgets/category_selector.dart';
 import '../widgets/custom_numeric_keyboard.dart';
 
 class InputTab extends StatefulWidget {
-  const InputTab({super.key});
+  final int dataVersion;
+  const InputTab({super.key, this.dataVersion = 0});
 
   @override
   State<InputTab> createState() => _InputTabState();
@@ -36,6 +37,14 @@ class _InputTabState extends State<InputTab> {
   void initState() {
     super.initState();
     _loadAllData();
+  }
+
+  @override
+  void didUpdateWidget(covariant InputTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dataVersion != widget.dataVersion) {
+      _loadAllData();
+    }
   }
 
   Future<void> _loadAllData() async {
@@ -137,18 +146,15 @@ class _InputTabState extends State<InputTab> {
       return;
     }
 
-    // ▼▼ 変更: カテゴリが無い場合のエラーメッセージ ▼▼
     if (_expenseList.isEmpty) {
       _showSnackBar('カテゴリがありません。設定から追加してください', Colors.redAccent);
       return;
     }
 
-    // 念のためインデックス範囲チェック
     if (_selectedExpenseIndex >= _expenseList.length) {
       _selectedExpenseIndex = 0;
     }
 
-    // ▼▼ 変更: カードOFFなら空文字で保存 ▼▼
     final String paymentMethod = _isCardPayment
         ? (_cardList.isNotEmpty ? _cardList[_selectedCardIndex].label : 'カード')
         : '';
@@ -216,16 +222,16 @@ class _InputTabState extends State<InputTab> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            // 余白を最小限に抑えて、コンテンツ領域を確保
+            padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const SizedBox(height: 5),
                 GestureDetector(
                   onTap: _pickDate,
                   child: Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.blue.shade50,
                       borderRadius: BorderRadius.circular(20),
@@ -235,45 +241,53 @@ class _InputTabState extends State<InputTab> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(Icons.calendar_today,
-                            size: 16, color: Colors.blue),
+                            size: 14, color: Colors.blue),
                         const SizedBox(width: 8),
                         Text(
                           "$dateStr (${_getDayOfWeek(_selectedDate)})",
                           style: const TextStyle(
                             color: Colors.blue,
                             fontWeight: FontWeight.bold,
+                            fontSize: 14,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                // 金額表示の周りの余白を削減
+                const SizedBox(height: 5),
                 FittedBox(
                   child: Text(
                     "¥ $_amountStr",
                     style: const TextStyle(
-                      fontSize: 56,
+                      // 文字サイズを少し小さくして圧迫感を減らす (52 -> 44)
+                      fontSize: 44,
                       fontWeight: FontWeight.bold,
                       color: Colors.black87,
+                      height: 1.0,
                     ),
                   ),
                 ),
+                // カテゴリとの間隔も詰める
                 const SizedBox(height: 10),
+
                 CategorySelector(
                   tags: _expenseList,
                   selectedIndex: _selectedExpenseIndex,
-                  rowCount: 2,
                   onSelected: (i) => _changeExpenseIndex(i),
                 ),
+                // 下部の余白
                 const SizedBox(height: 10),
               ],
             ),
           ),
         ),
+
+        // 固定フッターエリア
         Container(
           width: double.infinity,
-          height: 56,
+          height: 50, // 高さも少しコンパクトに (56 -> 50)
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [
@@ -305,7 +319,7 @@ class _InputTabState extends State<InputTab> {
                               label: Text(
                                 tag.label,
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11, // フォントサイズ調整
                                   color: isSelected
                                       ? Colors.white
                                       : Colors.black87,
@@ -353,6 +367,7 @@ class _InputTabState extends State<InputTab> {
             ],
           ),
         ),
+        // テンキー
         CustomNumericKeyboard(
           onNumberTap: _onNumberTap,
           onBackspace: _onBackspace,
