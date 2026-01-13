@@ -1,13 +1,40 @@
 import 'package:flutter/material.dart';
 import '../models/category_tag.dart';
+import '../repositories/settings_repository.dart';
 import '../screens/monthly_report_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   final VoidCallback? onFavoritesUpdated;
 
   const AppDrawer({super.key, this.onFavoritesUpdated});
+
+  @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  final SettingsRepository _settingsRepository = SettingsRepository();
+  List<CategoryTag> _expenseList = [];
+  List<CategoryTag> _cardList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTags();
+  }
+
+  Future<void> _loadTags() async {
+    final expenses = await _settingsRepository.loadExpenseTags();
+    final cards = await _settingsRepository.loadCardTags();
+    if (mounted) {
+      setState(() {
+        _expenseList = expenses;
+        _cardList = cards;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +52,6 @@ class AppDrawer extends StatelessWidget {
                     style: TextStyle(color: Colors.white, fontSize: 24),
                   ),
                 ),
-                // 月別レポートはタブにあるので、ここから消してもいいが残しておく
                 ListTile(
                   leading: const Icon(Icons.calendar_month),
                   title: const Text('月別レポート (全画面)'),
@@ -41,12 +67,17 @@ class AppDrawer extends StatelessWidget {
                 ),
                 const Divider(),
                 _buildSectionHeader("費目別 履歴"),
-                ...expenseTags.map(
+                // 動的リストを展開
+                ..._expenseList.map(
                   (tag) => _buildFilterTile(context, tag, 'expense'),
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                ...paymentTags.map(
+                // 現金は手動で追加 (const を削除)
+                _buildFilterTile(context,
+                    CategoryTag(label: '現金', color: Colors.grey), 'payment'),
+                // 動的なカードリストを展開
+                ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
               ],
@@ -57,13 +88,16 @@ class AppDrawer extends StatelessWidget {
             leading: const Icon(Icons.settings),
             title: const Text('設定'),
             onTap: () async {
-              Navigator.pop(context); // ドロワーを閉じる
+              Navigator.pop(context);
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
+                ),
               );
-              // MainScreenに更新を通知
-              onFavoritesUpdated?.call();
+              // 戻ってきたらタグ情報を再読み込み
+              _loadTags();
+              widget.onFavoritesUpdated?.call();
             },
           ),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 10),

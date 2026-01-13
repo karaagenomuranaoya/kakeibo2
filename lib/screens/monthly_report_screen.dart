@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart'; // 追加
 
 class MonthlyHistoryScreen extends StatefulWidget {
   const MonthlyHistoryScreen({super.key});
@@ -40,7 +41,9 @@ class MonthPage extends StatefulWidget {
 
 class _MonthPageState extends State<MonthPage> {
   List<TransactionItem> _history = [];
+  List<CategoryTag> _expenseList = []; // 動的リスト
   final TransactionRepository _repository = TransactionRepository();
+  final SettingsRepository _settingsRepository = SettingsRepository(); // 追加
 
   @override
   void initState() {
@@ -50,11 +53,17 @@ class _MonthPageState extends State<MonthPage> {
 
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
-    setState(() {
-      _history = allItems.where((i) {
-        return i.date.year == widget.year && i.date.month == widget.month;
-      }).toList();
-    });
+    // 費目リストも読み込む
+    final expenses = await _settingsRepository.loadExpenseTags();
+
+    if (mounted) {
+      setState(() {
+        _history = allItems.where((i) {
+          return i.date.year == widget.year && i.date.month == widget.month;
+        }).toList();
+        _expenseList = expenses;
+      });
+    }
   }
 
   @override
@@ -75,16 +84,11 @@ class _MonthPageState extends State<MonthPage> {
             itemCount: _history.length,
             itemBuilder: (c, i) {
               final item = _history[i];
-
-              // ▼▼ 修正: 費目が「デフォルト」ならカッコごと非表示 ▼▼
-              final expenseStr = item.expense == 'デフォルト'
-                  ? ''
-                  : ' (${item.expense})';
-
-              // ▼▼ 修正: 支払いが「デフォルト」ならスラッシュごと非表示 ▼▼
-              final paymentStr = item.payment == 'デフォルト'
-                  ? ''
-                  : '${item.payment} / ';
+              final expenseStr =
+                  item.expense == 'デフォルト' ? '' : ' (${item.expense})';
+              // paymentがカード名ならそのまま表示、'デフォルト'なら非表示
+              final paymentStr =
+                  (item.payment == 'デフォルト') ? '' : '${item.payment} / ';
 
               return ListTile(
                 title: Text('¥${item.amount}$expenseStr'),
@@ -98,6 +102,9 @@ class _MonthPageState extends State<MonthPage> {
   }
 
   Widget _buildSummaryCard(int total) {
+    // 履歴に含まれる費目名だけを抽出して重複削除
+    final usedExpenseNames = _history.map((e) => e.expense).toSet();
+
     return Card(
       margin: const EdgeInsets.all(15),
       color: Colors.blue.shade50,
@@ -112,16 +119,28 @@ class _MonthPageState extends State<MonthPage> {
             const Divider(),
             Wrap(
               spacing: 10,
-              children: expenseTags.where((t) => t.label != 'デフォルト').map((t) {
-                // デフォルト以外の費目を集計表示
+              children: usedExpenseNames.map((name) {
+                if (name == 'デフォルト') return const SizedBox.shrink();
+
+                // 合計計算
                 int s = _history
-                    .where((i) => i.expense == t.label)
+                    .where((i) => i.expense == name)
                     .fold(0, (sum, i) => sum + i.amount);
+
+                // 色を探す (設定リストから名前一致で検索)
+                Color color = Colors.black;
+                try {
+                  color = _expenseList.firstWhere((t) => t.label == name).color;
+                } catch (_) {
+                  // 削除されたカテゴリの場合などはグレーに
+                  color = Colors.grey;
+                }
+
                 return s > 0
                     ? Text(
-                        '${t.label}: ¥$s',
+                        '$name: ¥$s',
                         style: TextStyle(
-                          color: t.color,
+                          color: color,
                           fontWeight: FontWeight.bold,
                         ),
                       )

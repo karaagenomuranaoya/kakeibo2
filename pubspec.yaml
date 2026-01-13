@@ -15,7 +15,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
     
-  # ▼▼ 修正: バージョンを 0.19.0 から 0.20.2 に変更 ▼▼
+  # 日付操作
   intl: ^0.20.2
 
   cupertino_icons: ^1.0.8
@@ -28,3 +28,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # ▼▼ 正しい位置はここ（flutterセクションの中）です ▼▼
+  assets:
+    - assets/images/

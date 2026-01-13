@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
+import '../repositories/gacha_repository.dart';
+import '../repositories/settings_repository.dart'; // 設定リポジトリ
 import '../widgets/category_selector.dart';
 import '../widgets/custom_numeric_keyboard.dart';
 
@@ -17,8 +19,14 @@ class InputTab extends StatefulWidget {
 class _InputTabState extends State<InputTab> {
   String _amountStr = "0";
   final TransactionRepository _repository = TransactionRepository();
+  final GachaRepository _gachaRepository = GachaRepository();
+  final SettingsRepository _settingsRepository = SettingsRepository(); // 追加
 
-  // 初期値は 0 (リストの先頭) にしておき、nullチェックの手間を減らす
+  // 動的リスト
+  List<CategoryTag> _expenseList = [];
+  List<CategoryTag> _cardList = [];
+  bool _isLoading = true;
+
   int _selectedExpenseIndex = 0;
   DateTime _selectedDate = DateTime.now();
 
@@ -28,29 +36,39 @@ class _InputTabState extends State<InputTab> {
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadAllData();
   }
 
-  // 設定の読み込み（カード ＆ 費目）
-  Future<void> _loadSettings() async {
+  // データと設定をまとめて読み込む
+  Future<void> _loadAllData() async {
+    // 1. リストの読み込み
+    final expenses = await _settingsRepository.loadExpenseTags();
+    final cards = await _settingsRepository.loadCardTags();
+
+    // 2. 設定の復元
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      // 1. カード設定の復元
-      _isCardPayment = prefs.getBool('last_is_card') ?? false;
-      _selectedCardIndex = prefs.getInt('last_card_index') ?? 0;
-      if (_selectedCardIndex >= creditCardTags.length) {
-        _selectedCardIndex = 0;
-      }
 
-      // 2. 費目設定の復元
-      _selectedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
-      if (_selectedExpenseIndex >= expenseTags.length) {
-        _selectedExpenseIndex = 0;
-      }
-    });
+    // インデックスの復元と範囲チェック
+    int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
+    if (savedExpenseIndex >= expenses.length) savedExpenseIndex = 0;
+
+    int savedCardIndex = prefs.getInt('last_card_index') ?? 0;
+    if (savedCardIndex >= cards.length) savedCardIndex = 0;
+
+    final savedIsCard = prefs.getBool('last_is_card') ?? false;
+
+    if (mounted) {
+      setState(() {
+        _expenseList = expenses;
+        _cardList = cards;
+        _selectedExpenseIndex = savedExpenseIndex;
+        _selectedCardIndex = savedCardIndex;
+        _isCardPayment = savedIsCard;
+        _isLoading = false;
+      });
+    }
   }
 
-  // 費目変更時に保存
   Future<void> _changeExpenseIndex(int index) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -59,7 +77,6 @@ class _InputTabState extends State<InputTab> {
     await prefs.setInt('last_expense_index', index);
   }
 
-  // カードスイッチ切り替え時に保存
   Future<void> _toggleCardPayment(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -68,7 +85,6 @@ class _InputTabState extends State<InputTab> {
     await prefs.setBool('last_is_card', value);
   }
 
-  // カード種類変更時に保存
   Future<void> _changeCardIndex(int index) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -118,17 +134,25 @@ class _InputTabState extends State<InputTab> {
   }
 
   Future<void> _saveData() async {
+    if (_isLoading) return; // ロード中は保存不可
+
     final int amount = int.tryParse(_amountStr) ?? 0;
     if (amount == 0) {
       _showSnackBar('金額を入力してください', Colors.redAccent);
       return;
     }
 
-    final String paymentMethod =
-        _isCardPayment ? creditCardTags[_selectedCardIndex].label : '現金';
+    // 範囲チェック (万が一リストが空の場合など)
+    if (_expenseList.isEmpty) {
+      _showSnackBar('費目が設定されていません', Colors.redAccent);
+      return;
+    }
 
-    // 費目は必ず選択されている前提
-    final String expenseLabel = expenseTags[_selectedExpenseIndex].label;
+    final String paymentMethod = _isCardPayment
+        ? (_cardList.isNotEmpty ? _cardList[_selectedCardIndex].label : 'カード')
+        : '現金';
+
+    final String expenseLabel = _expenseList[_selectedExpenseIndex].label;
 
     try {
       final newItem = TransactionItem(
@@ -145,8 +169,9 @@ class _InputTabState extends State<InputTab> {
       );
 
       await _repository.addTransaction(newItem);
+      final newCredits = await _gachaRepository.addCredit();
 
-      // 保存時に念のため設定を再保存（冗長だが安全）
+      // 設定の再保存
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
       if (_isCardPayment) {
@@ -156,10 +181,13 @@ class _InputTabState extends State<InputTab> {
 
       setState(() {
         _amountStr = "0";
-        // ▼▼ 変更: 費目のリセット(_selectedExpenseIndex = null)を削除し、位置をキープ ▼▼
       });
 
-      _showSnackBar('保存しました', Colors.blue);
+      if (newCredits % 3 == 0) {
+        _showSnackBar('ガチャが回せます！', Colors.orange);
+      } else {
+        _showSnackBar('保存しました (あと${3 - (newCredits % 3)}回でガチャ)', Colors.blue);
+      }
     } catch (e) {
       _showSnackBar('保存エラー: $e', Colors.red);
     }
@@ -171,18 +199,21 @@ class _InputTabState extends State<InputTab> {
       SnackBar(
         content: Text(msg),
         backgroundColor: color,
-        duration: const Duration(milliseconds: 800),
+        duration: const Duration(milliseconds: 1500),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
     return Column(
       children: [
-        // --- 1. スクロール領域（日付、金額、費目） ---
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
@@ -229,23 +260,18 @@ class _InputTabState extends State<InputTab> {
                   ),
                 ),
                 const SizedBox(height: 10),
-
-                // 費目選択
+                // 動的リストを使用
                 CategorySelector(
-                  tags: expenseTags,
+                  tags: _expenseList,
                   selectedIndex: _selectedExpenseIndex,
                   rowCount: 2,
-                  // ▼▼ 変更: 選択時に即時保存する関数を呼ぶ ▼▼
                   onSelected: (i) => _changeExpenseIndex(i),
                 ),
-
                 const SizedBox(height: 10),
               ],
             ),
           ),
         ),
-
-        // --- 2. 支払い設定バー（固定） ---
         Container(
           width: double.infinity,
           height: 56,
@@ -264,16 +290,15 @@ class _InputTabState extends State<InputTab> {
           ),
           child: Row(
             children: [
-              // 左側：カード選択エリア（ONの時のみ表示）
               Expanded(
-                child: _isCardPayment
+                child: _isCardPayment && _cardList.isNotEmpty
                     ? ListView.builder(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 8),
-                        itemCount: creditCardTags.length,
+                        itemCount: _cardList.length, // 動的リストを使用
                         itemBuilder: (context, index) {
-                          final tag = creditCardTags[index];
+                          final tag = _cardList[index];
                           final isSelected = _selectedCardIndex == index;
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -302,8 +327,6 @@ class _InputTabState extends State<InputTab> {
                       )
                     : const SizedBox.shrink(),
               ),
-
-              // 右側：カードON/OFFスイッチ
               Padding(
                 padding: const EdgeInsets.only(right: 16, left: 8),
                 child: Row(
@@ -331,8 +354,6 @@ class _InputTabState extends State<InputTab> {
             ],
           ),
         ),
-
-        // --- 3. キーボード（固定） ---
         CustomNumericKeyboard(
           onNumberTap: _onNumberTap,
           onBackspace: _onBackspace,

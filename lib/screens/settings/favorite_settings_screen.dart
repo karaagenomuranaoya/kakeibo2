@@ -13,6 +13,10 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
   final SettingsRepository _repository = SettingsRepository();
   List<String> _currentFavorites = [];
 
+  // 動的リスト
+  List<CategoryTag> _expenseList = [];
+  List<CategoryTag> _cardList = [];
+
   @override
   void initState() {
     super.initState();
@@ -21,10 +25,13 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
 
   Future<void> _load() async {
     final list = await _repository.loadFavorites();
+    final expenses = await _repository.loadExpenseTags();
+    final cards = await _repository.loadCardTags();
+
     setState(() {
-      // ▼▼ 修正: ここで List.from() を使い、必ず「書き換え可能なコピー」を作成する ▼▼
-      // これをしないと、デフォルト設定（constリスト）の場合に変更できずエラーになる
       _currentFavorites = List<String>.from(list);
+      _expenseList = expenses;
+      _cardList = cards;
     });
   }
 
@@ -36,7 +43,6 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
         _currentFavorites.add(key);
       }
     });
-    // 保存処理
     await _repository.saveFavorites(_currentFavorites);
   }
 
@@ -48,17 +54,20 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
         padding: const EdgeInsets.only(bottom: 30),
         children: [
           _buildSectionHeader('費目ショートカット'),
+          // const を削除
           _buildCheckTile(
-            const CategoryTag('デフォルト', Colors.blueGrey),
-            'expense',
-          ),
-          ...expenseTags.map((tag) => _buildCheckTile(tag, 'expense')),
+              CategoryTag(label: 'デフォルト', color: Colors.blueGrey), 'expense'),
+          // 動的リストを展開
+          ..._expenseList.map((tag) => _buildCheckTile(tag, 'expense')),
 
           const Divider(),
 
           _buildSectionHeader('支払い方法ショートカット'),
-          _buildCheckTile(const CategoryTag('デフォルト', Colors.grey), 'payment'),
-          ...paymentTags.map((tag) => _buildCheckTile(tag, 'payment')),
+          _buildCheckTile(
+              CategoryTag(label: 'デフォルト', color: Colors.grey), 'payment'),
+          _buildCheckTile(
+              CategoryTag(label: '現金', color: Colors.grey), 'payment'),
+          ..._cardList.map((tag) => _buildCheckTile(tag, 'payment')),
         ],
       ),
     );
@@ -69,10 +78,8 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 5),
       child: Text(
         title,
-        style: TextStyle(
-          color: Colors.blue.shade800,
-          fontWeight: FontWeight.bold,
-        ),
+        style:
+            TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -95,7 +102,6 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
         ],
       ),
       value: isChecked,
-      // チェックボックスだけでなく行全体タップで反応
       onChanged: (bool? value) => _toggleFavorite(key),
       activeColor: Colors.blue,
     );
