@@ -11,6 +11,7 @@ import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
 import '../widgets/custom_number_keyboard.dart';
 import '../utils/simple_calculator.dart';
+import 'settings/category_manage_screen.dart'; // カテゴリ管理画面
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -188,6 +189,24 @@ class _InputTabState extends State<InputTab>
     widget.onTabBarVisibilityChanged?.call(true);
   }
 
+  // カテゴリ設定画面へ遷移
+  Future<void> _openCategorySettings() async {
+    // 現在の状態を保存してから遷移
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('last_expense_index', _selectedExpenseIndex);
+
+    if (!mounted) return;
+
+    // 設定画面へ（戻るまで待機）
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CategoryManageScreen()),
+    );
+
+    // 戻ってきたらデータを再読み込み
+    await _loadAllData();
+  }
+
   Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
 
@@ -308,20 +327,17 @@ class _InputTabState extends State<InputTab>
   Future<void> _undoLastInput() async {
     if (_lastInputId == null) return;
 
-    // 最新のデータを取得して確認メッセージを作る
     final allItems = await _repository.getAllTransactions();
     TransactionItem? targetItem;
     try {
       targetItem = allItems.firstWhere((e) => e.id == _lastInputId);
     } catch (_) {
-      // 既に見つからない場合
       setState(() => _lastInputId = null);
       return;
     }
 
     if (!mounted) return;
 
-    // 確認ダイアログ
     showDialog(
       context: context,
       builder: (context) {
@@ -515,6 +531,7 @@ class _InputTabState extends State<InputTab>
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: (i) => _changeExpenseIndex(i),
+                    onAddPressed: _openCategorySettings, // 追加ボタンのコールバック
                   ),
                   const SizedBox(height: 20),
 

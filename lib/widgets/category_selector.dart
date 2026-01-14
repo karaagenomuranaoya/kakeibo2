@@ -5,12 +5,14 @@ class CategorySelector extends StatelessWidget {
   final List<CategoryTag> tags;
   final int? selectedIndex;
   final Function(int) onSelected;
+  final VoidCallback? onAddPressed; // 追加: 追加ボタンのコールバック
 
   const CategorySelector({
     super.key,
     required this.tags,
     required this.selectedIndex,
     required this.onSelected,
+    this.onAddPressed,
   });
 
   IconData _getIconForLabel(String label) {
@@ -35,34 +37,67 @@ class CategorySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 追加ボタンがある場合は要素数を+1する
+    final int itemCount = onAddPressed != null ? tags.length + 1 : tags.length;
+
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      // 余白を少し詰める
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 8, // 間隔を少し詰める
+        mainAxisSpacing: 8,
         crossAxisSpacing: 8,
-        // ▼▼ 変更点: 横長比率を上げて、ボタンの高さを低くする (1.5 -> 2.0) ▼▼
-        // これにより、同じ画面スペースにより多くの行（ボタン）が表示されます。
         childAspectRatio: 2.0,
       ),
-      itemCount: tags.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
+        // 追加ボタンの表示判定
+        if (onAddPressed != null && index == tags.length) {
+          return Material(
+            color: Colors.grey.shade200,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: Colors.grey.shade300, width: 1.5),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onAddPressed,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.add, color: Colors.grey, size: 20),
+                    SizedBox(width: 4),
+                    Text(
+                      "編集",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
         final tag = tags[index];
         final isSelected = selectedIndex == index;
         final icon = _getIconForLabel(tag.label);
 
         return Material(
           color: isSelected ? tag.color : Colors.white,
-          elevation: isSelected ? 2 : 1, // 影を少し控えめに
-          // MaterialのborderRadius指定は削除し、shapeのみで管理
+          elevation: isSelected ? 2 : 1,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10), // 角丸も少し控えめに
+            borderRadius: BorderRadius.circular(10),
             side: BorderSide(
-              color:
-                  isSelected ? Colors.transparent : tag.color.withOpacity(0.3),
+              color: isSelected
+                  ? Colors.transparent
+                  : tag.color.withOpacity(0.3),
               width: 1.5,
             ),
           ),
@@ -70,17 +105,14 @@ class CategorySelector extends StatelessWidget {
           child: InkWell(
             onTap: () => onSelected(index),
             child: Padding(
-              // 内部の余白も詰める
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Row(
-                // ColumnではなくRow（横並び）または、コンパクトなColumnにする手もあるが、
-                // 今回は「アイコン＋文字」が見やすいコンパクトなColumnを維持しつつ調整
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     icon,
                     color: isSelected ? Colors.white : tag.color,
-                    size: 20, // アイコンを少し小さく
+                    size: 20,
                   ),
                   const SizedBox(width: 6),
                   Flexible(
