@@ -29,7 +29,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // 現在表示中のカード情報
   CategoryTag? _currentCardTag;
-  bool _isCardType = false; // 現金以外の支払い方法かどうか
+  bool _isCardType = false;
 
   final PageController _pageController = PageController(initialPage: 1000);
   final SettingsRepository _settingsRepository = SettingsRepository();
@@ -37,11 +37,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    // まずタイプ判定
     if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
       _isCardType = true;
     }
-    // 設定をロードしてタブの表示有無を決める
     _loadCardInfo();
   }
 
@@ -53,22 +51,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (mounted) {
           setState(() {
             _currentCardTag = card;
-            // 締め日が設定されていればタブを表示する
             _showTab = card.closingDay != null;
-
-            // もし設定が消えてタブが消える場合、モードを利用日基準に戻す
             if (!_showTab) {
               _viewMode = 0;
             }
           });
         }
-      } catch (_) {
-        // タグが見つからない場合
-      }
+      } catch (_) {}
     }
   }
 
-  // 設定ダイアログ（ON/OFF切り替え対応版）
   void _showSetupDialog() {
     // 現在の設定値を反映
     bool isEnabled = _currentCardTag?.closingDay != null;
@@ -163,7 +155,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    // isEnabledがfalseならnullを渡して設定解除
                     await _saveCardSettings(isEnabled ? closingDay : null,
                         isEnabled ? paymentDay : null, paymentOffset);
                     if (context.mounted) {
@@ -207,7 +198,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       setState(() {
         _currentCardTag = newTag;
-        // 設定に応じてタブの表示有無を更新
         _showTab = newTag.closingDay != null;
         if (!_showTab) _viewMode = 0;
       });
@@ -226,7 +216,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: AppBar(
         title: Text(widget.filterValue),
         actions: [
-          // カードの場合のみ設定ボタンを表示
           if (_isCardType)
             IconButton(
               icon: const Icon(Icons.settings_outlined),
@@ -237,7 +226,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
       body: Column(
         children: [
-          // 設定がある場合のみタブを表示
           if (_showTab)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -274,7 +262,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ),
             ),
-
           Expanded(
             child: PageView.builder(
               controller: _pageController,
@@ -318,7 +305,7 @@ class _MonthPage extends StatefulWidget {
   final String filterValue;
   final String filterKey;
   final Color? color;
-  final int viewMode; // 0:利用日, 1:支払日
+  final int viewMode;
   final VoidCallback onPrev;
   final VoidCallback onNext;
 
@@ -362,7 +349,6 @@ class _MonthPageState extends State<_MonthPage> {
 
     setState(() {
       _history = allItems.where((i) {
-        // 1. タグフィルタ
         bool isTarget = false;
         if (widget.filterKey == 'expense') {
           isTarget = i.expense == widget.filterValue;
@@ -375,14 +361,11 @@ class _MonthPageState extends State<_MonthPage> {
         }
         if (!isTarget) return false;
 
-        // 2. 年月フィルタ
         if (widget.viewMode == 1) {
-          // 支払日基準
           final targetDate = i.paymentDate ?? i.date;
           return targetDate.year == widget.year &&
               targetDate.month == widget.month;
         } else {
-          // 利用日基準
           return i.date.year == widget.year && i.date.month == widget.month;
         }
       }).toList();
@@ -390,38 +373,47 @@ class _MonthPageState extends State<_MonthPage> {
     });
   }
 
+  // 編集・削除ダイアログ
   void _showEditDialog(TransactionItem item) {
     final amountController =
         TextEditingController(text: item.amount.toString());
+    final memoController = TextEditingController(text: item.memo); // メモ用
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('履歴の編集'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '金額'),
-                autofocus: true,
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              if (item.paymentDate != null)
-                Text(
-                  '支払日: ${item.paymentDate!.year}/${item.paymentDate!.month}/${item.paymentDate!.day}',
-                  style: const TextStyle(
-                      color: Colors.orange,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '金額'),
+                  autofocus: true,
                 ),
-            ],
+                const SizedBox(height: 10),
+                TextField(
+                  controller: memoController,
+                  decoration: const InputDecoration(labelText: 'メモ'),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                if (item.paymentDate != null)
+                  Text(
+                    '支払日: ${item.paymentDate!.year}/${item.paymentDate!.month}/${item.paymentDate!.day}',
+                    style: const TextStyle(
+                        color: Colors.orange,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold),
+                  ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -441,7 +433,10 @@ class _MonthPageState extends State<_MonthPage> {
               onPressed: () async {
                 final newAmount = int.tryParse(amountController.text);
                 if (newAmount != null) {
-                  final newItem = item.copyWith(amount: newAmount);
+                  final newItem = item.copyWith(
+                    amount: newAmount,
+                    memo: memoController.text.trim(), // メモ更新
+                  );
                   await _repository.updateTransaction(newItem);
                   if (context.mounted) Navigator.pop(context);
                   _load();
@@ -560,7 +555,26 @@ class _MonthPageState extends State<_MonthPage> {
                         '¥${item.amount}',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      subtitle: Text("$dateInfo$detail"),
+                      // サブタイトルをColumnにして、メモがある場合のみ表示
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("$dateInfo$detail"),
+                          if (item.memo.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                item.memo,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 12,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
                       onTap: () => _showEditDialog(item),
                       trailing:
                           const Icon(Icons.edit, size: 16, color: Colors.grey),

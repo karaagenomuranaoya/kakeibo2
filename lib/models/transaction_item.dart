@@ -4,10 +4,8 @@ class TransactionItem {
   final String expense;
   final String payment;
   final DateTime date;
-
-  // 支払日（クレジットカードの引き落とし日など）
-  // nullの場合は date と同じ（即時払い）とみなす
   final DateTime? paymentDate;
+  final String memo; // 追加: メモ欄
 
   TransactionItem({
     String? id,
@@ -16,6 +14,7 @@ class TransactionItem {
     required this.payment,
     required this.date,
     this.paymentDate,
+    this.memo = '', // デフォルトは空文字
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
 
   String get displayDate {
@@ -30,6 +29,7 @@ class TransactionItem {
       'payment': payment,
       'date_iso': date.toIso8601String(),
       'payment_date_iso': paymentDate?.toIso8601String(),
+      'memo': memo, // 保存
     };
   }
 
@@ -45,6 +45,7 @@ class TransactionItem {
       paymentDate: json['payment_date_iso'] != null
           ? DateTime.parse(json['payment_date_iso'] as String)
           : null,
+      memo: json['memo'] as String? ?? '', // 読み込み（既存データ対策でnull許容）
     );
   }
 
@@ -54,6 +55,7 @@ class TransactionItem {
     String? payment,
     DateTime? date,
     DateTime? paymentDate,
+    String? memo,
   }) {
     return TransactionItem(
       id: id,
@@ -62,6 +64,7 @@ class TransactionItem {
       payment: payment ?? this.payment,
       date: date ?? this.date,
       paymentDate: paymentDate ?? this.paymentDate,
+      memo: memo ?? this.memo,
     );
   }
 }

@@ -57,7 +57,6 @@ class _MonthPageState extends State<MonthPage> {
 
     if (mounted) {
       setState(() {
-        // ここは常に「利用日（date）」基準でフィルタリング
         _history = allItems.where((i) {
           return i.date.year == widget.year && i.date.month == widget.month;
         }).toList();
@@ -70,34 +69,42 @@ class _MonthPageState extends State<MonthPage> {
   void _showEditDialog(TransactionItem item) {
     final amountController =
         TextEditingController(text: item.amount.toString());
+    final memoController = TextEditingController(text: item.memo); // メモ用
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('履歴の編集'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '金額'),
-                autofocus: true,
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '金額'),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: memoController,
+                  decoration: const InputDecoration(labelText: 'メモ'),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () async {
                 await _repository.deleteTransaction(item.id);
                 if (context.mounted) Navigator.pop(context);
-                _load(); // 再読み込み
+                _load();
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('削除'),
@@ -110,10 +117,13 @@ class _MonthPageState extends State<MonthPage> {
               onPressed: () async {
                 final newAmount = int.tryParse(amountController.text);
                 if (newAmount != null) {
-                  final newItem = item.copyWith(amount: newAmount);
+                  final newItem = item.copyWith(
+                    amount: newAmount,
+                    memo: memoController.text.trim(), // メモ更新
+                  );
                   await _repository.updateTransaction(newItem);
                   if (context.mounted) Navigator.pop(context);
-                  _load(); // 再読み込み
+                  _load();
                 }
               },
               child: const Text('更新'),
@@ -154,7 +164,26 @@ class _MonthPageState extends State<MonthPage> {
 
               return ListTile(
                 title: Text('¥${item.amount}$expenseStr'),
-                subtitle: Text('$paymentStr${item.displayDate}'),
+                // サブタイトルをColumnにして、メモがある場合のみ表示
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$paymentStr${item.displayDate}'),
+                    if (item.memo.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          item.memo,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
                 trailing: const Icon(Icons.edit, size: 16, color: Colors.grey),
                 onTap: () => _showEditDialog(item),
               );

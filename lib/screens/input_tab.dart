@@ -19,6 +19,8 @@ class InputTab extends StatefulWidget {
 
 class _InputTabState extends State<InputTab> {
   String _amountStr = "0";
+  final TextEditingController _memoController = TextEditingController(); // 追加
+
   final TransactionRepository _repository = TransactionRepository();
   final GachaRepository _gachaRepository = GachaRepository();
   final SettingsRepository _settingsRepository = SettingsRepository();
@@ -37,6 +39,12 @@ class _InputTabState extends State<InputTab> {
   void initState() {
     super.initState();
     _loadAllData();
+  }
+
+  @override
+  void dispose() {
+    _memoController.dispose();
+    super.dispose();
   }
 
   @override
@@ -155,44 +163,29 @@ class _InputTabState extends State<InputTab> {
       _selectedExpenseIndex = 0;
     }
 
-    // --- 支払い方法と支払日の計算ロジック ---
+    // --- 支払い方法と支払日の計算 ---
     String paymentMethod = '';
-    DateTime? paymentDate; // 計算された支払日
+    DateTime? paymentDate;
 
     if (_isCardPayment) {
       if (_cardList.isNotEmpty) {
-        // カード選択時
         final card = _cardList[_selectedCardIndex];
         paymentMethod = card.label;
 
-        // 締め日設定がある場合、支払日を計算する
         if (card.closingDay != null && card.paymentDay != null) {
-          int monthsToAdd = card.paymentMonthOffset; // 基本は設定された月数後（翌月など）
-
-          // 締め日判定 (99は末日なので、必ずその日以前になるため判定不要)
+          int monthsToAdd = card.paymentMonthOffset;
           if (card.closingDay != 99) {
-            // 利用日が締め日を過ぎていたら、支払いはさらに1ヶ月後
             if (_selectedDate.day > card.closingDay!) {
               monthsToAdd++;
             }
           }
-
-          // 支払年月の計算（DateTimeが自動で年またぎを処理してくれる）
-          // 例: 12月 + 1ヶ月 = 翌年1月
           int targetYear = _selectedDate.year;
           int targetMonth = _selectedDate.month + monthsToAdd;
           int targetDay = card.paymentDay!;
 
           if (targetDay == 99) {
-            // 末日払いの場合: 翌月の0日を指定すると、当月の末日になる
             paymentDate = DateTime(targetYear, targetMonth + 1, 0);
           } else {
-            // 指定日払い
-            // 2月30日などが来ないように、念のため存在する日付かチェックが必要だが、
-            // DateTimeの仕様ではあふれた分は翌月に回る（例: 2/30 -> 3/2）。
-            // カード会社の仕様としては「存在しない日は月末」などの場合が多いが、
-            // ここでは簡易的にDateTimeの仕様に任せるか、末日に丸める
-            // (厳密にするならここで調整可能)
             paymentDate = DateTime(targetYear, targetMonth, targetDay);
           }
         }
@@ -200,7 +193,6 @@ class _InputTabState extends State<InputTab> {
         paymentMethod = 'カード';
       }
     } else {
-      // 現金などの場合（空文字）
       paymentMethod = '';
     }
 
@@ -218,7 +210,8 @@ class _InputTabState extends State<InputTab> {
           DateTime.now().hour,
           DateTime.now().minute,
         ),
-        paymentDate: paymentDate, // 計算した支払日を保存
+        paymentDate: paymentDate,
+        memo: _memoController.text.trim(), // メモを保存
       );
 
       await _repository.addTransaction(newItem);
@@ -233,22 +226,19 @@ class _InputTabState extends State<InputTab> {
 
       setState(() {
         _amountStr = "0";
+        _memoController.clear(); // 保存後にクリア
       });
+      // キーボードを閉じる
+      if (mounted) FocusScope.of(context).unfocus();
 
-      // スナックバーでフィードバック
       if (mounted) {
         String msg = '保存しました';
         if (newCredits % 3 == 0) {
           msg = 'ガチャが回せます！';
         } else if (paymentDate != null) {
-          // 支払日が決まった場合は表示してあげる（親切設計）
           msg = '保存しました（支払日: ${paymentDate!.month}/${paymentDate!.day}）';
         }
-
-        _showSnackBar(
-          msg,
-          newCredits % 3 == 0 ? Colors.orange : Colors.blue,
-        );
+        _showSnackBar(msg, newCredits % 3 == 0 ? Colors.orange : Colors.blue);
       }
     } catch (e) {
       _showSnackBar('保存エラー: $e', Colors.red);
@@ -278,6 +268,7 @@ class _InputTabState extends State<InputTab> {
       children: [
         Expanded(
           child: SingleChildScrollView(
+            // メモ入力でキーボードが出てもスクロールできるように
             padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -327,6 +318,31 @@ class _InputTabState extends State<InputTab> {
                   tags: _expenseList,
                   selectedIndex: _selectedExpenseIndex,
                   onSelected: (i) => _changeExpenseIndex(i),
+                ),
+                // メモ入力欄を追加
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  child: TextField(
+                    controller: _memoController,
+                    decoration: const InputDecoration(
+                      hintText: 'メモ (任意)',
+                      isDense: true,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                      prefixIcon:
+                          Icon(Icons.edit, size: 16, color: Colors.grey),
+                      prefixIconConstraints: BoxConstraints(minWidth: 24),
+                      border: InputBorder.none, // 線を消してシンプルに
+                      hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    style: const TextStyle(fontSize: 14),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      // 完了ボタンでキーボードを閉じる
+                      FocusScope.of(context).unfocus();
+                    },
+                  ),
                 ),
                 const SizedBox(height: 10),
               ],
