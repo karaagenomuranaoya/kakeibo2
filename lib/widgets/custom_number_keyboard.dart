@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class CustomNumberKeyboard extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSubmitted;
-  final VoidCallback onClose; // 復活: 閉じるボタン用
+  final VoidCallback onClose;
   final ValueChanged<String> onChanged;
 
   const CustomNumberKeyboard({

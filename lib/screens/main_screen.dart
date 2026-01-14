@@ -14,7 +14,7 @@ class _MainScreenState extends State<MainScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _dataVersion = 0;
-  bool _isTabBarVisible = true; // タブバーの表示状態
+  bool _isTabBarVisible = true; // タブバーの表示状態管理
 
   @override
   void initState() {
@@ -23,9 +23,9 @@ class _MainScreenState extends State<MainScreen>
 
     _tabController.addListener(() {
       if (!context.mounted) return;
+      // タブ切り替え開始時にキーボードを閉じてタブバーを再表示
       if (_tabController.indexIsChanging) {
         FocusScope.of(context).unfocus();
-        // タブ切り替え時は必ずタブバーを表示状態に戻す
         if (!_isTabBarVisible) {
           setState(() {
             _isTabBarVisible = true;
@@ -41,13 +41,14 @@ class _MainScreenState extends State<MainScreen>
     super.dispose();
   }
 
+  // ドロワーや設定画面からの戻りでデータをリフレッシュさせるためのバージョン管理
   void _refreshData() {
     setState(() {
       _dataVersion++;
     });
   }
 
-  // InputTabから呼び出してタブバーを隠すための関数
+  // InputTabから呼ばれる、タブバー表示切替コールバック
   void _setTabBarVisible(bool visible) {
     if (_isTabBarVisible != visible) {
       setState(() {
@@ -59,20 +60,32 @@ class _MainScreenState extends State<MainScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Quick Kakeibo')),
+      appBar: AppBar(
+        title: const Text(
+          'Quick Kakeibo',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
       drawer: AppDrawer(onDataChanged: _refreshData),
-      // ▼▼ 変更点: OSキーボードが出ても画面サイズを変えない（押し上げない）設定 ▼▼
-      // これにより、カスタムキーボードが常に画面最下部に固定され「どっしり」構えるようになります。
+
+      // カスタムキーボードが下から出てくるときに、
+      // Scaffoldのbodyをリサイズせず（押し上げず）、上に重ねて表示する設定。
+      // これにより、画面全体のレイアウト崩れを防ぎます。
       resizeToAvoidBottomInset: false,
 
       body: GestureDetector(
         onTap: () {
+          // 画面背景タップでフォーカスを外す
           FocusScope.of(context).unfocus();
         },
         behavior: HitTestBehavior.translucent,
         child: TabBarView(
           controller: _tabController,
-          physics: const ClampingScrollPhysics(),
+          // スワイプでのタブ切り替えを無効化（誤操作防止 & キーボード制御簡易化のため）
+          // 必要であれば physics: const ClampingScrollPhysics() に戻してください
+          physics: const NeverScrollableScrollPhysics(),
           children: [
             // 1. 入力タブ
             InputTab(
@@ -88,29 +101,33 @@ class _MainScreenState extends State<MainScreen>
           ],
         ),
       ),
+
       // タブバーの表示制御
+      // _isTabBarVisible が false のときは null にして非表示にする
       bottomNavigationBar: _isTabBarVisible
-          ? Material(
-              color: Colors.white,
-              elevation: 10,
-              child: SafeArea(
-                child: TabBar(
-                  controller: _tabController,
-                  isScrollable: false,
-                  indicatorColor: Colors.blue,
-                  labelColor: Colors.blue,
-                  unselectedLabelColor: Colors.grey,
-                  onTap: (_) => FocusScope.of(context).unfocus(),
-                  tabs: const [
-                    Tab(icon: Icon(Icons.edit), text: '入力'),
-                    Tab(icon: Icon(Icons.calendar_month), text: 'レポート'),
-                    Tab(
-                      icon: Icon(Icons.star, color: Colors.orange),
-                      text: 'ガチャ',
-                    ),
-                  ],
+          ? NavigationBar(
+              selectedIndex: _tabController.index,
+              onDestinationSelected: (index) {
+                _tabController.animateTo(index);
+                setState(() {}); // NavigationBarの表示更新用
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.edit_outlined),
+                  selectedIcon: Icon(Icons.edit),
+                  label: '入力',
                 ),
-              ),
+                NavigationDestination(
+                  icon: Icon(Icons.calendar_month_outlined),
+                  selectedIcon: Icon(Icons.calendar_month),
+                  label: 'レポート',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.star_outline, color: Colors.orange),
+                  selectedIcon: Icon(Icons.star, color: Colors.orange),
+                  label: 'ガチャ',
+                ),
+              ],
             )
           : null,
     );

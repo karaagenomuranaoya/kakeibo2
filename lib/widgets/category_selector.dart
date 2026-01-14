@@ -5,7 +5,7 @@ class CategorySelector extends StatelessWidget {
   final List<CategoryTag> tags;
   final int? selectedIndex;
   final Function(int) onSelected;
-  final VoidCallback? onAddPressed; // 追加: 追加ボタンのコールバック
+  final VoidCallback? onAddPressed;
 
   const CategorySelector({
     super.key,
@@ -15,6 +15,7 @@ class CategorySelector extends StatelessWidget {
     this.onAddPressed,
   });
 
+  // ラベルに応じたアイコンを返すヘルパー
   IconData _getIconForLabel(String label) {
     if (label.contains('食')) return Icons.restaurant;
     if (label.contains('日用')) return Icons.shopping_bag;
@@ -37,13 +38,14 @@ class CategorySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 追加ボタンがある場合は要素数を+1する
+    // 追加ボタンがある場合は要素数を+1
     final int itemCount = onAddPressed != null ? tags.length + 1 : tags.length;
 
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
+      // パディング調整
+      padding: const EdgeInsets.symmetric(horizontal: 2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: 8,
@@ -52,88 +54,96 @@ class CategorySelector extends StatelessWidget {
       ),
       itemCount: itemCount,
       itemBuilder: (context, index) {
-        // 追加ボタンの表示判定
+        // 末尾に追加ボタンを表示する場合
         if (onAddPressed != null && index == tags.length) {
-          return Material(
-            color: Colors.grey.shade200,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: Colors.grey.shade300, width: 1.5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onAddPressed,
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.add, color: Colors.grey, size: 20),
-                    SizedBox(width: 4),
-                    Text(
-                      "編集",
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
+          return _buildAddButton();
         }
 
         final tag = tags[index];
         final isSelected = selectedIndex == index;
-        final icon = _getIconForLabel(tag.label);
+        return _buildCategoryChip(tag, isSelected, () => onSelected(index));
+      },
+    );
+  }
 
-        return Material(
-          color: isSelected ? tag.color : Colors.white,
-          elevation: isSelected ? 2 : 1,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: BorderSide(
-              color: isSelected
-                  ? Colors.transparent
-                  : tag.color.withOpacity(0.3),
-              width: 1.5,
-            ),
+  Widget _buildAddButton() {
+    return Material(
+      color: Colors.grey.shade200,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: Colors.grey.shade300, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onAddPressed,
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.settings, color: Colors.grey, size: 18),
+              SizedBox(width: 4),
+              Text(
+                "編集",
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => onSelected(index),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    icon,
-                    color: isSelected ? Colors.white : tag.color,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        tag.label,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.black87,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryChip(
+    CategoryTag tag,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
+    return Material(
+      color: isSelected ? tag.color : Colors.white,
+      elevation: isSelected ? 2 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isSelected ? Colors.transparent : tag.color.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                _getIconForLabel(tag.label),
+                color: isSelected ? Colors.white : tag.color,
+                size: 20,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    tag.label,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
