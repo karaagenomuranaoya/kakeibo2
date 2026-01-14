@@ -24,11 +24,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // 0: 利用日基準, 1: 支払日基準
   int _viewMode = 0;
 
-  // 現在表示中のカード情報（設定取得用）
-  CategoryTag? _currentCardTag;
+  // タブを表示するかどうか
+  bool _showTab = false;
 
-  // 現金以外の支払い方法かどうか
-  bool _isCardType = false;
+  // 現在表示中のカード情報
+  CategoryTag? _currentCardTag;
+  bool _isCardType = false; // 現金以外の支払い方法かどうか
 
   final PageController _pageController = PageController(initialPage: 1000);
   final SettingsRepository _settingsRepository = SettingsRepository();
@@ -36,13 +37,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-
-    // ▼▼ 修正: データ読み込みを待たずに、条件だけで即座にフラグを立てる ▼▼
+    // まずタイプ判定
     if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
       _isCardType = true;
     }
-
-    // その後、詳細な設定（締め日など）を裏で読み込む
+    // 設定をロードしてタブの表示有無を決める
     _loadCardInfo();
   }
 
@@ -54,33 +53,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (mounted) {
           setState(() {
             _currentCardTag = card;
+            // 締め日が設定されていればタブを表示する
+            _showTab = card.closingDay != null;
+
+            // もし設定が消えてタブが消える場合、モードを利用日基準に戻す
+            if (!_showTab) {
+              _viewMode = 0;
+            }
           });
         }
       } catch (_) {
-        // タグが見つからない場合でも、_isCardTypeはtrueのままでOK
+        // タグが見つからない場合
       }
     }
   }
 
-  void _onTabChanged(int newValue) {
-    if (newValue == 1) {
-      // 「引き落とし予定」が選ばれた時、設定（締め日）がなければダイアログを出す
-      // _currentCardTagがまだロードできていない場合も考慮してnullチェック
-      if (_currentCardTag == null || _currentCardTag!.closingDay == null) {
-        _showSetupDialog();
-        return;
-      }
-    }
-
-    setState(() {
-      _viewMode = newValue;
-    });
-  }
-
+  // 設定ダイアログ（ON/OFF切り替え対応版）
   void _showSetupDialog() {
-    int closingDay = 99; // デフォルト末日
-    int paymentDay = 27; // デフォルト27日
-    int paymentOffset = 1; // デフォルト翌月
+    // 現在の設定値を反映
+    bool isEnabled = _currentCardTag?.closingDay != null;
+    int closingDay = _currentCardTag?.closingDay ?? 99;
+    int paymentDay = _currentCardTag?.paymentDay ?? 27;
+    int paymentOffset = _currentCardTag?.paymentMonthOffset ?? 1;
 
     List<DropdownMenuItem<int>> getDayItems() {
       final items = List.generate(28, (i) => i + 1)
@@ -101,42 +95,65 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('引き落とし予定を計算するために、\n締め日と支払日を教えてください。'),
-                  const SizedBox(height: 20),
                   Row(
                     children: [
-                      const Text('締め: '),
-                      DropdownButton<int>(
-                        value: closingDay,
-                        items: getDayItems(),
-                        onChanged: (val) =>
-                            setStateDialog(() => closingDay = val!),
+                      const Expanded(
+                        child: Text('締め日・支払日を管理する'),
                       ),
-                      const SizedBox(width: 15),
-                      const Text('払い: '),
-                      DropdownButton<int>(
-                        value: paymentDay,
-                        items: getDayItems(),
+                      Switch(
+                        value: isEnabled,
                         onChanged: (val) =>
-                            setStateDialog(() => paymentDay = val!),
+                            setStateDialog(() => isEnabled = val),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Text('支払月: '),
-                      DropdownButton<int>(
-                        value: paymentOffset,
-                        items: const [
-                          DropdownMenuItem(value: 1, child: Text('翌月')),
-                          DropdownMenuItem(value: 2, child: Text('翌々月')),
-                        ],
-                        onChanged: (val) =>
-                            setStateDialog(() => paymentOffset = val!),
-                      ),
-                    ],
-                  ),
+                  if (isEnabled) ...[
+                    const Text(
+                      '締め日と支払日を設定すると、\n「引き落とし予定」タブが表示されます。',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        const Text('締め: '),
+                        DropdownButton<int>(
+                          value: closingDay,
+                          items: getDayItems(),
+                          onChanged: (val) =>
+                              setStateDialog(() => closingDay = val!),
+                        ),
+                        const SizedBox(width: 15),
+                        const Text('払い: '),
+                        DropdownButton<int>(
+                          value: paymentDay,
+                          items: getDayItems(),
+                          onChanged: (val) =>
+                              setStateDialog(() => paymentDay = val!),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Text('支払月: '),
+                        DropdownButton<int>(
+                          value: paymentOffset,
+                          items: const [
+                            DropdownMenuItem(value: 1, child: Text('翌月')),
+                            DropdownMenuItem(value: 2, child: Text('翌々月')),
+                          ],
+                          onChanged: (val) =>
+                              setStateDialog(() => paymentOffset = val!),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    const Text(
+                      'PayPayやデビットカードなど、\n即時決済の場合はオフにしてください。',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
                 ],
               ),
               actions: [
@@ -146,20 +163,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    await _saveCardSettings(
-                        closingDay, paymentDay, paymentOffset);
+                    // isEnabledがfalseならnullを渡して設定解除
+                    await _saveCardSettings(isEnabled ? closingDay : null,
+                        isEnabled ? paymentDay : null, paymentOffset);
                     if (context.mounted) {
                       Navigator.pop(context);
-                      setState(() {
-                        _viewMode = 1;
-                      });
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('設定を保存しました。次回入力分から支払日が自動計算されます。')),
+                        SnackBar(
+                            content:
+                                Text(isEnabled ? '設定を保存しました' : '設定を解除しました')),
                       );
                     }
                   },
-                  child: const Text('保存して表示'),
+                  child: const Text('保存'),
                 ),
               ],
             );
@@ -169,15 +185,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Future<void> _saveCardSettings(int closing, int payment, int offset) async {
-    // タグ情報がまだロードされていない場合は何もしない（あるいはリロードする）
-    // 通常はダイアログが出る時点でロードされているはず
-    if (_currentCardTag == null) {
-      // 万が一nullなら、名前から検索して再取得を試みるなどの処理が必要だが
-      // ここでは簡易的にロード待ちをするか、エラーにする
-      await _loadCardInfo();
-      if (_currentCardTag == null) return;
-    }
+  Future<void> _saveCardSettings(int? closing, int? payment, int offset) async {
+    if (_currentCardTag == null) return;
 
     final cards = await _settingsRepository.loadCardTags();
     final index = cards.indexWhere((c) => c.id == _currentCardTag!.id);
@@ -198,6 +207,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       setState(() {
         _currentCardTag = newTag;
+        // 設定に応じてタブの表示有無を更新
+        _showTab = newTag.closingDay != null;
+        if (!_showTab) _viewMode = 0;
       });
     }
   }
@@ -211,11 +223,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.filterValue)),
+      appBar: AppBar(
+        title: Text(widget.filterValue),
+        actions: [
+          // カードの場合のみ設定ボタンを表示
+          if (_isCardType)
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'カード設定',
+              onPressed: _showSetupDialog,
+            ),
+        ],
+      ),
       body: Column(
         children: [
-          // _isCardTypeがtrueなら即座に表示（ロード待ちしない）
-          if (_isCardType)
+          // 設定がある場合のみタブを表示
+          if (_showTab)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: SegmentedButton<int>(
@@ -232,8 +255,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 ],
                 selected: {_viewMode},
-                onSelectionChanged: (newSelection) =>
-                    _onTabChanged(newSelection.first),
+                onSelectionChanged: (newSelection) {
+                  setState(() {
+                    _viewMode = newSelection.first;
+                  });
+                },
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
                   backgroundColor: MaterialStateProperty.resolveWith<Color?>(
