@@ -57,6 +57,7 @@ class _MonthPageState extends State<MonthPage> {
 
     if (mounted) {
       setState(() {
+        // ここは常に「利用日（date）」基準でフィルタリング
         _history = allItems.where((i) {
           return i.date.year == widget.year && i.date.month == widget.month;
         }).toList();
@@ -86,7 +87,7 @@ class _MonthPageState extends State<MonthPage> {
               ),
               const SizedBox(height: 20),
               Text(
-                '${item.date.year}/${item.date.month}/${item.date.day} の記録',
+                '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
                 style: const TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ],
@@ -94,7 +95,6 @@ class _MonthPageState extends State<MonthPage> {
           actions: [
             TextButton(
               onPressed: () async {
-                // 削除処理
                 await _repository.deleteTransaction(item.id);
                 if (context.mounted) Navigator.pop(context);
                 _load(); // 再読み込み
@@ -108,7 +108,6 @@ class _MonthPageState extends State<MonthPage> {
             ),
             ElevatedButton(
               onPressed: () async {
-                // 更新処理
                 final newAmount = int.tryParse(amountController.text);
                 if (newAmount != null) {
                   final newItem = item.copyWith(amount: newAmount);
@@ -144,11 +143,9 @@ class _MonthPageState extends State<MonthPage> {
             padding: const EdgeInsets.only(bottom: 20),
             itemBuilder: (c, i) {
               final item = _history[i];
-              // 費目は必ずあるはずだが念のため
               final expenseStr =
                   item.expense == 'デフォルト' ? '' : ' (${item.expense})';
 
-              // 空文字または「デフォルト」なら表示しない
               final paymentStr = (item.payment.isEmpty ||
                       item.payment == 'デフォルト' ||
                       item.payment == '現金')

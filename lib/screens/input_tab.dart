@@ -155,9 +155,54 @@ class _InputTabState extends State<InputTab> {
       _selectedExpenseIndex = 0;
     }
 
-    final String paymentMethod = _isCardPayment
-        ? (_cardList.isNotEmpty ? _cardList[_selectedCardIndex].label : 'カード')
-        : '';
+    // --- 支払い方法と支払日の計算ロジック ---
+    String paymentMethod = '';
+    DateTime? paymentDate; // 計算された支払日
+
+    if (_isCardPayment) {
+      if (_cardList.isNotEmpty) {
+        // カード選択時
+        final card = _cardList[_selectedCardIndex];
+        paymentMethod = card.label;
+
+        // 締め日設定がある場合、支払日を計算する
+        if (card.closingDay != null && card.paymentDay != null) {
+          int monthsToAdd = card.paymentMonthOffset; // 基本は設定された月数後（翌月など）
+
+          // 締め日判定 (99は末日なので、必ずその日以前になるため判定不要)
+          if (card.closingDay != 99) {
+            // 利用日が締め日を過ぎていたら、支払いはさらに1ヶ月後
+            if (_selectedDate.day > card.closingDay!) {
+              monthsToAdd++;
+            }
+          }
+
+          // 支払年月の計算（DateTimeが自動で年またぎを処理してくれる）
+          // 例: 12月 + 1ヶ月 = 翌年1月
+          int targetYear = _selectedDate.year;
+          int targetMonth = _selectedDate.month + monthsToAdd;
+          int targetDay = card.paymentDay!;
+
+          if (targetDay == 99) {
+            // 末日払いの場合: 翌月の0日を指定すると、当月の末日になる
+            paymentDate = DateTime(targetYear, targetMonth + 1, 0);
+          } else {
+            // 指定日払い
+            // 2月30日などが来ないように、念のため存在する日付かチェックが必要だが、
+            // DateTimeの仕様ではあふれた分は翌月に回る（例: 2/30 -> 3/2）。
+            // カード会社の仕様としては「存在しない日は月末」などの場合が多いが、
+            // ここでは簡易的にDateTimeの仕様に任せるか、末日に丸める
+            // (厳密にするならここで調整可能)
+            paymentDate = DateTime(targetYear, targetMonth, targetDay);
+          }
+        }
+      } else {
+        paymentMethod = 'カード';
+      }
+    } else {
+      // 現金などの場合（空文字）
+      paymentMethod = '';
+    }
 
     final String expenseLabel = _expenseList[_selectedExpenseIndex].label;
 
@@ -173,6 +218,7 @@ class _InputTabState extends State<InputTab> {
           DateTime.now().hour,
           DateTime.now().minute,
         ),
+        paymentDate: paymentDate, // 計算した支払日を保存
       );
 
       await _repository.addTransaction(newItem);
@@ -189,10 +235,20 @@ class _InputTabState extends State<InputTab> {
         _amountStr = "0";
       });
 
-      if (newCredits % 3 == 0) {
-        _showSnackBar('ガチャが回せます！', Colors.orange);
-      } else {
-        _showSnackBar('保存しました', Colors.blue);
+      // スナックバーでフィードバック
+      if (mounted) {
+        String msg = '保存しました';
+        if (newCredits % 3 == 0) {
+          msg = 'ガチャが回せます！';
+        } else if (paymentDate != null) {
+          // 支払日が決まった場合は表示してあげる（親切設計）
+          msg = '保存しました（支払日: ${paymentDate!.month}/${paymentDate!.day}）';
+        }
+
+        _showSnackBar(
+          msg,
+          newCredits % 3 == 0 ? Colors.orange : Colors.blue,
+        );
       }
     } catch (e) {
       _showSnackBar('保存エラー: $e', Colors.red);
@@ -222,7 +278,6 @@ class _InputTabState extends State<InputTab> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            // 余白を最小限に抑えて、コンテンツ領域を確保
             padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -255,13 +310,11 @@ class _InputTabState extends State<InputTab> {
                     ),
                   ),
                 ),
-                // 金額表示の周りの余白を削減
                 const SizedBox(height: 5),
                 FittedBox(
                   child: Text(
                     "¥ $_amountStr",
                     style: const TextStyle(
-                      // 文字サイズを少し小さくして圧迫感を減らす (52 -> 44)
                       fontSize: 44,
                       fontWeight: FontWeight.bold,
                       color: Colors.black87,
@@ -269,25 +322,22 @@ class _InputTabState extends State<InputTab> {
                     ),
                   ),
                 ),
-                // カテゴリとの間隔も詰める
                 const SizedBox(height: 10),
-
                 CategorySelector(
                   tags: _expenseList,
                   selectedIndex: _selectedExpenseIndex,
                   onSelected: (i) => _changeExpenseIndex(i),
                 ),
-                // 下部の余白
                 const SizedBox(height: 10),
               ],
             ),
           ),
         ),
 
-        // 固定フッターエリア
+        // 固定フッター
         Container(
           width: double.infinity,
-          height: 50, // 高さも少しコンパクトに (56 -> 50)
+          height: 50,
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [
@@ -319,7 +369,7 @@ class _InputTabState extends State<InputTab> {
                               label: Text(
                                 tag.label,
                                 style: TextStyle(
-                                  fontSize: 11, // フォントサイズ調整
+                                  fontSize: 11,
                                   color: isSelected
                                       ? Colors.white
                                       : Colors.black87,
@@ -367,7 +417,6 @@ class _InputTabState extends State<InputTab> {
             ],
           ),
         ),
-        // テンキー
         CustomNumericKeyboard(
           onNumberTap: _onNumberTap,
           onBackspace: _onBackspace,

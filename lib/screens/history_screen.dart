@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
 
 class HistoryScreen extends StatefulWidget {
   final String filterValue;
@@ -19,7 +20,35 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
+  // 0: 利用日基準, 1: 支払日基準
+  int _viewMode = 0;
+  bool _canSwitchMode = false; // 支払い方法かつ設定がある場合のみtrue
+
   final PageController _pageController = PageController(initialPage: 1000);
+  final SettingsRepository _settingsRepository = SettingsRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    _checkIfCardMode();
+  }
+
+  Future<void> _checkIfCardMode() async {
+    // 支払い方法フィルタの場合、そのカードに締め日設定があるか確認
+    if (widget.filterKey == 'payment') {
+      final cards = await _settingsRepository.loadCardTags();
+      try {
+        final card = cards.firstWhere((c) => c.label == widget.filterValue);
+        if (card.closingDay != null) {
+          setState(() {
+            _canSwitchMode = true;
+          });
+        }
+      } catch (_) {
+        // 見つからない場合は通常モード
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -31,32 +60,78 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.filterValue)),
-      body: PageView.builder(
-        controller: _pageController,
-        itemBuilder: (context, index) {
-          final now = DateTime.now();
-          final targetDate = DateTime(now.year, now.month + (index - 1000));
+      body: Column(
+        children: [
+          // カードで締め日設定がある場合のみ、タブを表示
+          if (_canSwitchMode)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(
+                    value: 0,
+                    label: Text('利用履歴'),
+                    icon: Icon(Icons.shopping_bag_outlined),
+                  ),
+                  ButtonSegment(
+                    value: 1,
+                    label: Text('引き落とし予定'),
+                    icon: Icon(Icons.account_balance_wallet_outlined),
+                  ),
+                ],
+                selected: {_viewMode},
+                onSelectionChanged: (newSelection) {
+                  setState(() {
+                    _viewMode = newSelection.first;
+                  });
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: MaterialStateProperty.resolveWith<Color?>(
+                    (Set<MaterialState> states) {
+                      if (states.contains(MaterialState.selected)) {
+                        return widget.color?.withOpacity(0.2) ??
+                            Colors.blue.shade100;
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ),
+            ),
 
-          return _MonthPage(
-            year: targetDate.year,
-            month: targetDate.month,
-            filterValue: widget.filterValue,
-            filterKey: widget.filterKey,
-            color: widget.color,
-            onPrev: () {
-              _pageController.previousPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-            },
-            onNext: () {
-              _pageController.nextPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-            },
-          );
-        },
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              itemBuilder: (context, index) {
+                final now = DateTime.now();
+                final targetDate =
+                    DateTime(now.year, now.month + (index - 1000));
+
+                return _MonthPage(
+                  year: targetDate.year,
+                  month: targetDate.month,
+                  filterValue: widget.filterValue,
+                  filterKey: widget.filterKey,
+                  color: widget.color,
+                  viewMode: _viewMode,
+                  onPrev: () {
+                    _pageController.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                  onNext: () {
+                    _pageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -68,6 +143,7 @@ class _MonthPage extends StatefulWidget {
   final String filterValue;
   final String filterKey;
   final Color? color;
+  final int viewMode; // 0:利用日, 1:支払日
   final VoidCallback onPrev;
   final VoidCallback onNext;
 
@@ -77,6 +153,7 @@ class _MonthPage extends StatefulWidget {
     required this.filterValue,
     required this.filterKey,
     required this.color,
+    required this.viewMode,
     required this.onPrev,
     required this.onNext,
   });
@@ -96,25 +173,44 @@ class _MonthPageState extends State<_MonthPage> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant _MonthPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.viewMode != widget.viewMode) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
     if (!mounted) return;
 
     setState(() {
       _history = allItems.where((i) {
-        if (i.date.year != widget.year || i.date.month != widget.month) {
-          return false;
-        }
+        // 1. タグフィルタ（まず対象のカード/費目だけに絞る）
+        bool isTarget = false;
         if (widget.filterKey == 'expense') {
-          return i.expense == widget.filterValue;
-        }
-        if (widget.filterKey == 'payment') {
+          isTarget = i.expense == widget.filterValue;
+        } else if (widget.filterKey == 'payment') {
           if (widget.filterValue == '現金' && i.payment.isEmpty) {
-            return true;
+            isTarget = true;
+          } else {
+            isTarget = i.payment == widget.filterValue;
           }
-          return i.payment == widget.filterValue;
         }
-        return false;
+        if (!isTarget) return false;
+
+        // 2. 年月フィルタ（モードによって基準を変える）
+        if (widget.viewMode == 1) {
+          // 支払日基準（支払日が設定されていないデータは、利用日を支払日とみなして表示するか、除外するか。
+          // ここでは「引き落とし予定」なので、支払日が計算されているもの、もしくは利用日＝支払日のものを表示）
+          final targetDate = i.paymentDate ?? i.date;
+          return targetDate.year == widget.year &&
+              targetDate.month == widget.month;
+        } else {
+          // 利用日基準
+          return i.date.year == widget.year && i.date.month == widget.month;
+        }
       }).toList();
       _isLoading = false;
     });
@@ -141,18 +237,25 @@ class _MonthPageState extends State<_MonthPage> {
               ),
               const SizedBox(height: 20),
               Text(
-                '${item.date.year}/${item.date.month}/${item.date.day} の記録',
+                '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
                 style: const TextStyle(color: Colors.grey, fontSize: 12),
               ),
+              if (item.paymentDate != null)
+                Text(
+                  '支払日: ${item.paymentDate!.year}/${item.paymentDate!.month}/${item.paymentDate!.day}',
+                  style: const TextStyle(
+                      color: Colors.orange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold),
+                ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () async {
-                // 削除処理
                 await _repository.deleteTransaction(item.id);
                 if (context.mounted) Navigator.pop(context);
-                _load(); // 再読み込み
+                _load();
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('削除'),
@@ -163,13 +266,12 @@ class _MonthPageState extends State<_MonthPage> {
             ),
             ElevatedButton(
               onPressed: () async {
-                // 更新処理
                 final newAmount = int.tryParse(amountController.text);
                 if (newAmount != null) {
                   final newItem = item.copyWith(amount: newAmount);
                   await _repository.updateTransaction(newItem);
                   if (context.mounted) Navigator.pop(context);
-                  _load(); // 再読み込み
+                  _load();
                 }
               },
               child: const Text('更新'),
@@ -221,7 +323,9 @@ class _MonthPageState extends State<_MonthPage> {
               ),
               const SizedBox(height: 5),
               Text(
-                widget.filterKey == 'expense' ? '月間支出計' : '月間利用額',
+                widget.viewMode == 1
+                    ? '引き落とし予定額'
+                    : (widget.filterKey == 'expense' ? '月間支出計' : '月間利用額'),
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
               Text(
@@ -249,6 +353,7 @@ class _MonthPageState extends State<_MonthPage> {
                   itemBuilder: (c, i) {
                     final item = _history[i];
                     String detail = "";
+
                     if (widget.filterKey == 'expense') {
                       if (item.payment.isNotEmpty &&
                           item.payment != 'デフォルト' &&
@@ -259,6 +364,12 @@ class _MonthPageState extends State<_MonthPage> {
                       if (item.expense != 'デフォルト') {
                         detail = "  /  ${item.expense}";
                       }
+                    }
+
+                    // 支払日モードなら日付表示を「利用日」と明記してあげる
+                    String dateInfo = item.displayDate;
+                    if (widget.viewMode == 1) {
+                      dateInfo = "利用: ${item.date.month}/${item.date.day}";
                     }
 
                     return ListTile(
@@ -272,8 +383,7 @@ class _MonthPageState extends State<_MonthPage> {
                         '¥${item.amount}',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      subtitle: Text("${item.displayDate}$detail"),
-                      // タップで編集ダイアログを表示
+                      subtitle: Text("$dateInfo$detail"),
                       onTap: () => _showEditDialog(item),
                       trailing:
                           const Icon(Icons.edit, size: 16, color: Colors.grey),
