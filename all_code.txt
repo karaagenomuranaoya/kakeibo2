@@ -1692,6 +1692,205 @@ class CategoryTag {
 ```
 
 
+--- FILE: lib/screens/summary_detail_screen.dart ---
+```dart
+import 'package:flutter/material.dart';
+import '../models/category_tag.dart';
+import '../models/transaction_item.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
+import 'history_screen.dart';
+
+class SummaryDetailScreen extends StatefulWidget {
+  final int year;
+  final int month;
+
+  const SummaryDetailScreen({
+    super.key,
+    required this.year,
+    required this.month,
+  });
+
+  @override
+  State<SummaryDetailScreen> createState() => _SummaryDetailScreenState();
+}
+
+class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
+  final TransactionRepository _repository = TransactionRepository();
+  final SettingsRepository _settingsRepository = SettingsRepository();
+
+  List<TransactionItem> _history = [];
+  List<CategoryTag> _expenseList = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final allItems = await _repository.getAllTransactions();
+    final expenses = await _settingsRepository.loadExpenseTags();
+
+    if (mounted) {
+      setState(() {
+        _history = allItems.where((i) {
+          return i.date.year == widget.year && i.date.month == widget.month;
+        }).toList();
+        _expenseList = expenses;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final int total = _history.fold(0, (s, i) => s + i.amount);
+
+    // 費目ごとの集計
+    final expenseSums = <String, int>{};
+    for (var item in _history) {
+      expenseSums[item.expense] =
+          (expenseSums[item.expense] ?? 0) + item.amount;
+    }
+
+    // 金額が大きい順にソート
+    final sortedEntries = expenseSums.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Scaffold(
+      appBar: AppBar(title: Text('${widget.year}年${widget.month}月 内訳詳細')),
+      body: Column(
+        children: [
+          // 合計カード
+          Container(
+            width: double.infinity,
+            color: Colors.blue.shade50,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                const Text(
+                  '合計支出',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                Text(
+                  '¥ $total',
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // 内訳リスト
+          Expanded(
+            child: sortedEntries.isEmpty
+                ? Center(
+                    child: Text(
+                      'データがありません',
+                      style: TextStyle(color: Colors.grey.shade400),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: sortedEntries.length,
+                    separatorBuilder: (c, i) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final entry = sortedEntries[index];
+                      final label = entry.key;
+                      final amount = entry.value;
+
+                      Color color = Colors.grey;
+                      try {
+                        color = _expenseList
+                            .firstWhere((t) => t.label == label)
+                            .color;
+                      } catch (_) {}
+
+                      final percentage = (total > 0)
+                          ? (amount / total * 100).toStringAsFixed(1)
+                          : "0.0";
+
+                      return ListTile(
+                        leading: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(child: Text(label)),
+                            Text(
+                              '¥$amount',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        subtitle: LinearProgressIndicator(
+                          value: total > 0 ? amount / total : 0,
+                          backgroundColor: Colors.grey.shade100,
+                          color: color,
+                          minHeight: 4,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$percentage%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                          ],
+                        ),
+                        onTap: () {
+                          // その月のその費目の履歴へ遷移
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => HistoryScreen(
+                                filterValue: label,
+                                filterKey: 'expense',
+                                color: color,
+                                year: widget.year,
+                                month: widget.month,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+```
+
+
 --- FILE: lib/screens/history_screen.dart ---
 ```dart
 import 'package:flutter/material.dart';
@@ -1704,12 +1903,16 @@ class HistoryScreen extends StatefulWidget {
   final String filterValue;
   final String filterKey; // 'expense' or 'payment'
   final Color? color;
+  final int? year; // 追加: 年フィルタ (nullなら全期間)
+  final int? month; // 追加: 月フィルタ
 
   const HistoryScreen({
     super.key,
     required this.filterValue,
     required this.filterKey,
     this.color,
+    this.year,
+    this.month,
   });
 
   @override
@@ -1758,16 +1961,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _showSetupDialog() {
-    // 現在の設定値を反映
+    // カード設定ダイアログ（省略せず実装）
     bool isEnabled = _currentCardTag?.closingDay != null;
     int closingDay = _currentCardTag?.closingDay ?? 99;
     int paymentDay = _currentCardTag?.paymentDay ?? 27;
     int paymentOffset = _currentCardTag?.paymentMonthOffset ?? 1;
 
     List<DropdownMenuItem<int>> getDayItems() {
-      final items = List.generate(28, (i) => i + 1)
-          .map((i) => DropdownMenuItem(value: i, child: Text('$i日')))
-          .toList();
+      final items = List.generate(
+        28,
+        (i) => i + 1,
+      ).map((i) => DropdownMenuItem(value: i, child: Text('$i日'))).toList();
       items.add(const DropdownMenuItem(value: 99, child: Text('末日')));
       return items;
     }
@@ -1785,9 +1989,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 children: [
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text('締め日・支払日を管理する'),
-                      ),
+                      const Expanded(child: Text('締め日・支払日を管理する')),
                       Switch(
                         value: isEnabled,
                         onChanged: (val) =>
@@ -1851,14 +2053,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    await _saveCardSettings(isEnabled ? closingDay : null,
-                        isEnabled ? paymentDay : null, paymentOffset);
+                    await _saveCardSettings(
+                      isEnabled ? closingDay : null,
+                      isEnabled ? paymentDay : null,
+                      paymentOffset,
+                    );
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                            content:
-                                Text(isEnabled ? '設定を保存しました' : '設定を解除しました')),
+                          content: Text(isEnabled ? '設定を保存しました' : '設定を解除しました'),
+                        ),
                       );
                     }
                   },
@@ -1874,7 +2079,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _saveCardSettings(int? closing, int? payment, int offset) async {
     if (_currentCardTag == null) return;
-
     final cards = await _settingsRepository.loadCardTags();
     final index = cards.indexWhere((c) => c.id == _currentCardTag!.id);
 
@@ -1908,9 +2112,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 年月指定がある場合、タイトルに年月を表示
+    String title = widget.filterValue;
+    if (widget.year != null && widget.month != null) {
+      title = "${widget.year}/${widget.month} $title";
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.filterValue),
+        title: Text(title),
         actions: [
           if (_isCardType)
             IconButton(
@@ -1946,48 +2156,66 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 },
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
-                  backgroundColor: MaterialStateProperty.resolveWith<Color?>(
-                    (Set<MaterialState> states) {
-                      if (states.contains(MaterialState.selected)) {
-                        return widget.color?.withOpacity(0.2) ??
-                            Colors.blue.shade100;
-                      }
-                      return null;
-                    },
-                  ),
+                  backgroundColor: MaterialStateProperty.resolveWith<Color?>((
+                    Set<MaterialState> states,
+                  ) {
+                    if (states.contains(MaterialState.selected)) {
+                      return widget.color?.withOpacity(0.2) ??
+                          Colors.blue.shade100;
+                    }
+                    return null;
+                  }),
                 ),
               ),
             ),
+          // 年月指定がある場合はPageViewを使わず単一ページ表示
+          // 年月指定がない場合（全期間モード）はPageViewで月送り可能にする
           Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemBuilder: (context, index) {
-                final now = DateTime.now();
-                final targetDate =
-                    DateTime(now.year, now.month + (index - 1000));
+            child: (widget.year != null && widget.month != null)
+                ? _MonthPage(
+                    year: widget.year!,
+                    month: widget.month!,
+                    filterValue: widget.filterValue,
+                    filterKey: widget.filterKey,
+                    color: widget.color,
+                    viewMode: _viewMode,
+                    // 年月固定時は前次ボタン不要
+                    onPrev: () {},
+                    onNext: () {},
+                    showNavButtons: false,
+                  )
+                : PageView.builder(
+                    controller: _pageController,
+                    itemBuilder: (context, index) {
+                      final now = DateTime.now();
+                      final targetDate = DateTime(
+                        now.year,
+                        now.month + (index - 1000),
+                      );
 
-                return _MonthPage(
-                  year: targetDate.year,
-                  month: targetDate.month,
-                  filterValue: widget.filterValue,
-                  filterKey: widget.filterKey,
-                  color: widget.color,
-                  viewMode: _viewMode,
-                  onPrev: () {
-                    _pageController.previousPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  onNext: () {
-                    _pageController.nextPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                );
-              },
-            ),
+                      return _MonthPage(
+                        year: targetDate.year,
+                        month: targetDate.month,
+                        filterValue: widget.filterValue,
+                        filterKey: widget.filterKey,
+                        color: widget.color,
+                        viewMode: _viewMode,
+                        onPrev: () {
+                          _pageController.previousPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        onNext: () {
+                          _pageController.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        showNavButtons: true,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -2004,6 +2232,7 @@ class _MonthPage extends StatefulWidget {
   final int viewMode;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final bool showNavButtons;
 
   const _MonthPage({
     required this.year,
@@ -2014,6 +2243,7 @@ class _MonthPage extends StatefulWidget {
     required this.viewMode,
     required this.onPrev,
     required this.onNext,
+    this.showNavButtons = true,
   });
 
   @override
@@ -2034,7 +2264,9 @@ class _MonthPageState extends State<_MonthPage> {
   @override
   void didUpdateWidget(covariant _MonthPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.viewMode != widget.viewMode) {
+    if (oldWidget.viewMode != widget.viewMode ||
+        oldWidget.year != widget.year ||
+        oldWidget.month != widget.month) {
       _load();
     }
   }
@@ -2065,15 +2297,18 @@ class _MonthPageState extends State<_MonthPage> {
           return i.date.year == widget.year && i.date.month == widget.month;
         }
       }).toList();
+      // 日付順ソート
+      _history.sort((a, b) => b.date.compareTo(a.date));
       _isLoading = false;
     });
   }
 
-  // 編集・削除ダイアログ
   void _showEditDialog(TransactionItem item) {
-    final amountController =
-        TextEditingController(text: item.amount.toString());
-    final memoController = TextEditingController(text: item.memo); // メモ用
+    // 編集ダイアログ（既存と同じロジック）
+    final amountController = TextEditingController(
+      text: item.amount.toString(),
+    );
+    final memoController = TextEditingController(text: item.memo);
 
     showDialog(
       context: context,
@@ -2104,9 +2339,10 @@ class _MonthPageState extends State<_MonthPage> {
                   Text(
                     '支払日: ${item.paymentDate!.year}/${item.paymentDate!.month}/${item.paymentDate!.day}',
                     style: const TextStyle(
-                        color: Colors.orange,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
+                      color: Colors.orange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
               ],
             ),
@@ -2131,7 +2367,7 @@ class _MonthPageState extends State<_MonthPage> {
                 if (newAmount != null) {
                   final newItem = item.copyWith(
                     amount: newAmount,
-                    memo: memoController.text.trim(), // メモ更新
+                    memo: memoController.text.trim(),
                   );
                   await _repository.updateTransaction(newItem);
                   if (context.mounted) Navigator.pop(context);
@@ -2167,10 +2403,13 @@ class _MonthPageState extends State<_MonthPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    icon: Icon(Icons.chevron_left, color: fgColor),
-                    onPressed: widget.onPrev,
-                  ),
+                  if (widget.showNavButtons)
+                    IconButton(
+                      icon: Icon(Icons.chevron_left, color: fgColor),
+                      onPressed: widget.onPrev,
+                    )
+                  else
+                    const SizedBox(width: 48),
                   Text(
                     '${widget.year}年 ${widget.month}月',
                     style: TextStyle(
@@ -2179,10 +2418,13 @@ class _MonthPageState extends State<_MonthPage> {
                       color: fgColor,
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(Icons.chevron_right, color: fgColor),
-                    onPressed: widget.onNext,
-                  ),
+                  if (widget.showNavButtons)
+                    IconButton(
+                      icon: Icon(Icons.chevron_right, color: fgColor),
+                      onPressed: widget.onNext,
+                    )
+                  else
+                    const SizedBox(width: 48),
                 ],
               ),
               const SizedBox(height: 5),
@@ -2251,7 +2493,6 @@ class _MonthPageState extends State<_MonthPage> {
                         '¥${item.amount}',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      // サブタイトルをColumnにして、メモがある場合のみ表示
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -2272,8 +2513,11 @@ class _MonthPageState extends State<_MonthPage> {
                         ],
                       ),
                       onTap: () => _showEditDialog(item),
-                      trailing:
-                          const Icon(Icons.edit, size: 16, color: Colors.grey),
+                      trailing: const Icon(
+                        Icons.edit,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
                     );
                   },
                 ),
@@ -2559,6 +2803,7 @@ class _MainScreenState extends State<MainScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _dataVersion = 0;
+  bool _isTabBarVisible = true; // タブバーの表示状態
 
   @override
   void initState() {
@@ -2567,9 +2812,14 @@ class _MainScreenState extends State<MainScreen>
 
     _tabController.addListener(() {
       if (!context.mounted) return;
-      // タブ移動時はキーボードを閉じる（これはUXとして自然なので残す）
       if (_tabController.indexIsChanging) {
         FocusScope.of(context).unfocus();
+        // タブ切り替え時は必ずタブバーを表示状態に戻す
+        if (!_isTabBarVisible) {
+          setState(() {
+            _isTabBarVisible = true;
+          });
+        }
       }
     });
   }
@@ -2586,16 +2836,24 @@ class _MainScreenState extends State<MainScreen>
     });
   }
 
+  // InputTabから呼び出してタブバーを隠すための関数
+  void _setTabBarVisible(bool visible) {
+    if (_isTabBarVisible != visible) {
+      setState(() {
+        _isTabBarVisible = visible;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Kakeibo')),
-      // onDrawerChangedの処理は不要になったため削除
-      // ドロワーを開いたからといって、フォーカスをどうこうする必要はない。
-      // なぜなら、そもそも「勝手にフォーカスが当たる機能」を捨てたから。
       drawer: AppDrawer(onDataChanged: _refreshData),
+      // ▼▼ 変更点: OSキーボードが出ても画面サイズを変えない（押し上げない）設定 ▼▼
+      // これにより、カスタムキーボードが常に画面最下部に固定され「どっしり」構えるようになります。
+      resizeToAvoidBottomInset: false,
 
-      // 画面全体のタップでキーボードを閉じるのは便利な機能なので残す
       body: GestureDetector(
         onTap: () {
           FocusScope.of(context).unfocus();
@@ -2606,7 +2864,10 @@ class _MainScreenState extends State<MainScreen>
           physics: const ClampingScrollPhysics(),
           children: [
             // 1. 入力タブ
-            InputTab(dataVersion: _dataVersion),
+            InputTab(
+              dataVersion: _dataVersion,
+              onTabBarVisibilityChanged: _setTabBarVisible,
+            ),
 
             // 2. レポートタブ
             const MonthlyHistoryScreen(),
@@ -2616,34 +2877,31 @@ class _MainScreenState extends State<MainScreen>
           ],
         ),
       ),
-      bottomNavigationBar: Material(
-        color: Colors.white,
-        elevation: 10,
-        child: SafeArea(
-          child: TabBar(
-            controller: _tabController,
-            isScrollable: false,
-            indicatorColor: Colors.blue,
-            labelColor: Colors.blue,
-            unselectedLabelColor: Colors.grey,
-            onTap: (_) => FocusScope.of(context).unfocus(),
-            tabs: const [
-              Tab(
-                icon: Icon(Icons.edit),
-                text: '入力',
+      // タブバーの表示制御
+      bottomNavigationBar: _isTabBarVisible
+          ? Material(
+              color: Colors.white,
+              elevation: 10,
+              child: SafeArea(
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: false,
+                  indicatorColor: Colors.blue,
+                  labelColor: Colors.blue,
+                  unselectedLabelColor: Colors.grey,
+                  onTap: (_) => FocusScope.of(context).unfocus(),
+                  tabs: const [
+                    Tab(icon: Icon(Icons.edit), text: '入力'),
+                    Tab(icon: Icon(Icons.calendar_month), text: 'レポート'),
+                    Tab(
+                      icon: Icon(Icons.star, color: Colors.orange),
+                      text: 'ガチャ',
+                    ),
+                  ],
+                ),
               ),
-              Tab(
-                icon: Icon(Icons.calendar_month),
-                text: 'レポート',
-              ),
-              Tab(
-                icon: Icon(Icons.star, color: Colors.orange),
-                text: 'ガチャ',
-              ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : null,
     );
   }
 }
@@ -2653,8 +2911,9 @@ class _MainScreenState extends State<MainScreen>
 
 --- FILE: lib/screens/input_tab.dart ---
 ```dart
+import 'dart:math'; // max関数用
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // TextInputFormatter等は不要になるがSystemChannelsで使うかも
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -2663,12 +2922,19 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
-import '../widgets/custom_number_keyboard.dart'; // 追加
-import '../utils/simple_calculator.dart'; // 追加
+import '../widgets/custom_number_keyboard.dart';
+import '../utils/simple_calculator.dart';
+import 'settings/category_manage_screen.dart'; // カテゴリ管理画面
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
-  const InputTab({super.key, this.dataVersion = 0});
+  final Function(bool visible)? onTabBarVisibilityChanged;
+
+  const InputTab({
+    super.key,
+    this.dataVersion = 0,
+    this.onTabBarVisibilityChanged,
+  });
 
   @override
   State<InputTab> createState() => _InputTabState();
@@ -2696,8 +2962,12 @@ class _InputTabState extends State<InputTab>
   bool _isCardPayment = false;
   int _selectedCardIndex = 0;
 
-  // カスタムキーボードの表示状態
   bool _showCustomKeyboard = false;
+  // キーボード高さ (キーエリア 272 + 閉じるバー 40)
+  static const double _keyboardHeight = 312.0;
+
+  // 直前の入力IDを保持して、Undoできるようにする
+  String? _lastInputId;
 
   @override
   bool get wantKeepAlive => true;
@@ -2708,7 +2978,6 @@ class _InputTabState extends State<InputTab>
     WidgetsBinding.instance.addObserver(this);
     _loadAllData();
 
-    // フォーカス制御リスナー
     _amountFocusNode.addListener(_onAmountFocusChange);
     _memoFocusNode.addListener(_onMemoFocusChange);
   }
@@ -2728,23 +2997,28 @@ class _InputTabState extends State<InputTab>
 
   @override
   void didChangeMetrics() {
-    // 画面サイズ変更（OSキーボード開閉など）の検知が必要ならここに記述
     super.didChangeMetrics();
+    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
+
+    // 金額入力以外でOSキーボードが出たらカスタムキーボードを隠す
+    if (bottomInset > 0 && _showCustomKeyboard && !_amountFocusNode.hasFocus) {
+      setState(() {
+        _showCustomKeyboard = false;
+      });
+    }
   }
 
   void _onAmountFocusChange() {
     if (_amountFocusNode.hasFocus) {
-      // 金額入力にフォーカスが当たったら、ラグなしでカスタムキーボードを表示
-      // OSキーボードは readOnly: true により抑制される
       setState(() {
         _showCustomKeyboard = true;
       });
+      widget.onTabBarVisibilityChanged?.call(false);
     }
   }
 
   void _onMemoFocusChange() {
     if (_memoFocusNode.hasFocus) {
-      // メモ入力にフォーカスが当たったら、カスタムキーボードを即座に隠す
       setState(() {
         _showCustomKeyboard = false;
       });
@@ -2764,13 +3038,10 @@ class _InputTabState extends State<InputTab>
     final cards = await _settingsRepository.loadCardTags();
 
     final prefs = await SharedPreferences.getInstance();
-
     int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
     if (savedExpenseIndex >= expenses.length) savedExpenseIndex = 0;
-
     int savedCardIndex = prefs.getInt('last_card_index') ?? 0;
     if (savedCardIndex >= cards.length) savedCardIndex = 0;
-
     final savedIsCard = prefs.getBool('last_is_card') ?? false;
 
     if (mounted) {
@@ -2790,8 +3061,6 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _selectedExpenseIndex = index;
     });
-    // カテゴリ選択時はキーボードを閉じないほうが連続入力しやすいが、
-    // 要件やUXに応じて閉じることも可能。ここでは維持する。
     await prefs.setInt('last_expense_index', index);
   }
 
@@ -2800,7 +3069,6 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _isCardPayment = value;
     });
-    // カード切り替え時はフォーカスを外す（キーボード閉じる）
     _closeKeyboard();
     await prefs.setBool('last_is_card', value);
   }
@@ -2825,32 +3093,45 @@ class _InputTabState extends State<InputTab>
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
-  // キーボードを閉じる処理
   void _closeKeyboard() {
     _amountFocusNode.unfocus();
     _memoFocusNode.unfocus();
     setState(() {
       _showCustomKeyboard = false;
     });
+    widget.onTabBarVisibilityChanged?.call(true);
   }
 
-  // OKボタンまたは保存ボタン押下時の処理
-  Future<void> _saveData() async {
+  // カテゴリ設定画面へ遷移
+  Future<void> _openCategorySettings() async {
+    // 現在の状態を保存してから遷移
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('last_expense_index', _selectedExpenseIndex);
+
+    if (!mounted) return;
+
+    // 設定画面へ（戻るまで待機）
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CategoryManageScreen()),
+    );
+
+    // 戻ってきたらデータを再読み込み
+    await _loadAllData();
+  }
+
+  Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
 
-    // 計算を実行して確定させる
     final rawText = _amountController.text;
     final calculatedText = SimpleCalculator.calculate(rawText);
 
-    // 計算結果が空、あるいは0の場合は保存しない
     if (calculatedText.isEmpty || calculatedText == "0") {
       _showSnackBar('金額を入力してください', Colors.redAccent);
       return;
     }
 
-    // コントローラーの値を計算済みの値に更新
     _amountController.text = calculatedText;
-
     final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
 
     if (amount == 0) {
@@ -2867,8 +3148,9 @@ class _InputTabState extends State<InputTab>
       _selectedExpenseIndex = 0;
     }
 
-    // キーボードを閉じる
-    _closeKeyboard();
+    if (!keepKeyboard) {
+      _closeKeyboard();
+    }
 
     String paymentMethod = '';
     DateTime? paymentDate;
@@ -2933,7 +3215,12 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _amountController.clear();
         _memoController.clear();
+        _lastInputId = newItem.id; // Undo用にIDを記録
       });
+
+      if (keepKeyboard) {
+        _amountFocusNode.requestFocus();
+      }
 
       if (mounted) {
         String msg = '保存しました';
@@ -2949,8 +3236,58 @@ class _InputTabState extends State<InputTab>
     }
   }
 
+  // 直前の入力を取り消す処理
+  Future<void> _undoLastInput() async {
+    if (_lastInputId == null) return;
+
+    final allItems = await _repository.getAllTransactions();
+    TransactionItem? targetItem;
+    try {
+      targetItem = allItems.firstWhere((e) => e.id == _lastInputId);
+    } catch (_) {
+      setState(() => _lastInputId = null);
+      return;
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('直前の入力を取り消しますか？'),
+          content: Text(
+            '¥${targetItem!.amount} (${targetItem.expense})\n'
+            '日時: ${_getDayOfWeek(targetItem.date)} ${targetItem.date.hour}:${targetItem.date.minute.toString().padLeft(2, '0')}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context); // ダイアログを閉じる
+                await _repository.deleteTransaction(_lastInputId!);
+                if (mounted) {
+                  setState(() {
+                    _lastInputId = null; // IDをクリア
+                  });
+                  _showSnackBar('入力を取り消しました', Colors.grey);
+                }
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('削除する'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showSnackBar(String msg, Color color) {
     if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar(); // 連打対策
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
@@ -2970,25 +3307,35 @@ class _InputTabState extends State<InputTab>
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    // 画面構成: Column (コンテンツ + キーボードエリア)
-    // メモ入力時はOSキーボードが出るため、ScaffoldのresizeToAvoidBottomInsetが効く前提
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    // 下部パディング計算
+    final double additionalPadding = _showCustomKeyboard
+        ? _keyboardHeight
+        : bottomInset;
+
+    // 基本パディング80 + キーボード分
+    final double bottomPadding = 80 + additionalPadding;
+
     return GestureDetector(
-      onTap: _closeKeyboard, // 背景タップで閉じる
+      onTap: _closeKeyboard,
       behavior: HitTestBehavior.opaque,
-      child: Column(
+      child: Stack(
         children: [
-          Expanded(
+          // コンテンツ領域
+          Positioned.fill(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 日付選択
                   GestureDetector(
                     onTap: _pickDate,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 6),
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(20),
@@ -2997,8 +3344,11 @@ class _InputTabState extends State<InputTab>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.calendar_today,
-                              size: 14, color: Colors.blue),
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 14,
+                            color: Colors.blue,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             "$dateStr (${_getDayOfWeek(_selectedDate)})",
@@ -3014,7 +3364,6 @@ class _InputTabState extends State<InputTab>
                   ),
                   const SizedBox(height: 15),
 
-                  // 金額入力部分
                   GestureDetector(
                     onTap: () {
                       _amountFocusNode.requestFocus();
@@ -3027,18 +3376,18 @@ class _InputTabState extends State<InputTab>
                         const Text(
                           "¥",
                           style: TextStyle(
-                              fontSize: 56,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black54),
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black54,
+                          ),
                         ),
                         const SizedBox(width: 10),
                         IntrinsicWidth(
                           child: TextField(
                             controller: _amountController,
                             focusNode: _amountFocusNode,
-                            // 重要: OSのキーボードを出さない設定
                             readOnly: true,
-                            showCursor: true, // カーソルは出す
+                            showCursor: true,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 56,
@@ -3060,7 +3409,6 @@ class _InputTabState extends State<InputTab>
                   ),
                   const SizedBox(height: 10),
 
-                  // メモ入力
                   Container(
                     width: 240,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -3078,55 +3426,52 @@ class _InputTabState extends State<InputTab>
                         contentPadding: EdgeInsets.symmetric(vertical: 8),
                         border: InputBorder.none,
                         hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                        prefixIcon:
-                            Icon(Icons.edit, size: 14, color: Colors.grey),
+                        prefixIcon: Icon(
+                          Icons.edit,
+                          size: 14,
+                          color: Colors.grey,
+                        ),
                         prefixIconConstraints: BoxConstraints(minWidth: 24),
                       ),
                       style: const TextStyle(fontSize: 13),
                       textInputAction: TextInputAction.done,
-                      // 完了時はフォーカスを外す（結果キーボードも閉じる）
                       onSubmitted: (_) => _memoFocusNode.unfocus(),
                     ),
                   ),
                   const SizedBox(height: 20),
 
-                  // カテゴリ選択
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: (i) => _changeExpenseIndex(i),
+                    onAddPressed: _openCategorySettings, // 追加ボタンのコールバック
                   ),
                   const SizedBox(height: 20),
 
-                  // カード選択など
-                  // 保存ボタンもここにあるが、キーボードが出ているときは隠れる場合がある
-                  // キーボードの「OK」でも保存できるので問題ない
                   _buildBottomControlPanel(context),
                 ],
               ),
             ),
           ),
 
-          // カスタムキーボード領域
-          // VisibilityやOffstageを使うより、heightアニメーションの方が自然だが
-          // ラグを0にするために常駐させておくアプローチもある。
-          // ここではシンプルに表示状態に応じてWidgetを出す。
-          // _showCustomKeyboardがtrueのときだけ表示。
           if (_showCustomKeyboard)
-            CustomNumberKeyboard(
-              controller: _amountController,
-              onSubmitted: _saveData,
-              onClose: _closeKeyboard,
-              onChanged: (val) {
-                // 値が変わった瞬間の処理が必要ならここに書く
-              },
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: _keyboardHeight,
+              child: CustomNumberKeyboard(
+                controller: _amountController,
+                onSubmitted: () => _saveData(keepKeyboard: true),
+                onClose: _closeKeyboard,
+                onChanged: (val) {},
+              ),
             ),
         ],
       ),
     );
   }
 
-  // 画面下部のカード選択や保存ボタンのUI
   Widget _buildBottomControlPanel(BuildContext context) {
     return Container(
       width: double.infinity,
@@ -3138,7 +3483,7 @@ class _InputTabState extends State<InputTab>
             color: Colors.black.withOpacity(0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
-          )
+          ),
         ],
         border: Border.all(color: Colors.grey.shade200),
       ),
@@ -3206,7 +3551,7 @@ class _InputTabState extends State<InputTab>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _saveData,
+              onPressed: () => _saveData(keepKeyboard: false),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
@@ -3216,10 +3561,32 @@ class _InputTabState extends State<InputTab>
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              child: const Text('保存',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text(
+                '保存',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ),
+          // 直前の入力を取り消すボタン
+          if (_lastInputId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SizedBox(
+                height: 30,
+                child: TextButton.icon(
+                  onPressed: _undoLastInput,
+                  icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
+                  label: const Text(
+                    '直前の入力を取り消す',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -3242,6 +3609,7 @@ import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
+import 'summary_detail_screen.dart'; // 詳細画面
 
 class MonthlyHistoryScreen extends StatefulWidget {
   const MonthlyHistoryScreen({super.key});
@@ -3249,12 +3617,17 @@ class MonthlyHistoryScreen extends StatefulWidget {
   State<MonthlyHistoryScreen> createState() => _MonthlyHistoryScreenState();
 }
 
-class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
+class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
+    with SingleTickerProviderStateMixin {
   final PageController _pageController = PageController(initialPage: 1000);
+  late TabController _tabController;
 
   // AppBarに表示するための現在の年月
   late int _currentYear;
   late int _currentMonth;
+
+  // 現在のタブインデックス (0:カレンダー, 1:グラフ)
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
@@ -3262,6 +3635,22 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
     final now = DateTime.now();
     _currentYear = now.year;
     _currentMonth = now.month;
+
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _pageController.dispose();
+    super.dispose();
   }
 
   // ページ切り替え時にAppBarのタイトルを更新
@@ -3285,6 +3674,13 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
           '$_currentYear年 $_currentMonth月',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'カレンダー', icon: Icon(Icons.calendar_month)),
+            Tab(text: '円グラフ', icon: Icon(Icons.pie_chart)),
+          ],
+        ),
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -3294,7 +3690,11 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
             DateTime.now().year,
             DateTime.now().month + (index - 1000),
           );
-          return MonthPage(year: d.year, month: d.month);
+          return MonthPage(
+            year: d.year,
+            month: d.month,
+            tabIndex: _currentTabIndex,
+          );
         },
       ),
     );
@@ -3304,7 +3704,15 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
 class MonthPage extends StatefulWidget {
   final int year;
   final int month;
-  const MonthPage({super.key, required this.year, required this.month});
+  final int tabIndex; // 0: カレンダー, 1: グラフ
+
+  const MonthPage({
+    super.key,
+    required this.year,
+    required this.month,
+    required this.tabIndex,
+  });
+
   @override
   State<MonthPage> createState() => _MonthPageState();
 }
@@ -3317,9 +3725,6 @@ class _MonthPageState extends State<MonthPage> {
 
   // 日付ごとのスクロール位置を特定するためのキー
   final Map<int, GlobalKey> _dayKeys = {};
-
-  // グラフモードかどうか
-  bool _isGraphMode = false;
 
   @override
   void initState() {
@@ -3428,257 +3833,105 @@ class _MonthPageState extends State<MonthPage> {
 
   @override
   Widget build(BuildContext context) {
-    // スクロール可能な全体
+    int total = _history.fold(0, (s, i) => s + i.amount);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 50),
       child: Column(
         children: [
-          // 上部エリア（カレンダー or 円グラフ）
+          // 共通: 合計カード（タップで詳細へ）
+          _buildTotalCard(total),
+
+          // タブによって表示を切り替え
+          // アニメーション付きで切り替えるとリッチに見える
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 500),
-            // フリップ（回転）のような動きではなく、フェードで滑らかに切り替える
-            // 必要なら transitionBuilder で回転アニメーションも可能
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            child: _isGraphMode
-                ? _buildGraphView(key: const ValueKey(1))
-                : _buildCalendarView(key: const ValueKey(0)),
+            duration: const Duration(milliseconds: 300),
+            child: widget.tabIndex == 0
+                ? _buildCalendarView()
+                : _buildGraphView(),
           ),
+
           const Divider(height: 1),
-          // 下部リストは共通
+
+          // 共通: 日別トランザクションリスト
+          // 「どちらのタブでも下には同じように履歴が並んでいる」という要望に対応
           _buildTransactionList(),
         ],
       ),
     );
   }
 
-  // --- 1. カレンダーモードの表示 ---
-  Widget _buildCalendarView({required Key key}) {
-    int total = _history.fold(0, (s, i) => s + i.amount);
-
-    return Container(
-      key: key,
-      width: double.infinity,
-      color: Colors.white,
-      child: Column(
-        children: [
-          // 合計カード（切り替えボタン付き）
-          _buildTotalCard(total: total, isGraphMode: false),
-          // カレンダー本体
-          _buildCalendarGrid(),
-        ],
-      ),
-    );
-  }
-
-  // --- 2. グラフモードの表示 ---
-  Widget _buildGraphView({required Key key}) {
-    int total = _history.fold(0, (s, i) => s + i.amount);
-
-    // 費目ごとの集計
-    final expenseSums = <String, int>{};
-    for (var item in _history) {
-      expenseSums[item.expense] =
-          (expenseSums[item.expense] ?? 0) + item.amount;
-    }
-    // 金額が大きい順にソート
-    final sortedEntries = expenseSums.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    // パイチャート用データの生成
-    List<PieChartSectionData> sections = [];
-    if (total > 0) {
-      sections = sortedEntries.map((e) {
-        final percentage = (e.value / total) * 100;
-        Color color = Colors.grey;
-        try {
-          color = _expenseList.firstWhere((t) => t.label == e.key).color;
-        } catch (_) {}
-        return PieChartSectionData(
-          color: color,
-          value: e.value.toDouble(),
-          title: '${percentage.toStringAsFixed(0)}%',
-          radius: 50,
-          titleStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        );
-      }).toList();
-    } else {
-      // データがないときはグレーの円を表示
-      sections = [
-        PieChartSectionData(
-          color: Colors.grey.shade200,
-          value: 1,
-          title: '',
-          radius: 50,
-        ),
-      ];
-    }
-
-    return Container(
-      key: key,
-      width: double.infinity,
-      color: Colors.white,
-      // カレンダーと高さを近づけるために、最低高さを設定しつつ中身を表示
-      constraints: const BoxConstraints(minHeight: 320),
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        children: [
-          // 合計カード（切り替えボタン付き）
-          _buildTotalCard(total: total, isGraphMode: true),
-
-          // 円グラフ
-          SizedBox(
-            height: 200,
-            child: PieChart(
-              PieChartData(
-                sections: sections,
-                centerSpaceRadius: 40,
-                sectionsSpace: 2,
-                borderData: FlBorderData(show: false),
-              ),
+  Widget _buildTotalCard(int total) {
+    return Material(
+      color: Colors.blue.shade50,
+      child: InkWell(
+        onTap: () {
+          // 合計タップで詳細画面へ遷移
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  SummaryDetailScreen(year: widget.year, month: widget.month),
             ),
-          ),
-          const SizedBox(height: 10),
-
-          // 費目ごとのリスト表示
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              children: sortedEntries.map((e) {
-                if (e.key == 'デフォルト') return const SizedBox.shrink();
-                Color color = Colors.grey;
-                try {
-                  color = _expenseList
-                      .firstWhere((t) => t.label == e.key)
-                      .color;
-                } catch (_) {}
-                final percentage = (total > 0)
-                    ? (e.value / total * 100).toStringAsFixed(1)
-                    : "0.0";
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          e.key,
+          );
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+          child: Stack(
+            children: [
+              Center(
+                child: Column(
+                  children: [
+                    const Text(
+                      '合計支出',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '¥ $total',
                           style: const TextStyle(
-                            fontSize: 14,
+                            fontSize: 32,
                             fontWeight: FontWeight.bold,
+                            color: Colors.black87,
                           ),
                         ),
-                      ),
-                      Text(
-                        "¥${e.value}",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        "($percentage%)",
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 6, left: 5),
+                          child: Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                            color: Colors.grey,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- 共通コンポーネント: 合計カードと切り替えボタン ---
-  Widget _buildTotalCard({required int total, required bool isGraphMode}) {
-    return Container(
-      width: double.infinity,
-      color: Colors.blue.shade50,
-      padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-      child: Stack(
-        children: [
-          // 中央の合計金額
-          Center(
-            child: Column(
-              children: [
-                const Text(
-                  '合計支出',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  '¥ $total',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 右上の切り替えボタン
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                      ],
+                    ),
+                    const Text(
+                      'タップして詳細を見る',
+                      style: TextStyle(fontSize: 10, color: Colors.blueGrey),
                     ),
                   ],
                 ),
-                child: IconButton(
-                  icon: Icon(
-                    isGraphMode ? Icons.calendar_month : Icons.pie_chart,
-                    color: Colors.blue,
-                  ),
-                  tooltip: isGraphMode ? 'カレンダーを表示' : 'グラフを表示',
-                  onPressed: () {
-                    setState(() {
-                      _isGraphMode = !_isGraphMode;
-                    });
-                  },
-                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  // --- カレンダー描画ロジック ---
-  Widget _buildCalendarGrid() {
+  // --- カレンダー表示 ---
+  Widget _buildCalendarView() {
     final daysInMonth = DateTime(widget.year, widget.month + 1, 0).day;
     final firstWeekday = DateTime(widget.year, widget.month, 1).weekday;
     final int emptyCount = (firstWeekday == 7) ? 0 : firstWeekday;
     final hasDataDays = _history.map((e) => e.date.day).toSet();
 
-    return Padding(
+    return Container(
+      color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         children: [
@@ -3749,6 +4002,79 @@ class _MonthPageState extends State<MonthPage> {
                 ),
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- グラフ表示 ---
+  Widget _buildGraphView() {
+    int total = _history.fold(0, (s, i) => s + i.amount);
+
+    // 費目ごとの集計
+    final expenseSums = <String, int>{};
+    for (var item in _history) {
+      expenseSums[item.expense] =
+          (expenseSums[item.expense] ?? 0) + item.amount;
+    }
+    final sortedEntries = expenseSums.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    List<PieChartSectionData> sections = [];
+    if (total > 0) {
+      sections = sortedEntries.map((e) {
+        final percentage = (e.value / total) * 100;
+        Color color = Colors.grey;
+        try {
+          color = _expenseList.firstWhere((t) => t.label == e.key).color;
+        } catch (_) {}
+        return PieChartSectionData(
+          color: color,
+          value: e.value.toDouble(),
+          title: '${percentage.toStringAsFixed(0)}%',
+          radius: 50,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        );
+      }).toList();
+    } else {
+      sections = [
+        PieChartSectionData(
+          color: Colors.grey.shade200,
+          value: 1,
+          title: '',
+          radius: 50,
+        ),
+      ];
+    }
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      // カレンダーと高さを近づけると切り替え時のガタつきが減る
+      constraints: const BoxConstraints(minHeight: 300),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 200,
+            child: PieChart(
+              PieChartData(
+                sections: sections,
+                centerSpaceRadius: 40,
+                sectionsSpace: 2,
+                borderData: FlBorderData(show: false),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            "※費目ごとの詳細は合計金額をタップ",
+            style: TextStyle(fontSize: 11, color: Colors.grey),
           ),
         ],
       ),
@@ -4430,12 +4756,14 @@ class CategorySelector extends StatelessWidget {
   final List<CategoryTag> tags;
   final int? selectedIndex;
   final Function(int) onSelected;
+  final VoidCallback? onAddPressed; // 追加: 追加ボタンのコールバック
 
   const CategorySelector({
     super.key,
     required this.tags,
     required this.selectedIndex,
     required this.onSelected,
+    this.onAddPressed,
   });
 
   IconData _getIconForLabel(String label) {
@@ -4460,34 +4788,67 @@ class CategorySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 追加ボタンがある場合は要素数を+1する
+    final int itemCount = onAddPressed != null ? tags.length + 1 : tags.length;
+
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      // 余白を少し詰める
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 8, // 間隔を少し詰める
+        mainAxisSpacing: 8,
         crossAxisSpacing: 8,
-        // ▼▼ 変更点: 横長比率を上げて、ボタンの高さを低くする (1.5 -> 2.0) ▼▼
-        // これにより、同じ画面スペースにより多くの行（ボタン）が表示されます。
         childAspectRatio: 2.0,
       ),
-      itemCount: tags.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
+        // 追加ボタンの表示判定
+        if (onAddPressed != null && index == tags.length) {
+          return Material(
+            color: Colors.grey.shade200,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: Colors.grey.shade300, width: 1.5),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onAddPressed,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.add, color: Colors.grey, size: 20),
+                    SizedBox(width: 4),
+                    Text(
+                      "編集",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
         final tag = tags[index];
         final isSelected = selectedIndex == index;
         final icon = _getIconForLabel(tag.label);
 
         return Material(
           color: isSelected ? tag.color : Colors.white,
-          elevation: isSelected ? 2 : 1, // 影を少し控えめに
-          // MaterialのborderRadius指定は削除し、shapeのみで管理
+          elevation: isSelected ? 2 : 1,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10), // 角丸も少し控えめに
+            borderRadius: BorderRadius.circular(10),
             side: BorderSide(
-              color:
-                  isSelected ? Colors.transparent : tag.color.withOpacity(0.3),
+              color: isSelected
+                  ? Colors.transparent
+                  : tag.color.withOpacity(0.3),
               width: 1.5,
             ),
           ),
@@ -4495,17 +4856,14 @@ class CategorySelector extends StatelessWidget {
           child: InkWell(
             onTap: () => onSelected(index),
             child: Padding(
-              // 内部の余白も詰める
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Row(
-                // ColumnではなくRow（横並び）または、コンパクトなColumnにする手もあるが、
-                // 今回は「アイコン＋文字」が見やすいコンパクトなColumnを維持しつつ調整
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     icon,
                     color: isSelected ? Colors.white : tag.color,
-                    size: 20, // アイコンを少し小さく
+                    size: 20,
                   ),
                   const SizedBox(width: 6),
                   Flexible(
@@ -4691,8 +5049,8 @@ import 'package:flutter/material.dart';
 class CustomNumberKeyboard extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSubmitted;
-  final VoidCallback onClose; // 完了ボタン（閉じる）
-  final ValueChanged<String> onChanged; // 値変更通知
+  final VoidCallback onClose; // 復活: 閉じるボタン用
+  final ValueChanged<String> onChanged;
 
   const CustomNumberKeyboard({
     super.key,
@@ -4702,15 +5060,9 @@ class CustomNumberKeyboard extends StatelessWidget {
     required this.onChanged,
   });
 
-  // キー入力処理
   void _handleTap(String value) {
     final text = controller.text;
     final selection = controller.selection;
-
-    // 選択範囲がある場合は置換、なければカーソル位置に挿入
-    // ただしreadOnlyのTextFieldだとカーソル位置が常に-1や不正になることがあるため、
-    // 基本は末尾追加、カーソルがある場合のみ位置考慮とする
-
     int start = selection.start;
     int end = selection.end;
 
@@ -4730,7 +5082,6 @@ class CustomNumberKeyboard extends StatelessWidget {
   void _handleDelete() {
     final text = controller.text;
     if (text.isEmpty) return;
-
     final selection = controller.selection;
     int start = selection.start;
     int end = selection.end;
@@ -4740,7 +5091,6 @@ class CustomNumberKeyboard extends StatelessWidget {
       end = text.length;
     }
 
-    // 範囲選択されている場合は範囲削除
     if (start != end) {
       String newText = text.replaceRange(start, end, "");
       controller.value = TextEditingValue(
@@ -4751,10 +5101,8 @@ class CustomNumberKeyboard extends StatelessWidget {
       return;
     }
 
-    // カーソルが先頭にある場合は何もしない
     if (start == 0) return;
 
-    // 1文字削除
     String newText = text.replaceRange(start - 1, start, "");
     controller.value = TextEditingValue(
       text: newText,
@@ -4768,47 +5116,20 @@ class CustomNumberKeyboard extends StatelessWidget {
     onChanged("");
   }
 
-  // 税計算 (8%, 10%)
-  void _handleTax(double rate) {
-    // まず現在の式を計算してから掛け算する
-    final currentText = controller.text;
-    if (currentText.isEmpty) return;
-
-    // 簡易計算ロジックをここで呼ぶのは依存関係が複雑になるため、
-    // UI側で「計算してから」この関数を呼ぶ設計も考えられるが、
-    // ここでは単純に「文字列として計算可能な場合のみ」処理する
-    try {
-      // 簡易的な評価（utilsのCalculatorを利用する前提だが、import循環を避けるため簡易実装）
-      // 実際にはInputTab側でCalculatorを使ってからセットされることが多いが、
-      // ここでは「現在の入力値が単一の数値なら」掛け算する
-      double? val = double.tryParse(currentText);
-      if (val != null) {
-        int result = (val * rate).floor();
-        controller.text = result.toString();
-        // カーソル末尾
-        controller.selection =
-            TextSelection.collapsed(offset: controller.text.length);
-        onChanged(controller.text);
-      }
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 背景色
     const Color bgColor = Color(0xFFF2F2F7);
-    // ボタンの色
     const Color btnColor = Colors.white;
-    // 影の色
     const Color shadowColor = Colors.black12;
 
-    // キーのスタイル定義
-    Widget buildKey(String label,
-        {Color textColor = Colors.black,
-        Color? color,
-        int flex = 1,
-        VoidCallback? onTap,
-        bool isBold = true}) {
+    Widget buildKey(
+      String label, {
+      Color textColor = Colors.black,
+      Color? color,
+      int flex = 1,
+      VoidCallback? onTap,
+      bool isBold = true,
+    }) {
       return Expanded(
         flex: flex,
         child: Padding(
@@ -4838,50 +5159,40 @@ class CustomNumberKeyboard extends StatelessWidget {
       );
     }
 
-    Widget buildFunctionKey(String label, VoidCallback onTap,
-        {Color textColor = Colors.black}) {
+    Widget buildFunctionKey(
+      String label,
+      VoidCallback onTap, {
+      Color textColor = Colors.black,
+    }) {
       return buildKey(label, onTap: onTap, textColor: textColor, isBold: true);
     }
 
     return Container(
       color: bgColor,
       width: double.infinity,
-      height: 320, // 固定高さ
       child: Column(
         children: [
-          // ツールバー (電卓アイコン, 税ボタン, 完了)
-          Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+          // ▼▼ 右上の閉じるボタンエリア ▼▼
+          SizedBox(
+            height: 40,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                const Icon(Icons.calculate_outlined,
-                    color: Colors.orange, size: 28),
-                const Spacer(),
-                _buildToolButton("税込8%", () => _handleTax(1.08)),
-                const SizedBox(width: 8),
-                _buildToolButton("税込10%", () => _handleTax(1.10)),
-                const SizedBox(width: 16),
-                TextButton(
+                IconButton(
                   onPressed: onClose,
-                  child: const Text(
-                    "完了",
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange),
-                  ),
+                  icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
+                  tooltip: '閉じる',
                 ),
+                const SizedBox(width: 8),
               ],
             ),
           ),
-          // キーパッドエリア
+          // ▼▼ キーボードエリア ▼▼
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
               child: Column(
                 children: [
-                  // Row 1: 7, 8, 9, ÷, AC
                   Expanded(
                     child: Row(
                       children: [
@@ -4889,12 +5200,14 @@ class CustomNumberKeyboard extends StatelessWidget {
                         buildKey("8"),
                         buildKey("9"),
                         buildKey("÷", textColor: Colors.black87),
-                        buildFunctionKey("AC", _handleClear,
-                            textColor: Colors.black54),
+                        buildFunctionKey(
+                          "AC",
+                          _handleClear,
+                          textColor: Colors.black54,
+                        ),
                       ],
                     ),
                   ),
-                  // Row 2: 4, 5, 6, x, Del
                   Expanded(
                     child: Row(
                       children: [
@@ -4902,27 +5215,22 @@ class CustomNumberKeyboard extends StatelessWidget {
                         buildKey("5"),
                         buildKey("6"),
                         buildKey("x", textColor: Colors.black87),
-                        buildFunctionKey("Del", _handleDelete,
-                            textColor: Colors.deepOrange),
+                        buildFunctionKey(
+                          "Del",
+                          _handleDelete,
+                          textColor: Colors.deepOrange,
+                        ),
                       ],
                     ),
                   ),
-                  // Row 3 & 4 (OKボタンが縦結合に見えるレイアウトへの対応)
-                  // FlutterのRow/Columnで縦結合は難しいので、
-                  // [1,2,3,-] と [0,00,+] の列と、右側の [OK] 列に分けるか、
-                  // あるいは単純なグリッドにする。
-                  // 画像の「OK」は右下で大きい。
-                  // ここでは Row 3 と Row 4 を作って、右端の扱いは工夫する。
                   Expanded(
                     flex: 2,
                     child: Row(
                       children: [
-                        // 左側の数字・演算ブロック (flex 4)
                         Expanded(
                           flex: 4,
                           child: Column(
                             children: [
-                              // Row 3: 1, 2, 3, -
                               Expanded(
                                 child: Row(
                                   children: [
@@ -4933,17 +5241,11 @@ class CustomNumberKeyboard extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              // Row 4: 0, 00, ., + (画像では.がないが、0と00のスペース的に空きがあるかも？)
-                              // 画像: [0] [00] [ ] [+] ...
-                              // ここでは [0] [00] [ ] [+] として実装
                               Expanded(
                                 child: Row(
                                   children: [
                                     buildKey("0"),
                                     buildKey("00"),
-                                    // 空白の代わりにドットを入れるか、空白にするか。
-                                    // 家計簿なので小数はあまり使わないかもしれないが、計算には必要かも。
-                                    // 画像準拠なら空白だが、機能性を取って空白スペースにする
                                     const Expanded(child: SizedBox()),
                                     buildKey("+", textColor: Colors.black87),
                                   ],
@@ -4952,13 +5254,12 @@ class CustomNumberKeyboard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        // 右端のOKボタン (flex 1)
                         Expanded(
                           flex: 1,
                           child: Padding(
                             padding: const EdgeInsets.all(4.0),
                             child: Material(
-                              color: Colors.white,
+                              color: Colors.blue,
                               elevation: 1,
                               borderRadius: BorderRadius.circular(8),
                               child: InkWell(
@@ -4966,13 +5267,24 @@ class CustomNumberKeyboard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(8),
                                 child: Container(
                                   alignment: Alignment.center,
-                                  child: const Text(
-                                    "OK",
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue,
-                                    ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      Icon(
+                                        Icons.playlist_add,
+                                        color: Colors.white,
+                                        size: 28,
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        "次へ",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -4988,21 +5300,6 @@ class CustomNumberKeyboard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildToolButton(String label, VoidCallback onTap) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.orange,
-        side: const BorderSide(color: Colors.orange),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        visualDensity: VisualDensity.compact,
-      ),
-      child: Text(label,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
     );
   }
 }
