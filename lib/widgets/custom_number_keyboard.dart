@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 class CustomNumberKeyboard extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSubmitted;
-  final VoidCallback onClose; // 完了ボタン（閉じる）
-  final ValueChanged<String> onChanged; // 値変更通知
+  final VoidCallback onClose; // 復活: 閉じるボタン用
+  final ValueChanged<String> onChanged;
 
   const CustomNumberKeyboard({
     super.key,
@@ -14,11 +14,9 @@ class CustomNumberKeyboard extends StatelessWidget {
     required this.onChanged,
   });
 
-  // キー入力処理
   void _handleTap(String value) {
     final text = controller.text;
     final selection = controller.selection;
-
     int start = selection.start;
     int end = selection.end;
 
@@ -38,7 +36,6 @@ class CustomNumberKeyboard extends StatelessWidget {
   void _handleDelete() {
     final text = controller.text;
     if (text.isEmpty) return;
-
     final selection = controller.selection;
     int start = selection.start;
     int end = selection.end;
@@ -73,34 +70,12 @@ class CustomNumberKeyboard extends StatelessWidget {
     onChanged("");
   }
 
-  // 税計算 (8%, 10%)
-  void _handleTax(double rate) {
-    final currentText = controller.text;
-    if (currentText.isEmpty) return;
-
-    try {
-      double? val = double.tryParse(currentText);
-      if (val != null) {
-        int result = (val * rate).floor();
-        controller.text = result.toString();
-        controller.selection = TextSelection.collapsed(
-          offset: controller.text.length,
-        );
-        onChanged(controller.text);
-      }
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 背景色
     const Color bgColor = Color(0xFFF2F2F7);
-    // ボタンの色
     const Color btnColor = Colors.white;
-    // 影の色
     const Color shadowColor = Colors.black12;
 
-    // キーのスタイル定義
     Widget buildKey(
       String label, {
       Color textColor = Colors.black,
@@ -149,46 +124,29 @@ class CustomNumberKeyboard extends StatelessWidget {
     return Container(
       color: bgColor,
       width: double.infinity,
-      height: 320, // 固定高さ
       child: Column(
         children: [
-          // ツールバー
-          Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+          // ▼▼ 右上の閉じるボタンエリア ▼▼
+          SizedBox(
+            height: 40,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                const Icon(
-                  Icons.calculate_outlined,
-                  color: Colors.orange,
-                  size: 28,
-                ),
-                const Spacer(),
-                _buildToolButton("税込8%", () => _handleTax(1.08)),
-                const SizedBox(width: 8),
-                _buildToolButton("税込10%", () => _handleTax(1.10)),
-                const SizedBox(width: 16),
-                TextButton(
+                IconButton(
                   onPressed: onClose,
-                  child: const Text(
-                    "閉じる",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                    ),
-                  ),
+                  icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
+                  tooltip: '閉じる',
                 ),
+                const SizedBox(width: 8),
               ],
             ),
           ),
-          // キーパッドエリア
+          // ▼▼ キーボードエリア ▼▼
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
               child: Column(
                 children: [
-                  // Row 1
                   Expanded(
                     child: Row(
                       children: [
@@ -204,7 +162,6 @@ class CustomNumberKeyboard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Row 2
                   Expanded(
                     child: Row(
                       children: [
@@ -220,17 +177,14 @@ class CustomNumberKeyboard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Row 3 & 4
                   Expanded(
                     flex: 2,
                     child: Row(
                       children: [
-                        // 左側の数字・演算ブロック (flex 4)
                         Expanded(
                           flex: 4,
                           child: Column(
                             children: [
-                              // Row 3
                               Expanded(
                                 child: Row(
                                   children: [
@@ -241,7 +195,6 @@ class CustomNumberKeyboard extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              // Row 4
                               Expanded(
                                 child: Row(
                                   children: [
@@ -255,13 +208,12 @@ class CustomNumberKeyboard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        // 右端の「次へ」ボタン (flex 1)
                         Expanded(
                           flex: 1,
                           child: Padding(
                             padding: const EdgeInsets.all(4.0),
                             child: Material(
-                              color: Colors.blue, // 青色で強調
+                              color: Colors.blue,
                               elevation: 1,
                               borderRadius: BorderRadius.circular(8),
                               child: InkWell(
@@ -301,23 +253,6 @@ class CustomNumberKeyboard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildToolButton(String label, VoidCallback onTap) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.orange,
-        side: const BorderSide(color: Colors.orange),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        visualDensity: VisualDensity.compact,
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
       ),
     );
   }

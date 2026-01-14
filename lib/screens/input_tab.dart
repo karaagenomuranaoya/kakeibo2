@@ -49,7 +49,8 @@ class _InputTabState extends State<InputTab>
   int _selectedCardIndex = 0;
 
   bool _showCustomKeyboard = false;
-  static const double _keyboardHeight = 320.0;
+  // キーボード高さ (キーエリア 272 + 閉じるバー 40)
+  static const double _keyboardHeight = 312.0;
 
   @override
   bool get wantKeepAlive => true;
@@ -82,10 +83,7 @@ class _InputTabState extends State<InputTab>
     super.didChangeMetrics();
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
 
-    // 修正: OSキーボードが表示されている(bottomInset > 0)とき、カスタムキーボードを隠すのが基本だが、
-    // 「金額入力中（_amountFocusNode.hasFocus）」の場合は例外とする。
-    // これにより、メモ入力(OSキーボード)から金額入力へ移動した際に、
-    // OSキーボードが閉じるアニメーション中でもカスタムキーボードが消されずに済む。
+    // 金額入力以外でOSキーボードが出たらカスタムキーボードを隠す
     if (bottomInset > 0 && _showCustomKeyboard && !_amountFocusNode.hasFocus) {
       setState(() {
         _showCustomKeyboard = false;
@@ -107,7 +105,6 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _showCustomKeyboard = false;
       });
-      // メモ入力時はOSキーボードが出るので、タブバーの制御はOSに任せる（隠れる）
     }
   }
 
@@ -324,18 +321,14 @@ class _InputTabState extends State<InputTab>
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    // 下部余白の計算
-    // メモ入力時はOSキーボードの高さ(bottomInset)を確保し、
-    // 金額入力時はカスタムキーボードの高さ(_keyboardHeight)を確保する。
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    // 基本余白80に加え、キーボードが出ている分だけ底上げする
-    // _showCustomKeyboardがtrueならカスタムキーボード優先、
-    // そうでなければOSキーボード(bottomInset)を優先
+    // 下部パディング計算
     final double additionalPadding = _showCustomKeyboard
         ? _keyboardHeight
         : bottomInset;
 
+    // 基本パディング80 + キーボード分
     final double bottomPadding = 80 + additionalPadding;
 
     return GestureDetector(
@@ -483,7 +476,7 @@ class _InputTabState extends State<InputTab>
               child: CustomNumberKeyboard(
                 controller: _amountController,
                 onSubmitted: () => _saveData(keepKeyboard: true),
-                onClose: _closeKeyboard,
+                onClose: _closeKeyboard, // 閉じるボタンでキーボードを閉じる
                 onChanged: (val) {},
               ),
             ),
