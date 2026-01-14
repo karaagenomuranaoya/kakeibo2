@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/transaction_item.dart';
+import '../models/category_tag.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 
@@ -22,7 +23,12 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   // 0: 利用日基準, 1: 支払日基準
   int _viewMode = 0;
-  bool _canSwitchMode = false; // 支払い方法かつ設定がある場合のみtrue
+
+  // 現在表示中のカード情報（設定取得用）
+  CategoryTag? _currentCardTag;
+
+  // 現金以外の支払い方法かどうか
+  bool _isCardType = false;
 
   final PageController _pageController = PageController(initialPage: 1000);
   final SettingsRepository _settingsRepository = SettingsRepository();
@@ -30,23 +36,169 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _checkIfCardMode();
+
+    // ▼▼ 修正: データ読み込みを待たずに、条件だけで即座にフラグを立てる ▼▼
+    if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
+      _isCardType = true;
+    }
+
+    // その後、詳細な設定（締め日など）を裏で読み込む
+    _loadCardInfo();
   }
 
-  Future<void> _checkIfCardMode() async {
-    // 支払い方法フィルタの場合、そのカードに締め日設定があるか確認
-    if (widget.filterKey == 'payment') {
+  Future<void> _loadCardInfo() async {
+    if (_isCardType) {
       final cards = await _settingsRepository.loadCardTags();
       try {
         final card = cards.firstWhere((c) => c.label == widget.filterValue);
-        if (card.closingDay != null) {
+        if (mounted) {
           setState(() {
-            _canSwitchMode = true;
+            _currentCardTag = card;
           });
         }
       } catch (_) {
-        // 見つからない場合は通常モード
+        // タグが見つからない場合でも、_isCardTypeはtrueのままでOK
       }
+    }
+  }
+
+  void _onTabChanged(int newValue) {
+    if (newValue == 1) {
+      // 「引き落とし予定」が選ばれた時、設定（締め日）がなければダイアログを出す
+      // _currentCardTagがまだロードできていない場合も考慮してnullチェック
+      if (_currentCardTag == null || _currentCardTag!.closingDay == null) {
+        _showSetupDialog();
+        return;
+      }
+    }
+
+    setState(() {
+      _viewMode = newValue;
+    });
+  }
+
+  void _showSetupDialog() {
+    int closingDay = 99; // デフォルト末日
+    int paymentDay = 27; // デフォルト27日
+    int paymentOffset = 1; // デフォルト翌月
+
+    List<DropdownMenuItem<int>> getDayItems() {
+      final items = List.generate(28, (i) => i + 1)
+          .map((i) => DropdownMenuItem(value: i, child: Text('$i日')))
+          .toList();
+      items.add(const DropdownMenuItem(value: 99, child: Text('末日')));
+      return items;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('カード設定'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('引き落とし予定を計算するために、\n締め日と支払日を教えてください。'),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      const Text('締め: '),
+                      DropdownButton<int>(
+                        value: closingDay,
+                        items: getDayItems(),
+                        onChanged: (val) =>
+                            setStateDialog(() => closingDay = val!),
+                      ),
+                      const SizedBox(width: 15),
+                      const Text('払い: '),
+                      DropdownButton<int>(
+                        value: paymentDay,
+                        items: getDayItems(),
+                        onChanged: (val) =>
+                            setStateDialog(() => paymentDay = val!),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Text('支払月: '),
+                      DropdownButton<int>(
+                        value: paymentOffset,
+                        items: const [
+                          DropdownMenuItem(value: 1, child: Text('翌月')),
+                          DropdownMenuItem(value: 2, child: Text('翌々月')),
+                        ],
+                        onChanged: (val) =>
+                            setStateDialog(() => paymentOffset = val!),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('キャンセル'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await _saveCardSettings(
+                        closingDay, paymentDay, paymentOffset);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      setState(() {
+                        _viewMode = 1;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('設定を保存しました。次回入力分から支払日が自動計算されます。')),
+                      );
+                    }
+                  },
+                  child: const Text('保存して表示'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _saveCardSettings(int closing, int payment, int offset) async {
+    // タグ情報がまだロードされていない場合は何もしない（あるいはリロードする）
+    // 通常はダイアログが出る時点でロードされているはず
+    if (_currentCardTag == null) {
+      // 万が一nullなら、名前から検索して再取得を試みるなどの処理が必要だが
+      // ここでは簡易的にロード待ちをするか、エラーにする
+      await _loadCardInfo();
+      if (_currentCardTag == null) return;
+    }
+
+    final cards = await _settingsRepository.loadCardTags();
+    final index = cards.indexWhere((c) => c.id == _currentCardTag!.id);
+
+    if (index != -1) {
+      final newTag = CategoryTag(
+        id: _currentCardTag!.id,
+        label: _currentCardTag!.label,
+        color: _currentCardTag!.color,
+        isCircle: _currentCardTag!.isCircle,
+        closingDay: closing,
+        paymentDay: payment,
+        paymentMonthOffset: offset,
+      );
+
+      cards[index] = newTag;
+      await _settingsRepository.saveCardTags(cards);
+
+      setState(() {
+        _currentCardTag = newTag;
+      });
     }
   }
 
@@ -62,8 +214,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: AppBar(title: Text(widget.filterValue)),
       body: Column(
         children: [
-          // カードで締め日設定がある場合のみ、タブを表示
-          if (_canSwitchMode)
+          // _isCardTypeがtrueなら即座に表示（ロード待ちしない）
+          if (_isCardType)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: SegmentedButton<int>(
@@ -80,11 +232,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 ],
                 selected: {_viewMode},
-                onSelectionChanged: (newSelection) {
-                  setState(() {
-                    _viewMode = newSelection.first;
-                  });
-                },
+                onSelectionChanged: (newSelection) =>
+                    _onTabChanged(newSelection.first),
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
                   backgroundColor: MaterialStateProperty.resolveWith<Color?>(
@@ -187,7 +336,7 @@ class _MonthPageState extends State<_MonthPage> {
 
     setState(() {
       _history = allItems.where((i) {
-        // 1. タグフィルタ（まず対象のカード/費目だけに絞る）
+        // 1. タグフィルタ
         bool isTarget = false;
         if (widget.filterKey == 'expense') {
           isTarget = i.expense == widget.filterValue;
@@ -200,10 +349,9 @@ class _MonthPageState extends State<_MonthPage> {
         }
         if (!isTarget) return false;
 
-        // 2. 年月フィルタ（モードによって基準を変える）
+        // 2. 年月フィルタ
         if (widget.viewMode == 1) {
-          // 支払日基準（支払日が設定されていないデータは、利用日を支払日とみなして表示するか、除外するか。
-          // ここでは「引き落とし予定」なので、支払日が計算されているもの、もしくは利用日＝支払日のものを表示）
+          // 支払日基準
           final targetDate = i.paymentDate ?? i.date;
           return targetDate.year == widget.year &&
               targetDate.month == widget.month;
@@ -216,7 +364,6 @@ class _MonthPageState extends State<_MonthPage> {
     });
   }
 
-  // 編集・削除ダイアログ
   void _showEditDialog(TransactionItem item) {
     final amountController =
         TextEditingController(text: item.amount.toString());
@@ -366,10 +513,14 @@ class _MonthPageState extends State<_MonthPage> {
                       }
                     }
 
-                    // 支払日モードなら日付表示を「利用日」と明記してあげる
                     String dateInfo = item.displayDate;
                     if (widget.viewMode == 1) {
-                      dateInfo = "利用: ${item.date.month}/${item.date.day}";
+                      if (item.paymentDate != null) {
+                        dateInfo = "利用: ${item.date.month}/${item.date.day}";
+                      } else {
+                        dateInfo =
+                            "利用: ${item.date.month}/${item.date.day} (未確定)";
+                      }
                     }
 
                     return ListTile(
