@@ -13,7 +13,14 @@ import '../utils/simple_calculator.dart';
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
-  const InputTab({super.key, this.dataVersion = 0});
+  // MainScreenのタブバー表示を制御するコールバック
+  final Function(bool visible)? onTabBarVisibilityChanged;
+
+  const InputTab({
+    super.key,
+    this.dataVersion = 0,
+    this.onTabBarVisibilityChanged,
+  });
 
   @override
   State<InputTab> createState() => _InputTabState();
@@ -44,6 +51,9 @@ class _InputTabState extends State<InputTab>
   // カスタムキーボードの表示状態
   bool _showCustomKeyboard = false;
 
+  // キーボードの高さ（Widget側と合わせる）
+  static const double _keyboardHeight = 320.0;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -53,7 +63,6 @@ class _InputTabState extends State<InputTab>
     WidgetsBinding.instance.addObserver(this);
     _loadAllData();
 
-    // フォーカス制御リスナー
     _amountFocusNode.addListener(_onAmountFocusChange);
     _memoFocusNode.addListener(_onMemoFocusChange);
   }
@@ -71,26 +80,45 @@ class _InputTabState extends State<InputTab>
     super.dispose();
   }
 
+  // OSのキーボード表示状態の変化などを検知
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
+    // OSキーボードが開いたとき（viewInsets.bottom > 0）
+    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
+    if (bottomInset > 0 && _showCustomKeyboard) {
+      // OSキーボード優先のためカスタムキーボードは閉じるが、
+      // 実際にはフォーカス移動で制御しているのでここは補助的な処理
+      setState(() {
+        _showCustomKeyboard = false;
+      });
+    }
   }
 
   void _onAmountFocusChange() {
     if (_amountFocusNode.hasFocus) {
-      // 金額入力にフォーカスが当たったら、ラグなしでカスタムキーボードを表示
+      // 金額入力にフォーカス: カスタムキーボード表示
       setState(() {
         _showCustomKeyboard = true;
       });
+      // タブバーを隠す
+      widget.onTabBarVisibilityChanged?.call(false);
     }
   }
 
   void _onMemoFocusChange() {
     if (_memoFocusNode.hasFocus) {
-      // メモ入力にフォーカスが当たったら、カスタムキーボードを即座に隠す
+      // メモ入力にフォーカス: カスタムキーボード非表示、OSキーボードが出る
       setState(() {
         _showCustomKeyboard = false;
       });
+      // メモ入力時も画面を広く使うなら隠したままでも良いが、
+      // 完了ボタンがないOSキーボードの場合もあるので、
+      // ここでは「OSキーボードが出る＝タブバー云々はOS任せ」とする。
+      // ただし、金額入力から移動してきた場合は隠れたままになる可能性があるため、
+      // 一旦表示に戻すか、あるいは隠したままにするか。
+      // UX的にはOSキーボードが出るとTabBarは見えなくなるので、falseのままでも実害はない。
+      // 完了時に戻す処理があればOK。
     }
   }
 
@@ -141,7 +169,6 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _isCardPayment = value;
     });
-    // カード切り替え時はフォーカスを外す（キーボード閉じる）
     _closeKeyboard();
     await prefs.setBool('last_is_card', value);
   }
@@ -173,26 +200,22 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _showCustomKeyboard = false;
     });
+    // タブバーを再表示
+    widget.onTabBarVisibilityChanged?.call(true);
   }
 
-  // 保存処理
-  // keepKeyboard: true にすると、保存後にキーボードを閉じずに連続入力を受け付ける
   Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
 
-    // 計算を実行して確定させる
     final rawText = _amountController.text;
     final calculatedText = SimpleCalculator.calculate(rawText);
 
-    // 計算結果が空、あるいは0の場合は保存しない
     if (calculatedText.isEmpty || calculatedText == "0") {
       _showSnackBar('金額を入力してください', Colors.redAccent);
       return;
     }
 
-    // コントローラーの値を計算済みの値に更新
     _amountController.text = calculatedText;
-
     final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
 
     if (amount == 0) {
@@ -209,7 +232,6 @@ class _InputTabState extends State<InputTab>
       _selectedExpenseIndex = 0;
     }
 
-    // キーボードを閉じるかどうか
     if (!keepKeyboard) {
       _closeKeyboard();
     }
@@ -276,10 +298,9 @@ class _InputTabState extends State<InputTab>
 
       setState(() {
         _amountController.clear();
-        _memoController.clear(); // メモもクリア
+        _memoController.clear();
       });
 
-      // 連続入力のためにフォーカスを維持/再取得
       if (keepKeyboard) {
         _amountFocusNode.requestFocus();
       }
@@ -319,18 +340,27 @@ class _InputTabState extends State<InputTab>
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
+    // --- Stack構成への変更点 ---
+    // Columnで配置するのではなく、Stackでキーボードを最下部にオーバーレイさせる。
+    // これにより、キーボードの表示/非表示でコンテンツが「押し上げられる/押し下がる」挙動（＝降ってくる動き）を防ぐ。
     return GestureDetector(
       onTap: _closeKeyboard,
       behavior: HitTestBehavior.opaque,
-      child: Column(
+      child: Stack(
         children: [
-          Expanded(
+          // コンテンツ領域
+          Positioned.fill(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                10,
+                16,
+                // キーボード表示時は、スクロール可能な余白を下部に作る
+                _showCustomKeyboard ? _keyboardHeight + 20 : 80,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 日付選択
                   GestureDetector(
                     onTap: _pickDate,
                     child: Container(
@@ -366,7 +396,6 @@ class _InputTabState extends State<InputTab>
                   ),
                   const SizedBox(height: 15),
 
-                  // 金額入力部分
                   GestureDetector(
                     onTap: () {
                       _amountFocusNode.requestFocus();
@@ -389,7 +418,7 @@ class _InputTabState extends State<InputTab>
                           child: TextField(
                             controller: _amountController,
                             focusNode: _amountFocusNode,
-                            readOnly: true, // OSキーボード抑制
+                            readOnly: true,
                             showCursor: true,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
@@ -412,7 +441,6 @@ class _InputTabState extends State<InputTab>
                   ),
                   const SizedBox(height: 10),
 
-                  // メモ入力
                   Container(
                     width: 240,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -444,7 +472,6 @@ class _InputTabState extends State<InputTab>
                   ),
                   const SizedBox(height: 20),
 
-                  // カテゴリ選択
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
@@ -458,20 +485,27 @@ class _InputTabState extends State<InputTab>
             ),
           ),
 
+          // カスタムキーボード（オーバーレイ）
+          // タブバーを隠したスペースに「どっしり」表示するため、
+          // BottomNavigationBarと同じレベルの最下部に配置。
           if (_showCustomKeyboard)
-            CustomNumberKeyboard(
-              controller: _amountController,
-              // 次へボタンで呼び出すときはキーボードを維持
-              onSubmitted: () => _saveData(keepKeyboard: true),
-              onClose: _closeKeyboard,
-              onChanged: (val) {},
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: _keyboardHeight,
+              child: CustomNumberKeyboard(
+                controller: _amountController,
+                onSubmitted: () => _saveData(keepKeyboard: true),
+                onClose: _closeKeyboard,
+                onChanged: (val) {},
+              ),
             ),
         ],
       ),
     );
   }
 
-  // 画面下部のカード選択や保存ボタンのUI
   Widget _buildBottomControlPanel(BuildContext context) {
     return Container(
       width: double.infinity,

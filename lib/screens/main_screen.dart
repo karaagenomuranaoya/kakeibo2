@@ -14,6 +14,7 @@ class _MainScreenState extends State<MainScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _dataVersion = 0;
+  bool _isTabBarVisible = true; // タブバーの表示状態
 
   @override
   void initState() {
@@ -22,9 +23,14 @@ class _MainScreenState extends State<MainScreen>
 
     _tabController.addListener(() {
       if (!context.mounted) return;
-      // タブ移動時はキーボードを閉じる（これはUXとして自然なので残す）
       if (_tabController.indexIsChanging) {
         FocusScope.of(context).unfocus();
+        // タブ切り替え時は必ずタブバーを表示状態に戻す
+        if (!_isTabBarVisible) {
+          setState(() {
+            _isTabBarVisible = true;
+          });
+        }
       }
     });
   }
@@ -41,16 +47,20 @@ class _MainScreenState extends State<MainScreen>
     });
   }
 
+  // InputTabから呼び出してタブバーを隠すための関数
+  void _setTabBarVisible(bool visible) {
+    if (_isTabBarVisible != visible) {
+      setState(() {
+        _isTabBarVisible = visible;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Kakeibo')),
-      // onDrawerChangedの処理は不要になったため削除
-      // ドロワーを開いたからといって、フォーカスをどうこうする必要はない。
-      // なぜなら、そもそも「勝手にフォーカスが当たる機能」を捨てたから。
       drawer: AppDrawer(onDataChanged: _refreshData),
-
-      // 画面全体のタップでキーボードを閉じるのは便利な機能なので残す
       body: GestureDetector(
         onTap: () {
           FocusScope.of(context).unfocus();
@@ -58,10 +68,16 @@ class _MainScreenState extends State<MainScreen>
         behavior: HitTestBehavior.translucent,
         child: TabBarView(
           controller: _tabController,
+          // スワイプでタブ移動するとキーボード状態と矛盾しやすいので無効化推奨だが、
+          // 利便性のため残す場合はInputTab側で制御が必要。
+          // ここではキーボード出しっぱなしでのスワイプは稀としてそのままにする。
           physics: const ClampingScrollPhysics(),
           children: [
-            // 1. 入力タブ
-            InputTab(dataVersion: _dataVersion),
+            // 1. 入力タブ (コールバックを渡す)
+            InputTab(
+              dataVersion: _dataVersion,
+              onTabBarVisibilityChanged: _setTabBarVisible,
+            ),
 
             // 2. レポートタブ
             const MonthlyHistoryScreen(),
@@ -71,28 +87,31 @@ class _MainScreenState extends State<MainScreen>
           ],
         ),
       ),
-      bottomNavigationBar: Material(
-        color: Colors.white,
-        elevation: 10,
-        child: SafeArea(
-          child: TabBar(
-            controller: _tabController,
-            isScrollable: false,
-            indicatorColor: Colors.blue,
-            labelColor: Colors.blue,
-            unselectedLabelColor: Colors.grey,
-            onTap: (_) => FocusScope.of(context).unfocus(),
-            tabs: const [
-              Tab(icon: Icon(Icons.edit), text: '入力'),
-              Tab(icon: Icon(Icons.calendar_month), text: 'レポート'),
-              Tab(
-                icon: Icon(Icons.star, color: Colors.orange),
-                text: 'ガチャ',
+      // タブバーの表示制御
+      bottomNavigationBar: _isTabBarVisible
+          ? Material(
+              color: Colors.white,
+              elevation: 10,
+              child: SafeArea(
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: false,
+                  indicatorColor: Colors.blue,
+                  labelColor: Colors.blue,
+                  unselectedLabelColor: Colors.grey,
+                  onTap: (_) => FocusScope.of(context).unfocus(),
+                  tabs: const [
+                    Tab(icon: Icon(Icons.edit), text: '入力'),
+                    Tab(icon: Icon(Icons.calendar_month), text: 'レポート'),
+                    Tab(
+                      icon: Icon(Icons.star, color: Colors.orange),
+                      text: 'ガチャ',
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : null, // 非表示時はnullにして画面領域を広げる
     );
   }
 }
