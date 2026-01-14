@@ -10,18 +10,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # ▼▼ これが抜けていました。日本語化に必須です ▼▼
   flutter_localizations:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.4
-  
-  # 日付操作
   intl: ^0.20.2
-
-  # グラフ描画
   fl_chart: ^0.69.0
 
 dev_dependencies:
@@ -34,3 +28,7 @@ flutter:
 
   assets:
     - assets/images/
+    # ▼▼ ガチャ用の画像フォルダを追加 ▼▼
+    - assets/images/gacha/
+    # ▼▼ マスタデータ用のJSONフォルダを追加 ▼▼
+    - assets/json/
