@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 数値入力制限用
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -8,7 +8,6 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
-// CustomNumericKeyboard のインポートは削除
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -18,10 +17,12 @@ class InputTab extends StatefulWidget {
   State<InputTab> createState() => _InputTabState();
 }
 
-class _InputTabState extends State<InputTab> {
-  // 金額もTextEditingControllerで管理
+class _InputTabState extends State<InputTab>
+    with AutomaticKeepAliveClientMixin {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _memoController = TextEditingController();
+  // FocusNodeは管理し続けるが、自動制御はしない
+  final FocusNode _amountFocusNode = FocusNode();
 
   final TransactionRepository _repository = TransactionRepository();
   final GachaRepository _gachaRepository = GachaRepository();
@@ -38,15 +39,21 @@ class _InputTabState extends State<InputTab> {
   int _selectedCardIndex = 0;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _loadAllData();
+    // ここにあった「初回のみフォーカス」のロジックは全削除しました。
+    // アプリ起動時はキーボードが出ない「クリーンな状態」で始まります。
   }
 
   @override
   void dispose() {
     _amountController.dispose();
     _memoController.dispose();
+    _amountFocusNode.dispose();
     super.dispose();
   }
 
@@ -89,6 +96,8 @@ class _InputTabState extends State<InputTab> {
     setState(() {
       _selectedExpenseIndex = index;
     });
+    // カテゴリを変えても入力継続したい場合もあるので、unfocusは強制しない
+    // もし閉じたければ FocusScope.of(context).unfocus(); を入れてください
     await prefs.setInt('last_expense_index', index);
   }
 
@@ -97,6 +106,7 @@ class _InputTabState extends State<InputTab> {
     setState(() {
       _isCardPayment = value;
     });
+    FocusScope.of(context).unfocus();
     await prefs.setBool('last_is_card', value);
   }
 
@@ -105,10 +115,12 @@ class _InputTabState extends State<InputTab> {
     setState(() {
       _selectedCardIndex = index;
     });
+    FocusScope.of(context).unfocus();
     await prefs.setInt('last_card_index', index);
   }
 
   Future<void> _pickDate() async {
+    FocusScope.of(context).unfocus();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -120,6 +132,9 @@ class _InputTabState extends State<InputTab> {
 
   Future<void> _saveData() async {
     if (_isLoading) return;
+
+    // 保存時はキーボードを閉じる
+    FocusScope.of(context).unfocus();
 
     final String amountText = _amountController.text;
     final int amount = int.tryParse(amountText) ?? 0;
@@ -138,7 +153,6 @@ class _InputTabState extends State<InputTab> {
       _selectedExpenseIndex = 0;
     }
 
-    // --- 支払い方法と支払日の計算 ---
     String paymentMethod = '';
     DateTime? paymentDate;
 
@@ -199,16 +213,10 @@ class _InputTabState extends State<InputTab> {
       }
       await prefs.setBool('last_is_card', _isCardPayment);
 
-      // フォームクリア
       setState(() {
         _amountController.clear();
         _memoController.clear();
       });
-
-      // 保存したらキーボードは閉じる？ 連続入力するなら開けたまま？
-      // 今回は「Quick」なので、次の入力に備えてもいいが、完了感も大事。
-      // いったん閉じる挙動にします。
-      if (mounted) FocusScope.of(context).unfocus();
 
       if (mounted) {
         String msg = '保存しました';
@@ -237,13 +245,15 @@ class _InputTabState extends State<InputTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    // 画面全体をタップでキーボード閉じる
+    // 背景タップでキーボードを閉じる
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       behavior: HitTestBehavior.opaque,
@@ -255,7 +265,7 @@ class _InputTabState extends State<InputTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 1. 日付
+                  // 日付選択
                   GestureDetector(
                     onTap: _pickDate,
                     child: Container(
@@ -286,54 +296,58 @@ class _InputTabState extends State<InputTab> {
                   ),
                   const SizedBox(height: 15),
 
-                  // 2. 金額入力 (TextField化)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      const Text(
-                        "¥",
-                        style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black54),
-                      ),
-                      const SizedBox(width: 10),
-                      IntrinsicWidth(
-                        child: TextField(
-                          controller: _amountController,
-                          // 自動でキーボードを開く
-                          autofocus: true,
-                          keyboardType: TextInputType.number,
-                          // 数字のみ許可
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly
-                          ],
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 56,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                            height: 1.0,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: '0',
-                            hintStyle: TextStyle(color: Colors.black12),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          // エンターキーで保存する場合
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _saveData(),
+                  // 金額入力部分
+                  // タップすればキーボードが出る、という当たり前の実装に戻す
+                  GestureDetector(
+                    // IntrinsicWidth等をタップした時の判定を広げるため
+                    onTap: () {
+                      _amountFocusNode.requestFocus();
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        const Text(
+                          "¥",
+                          style: TextStyle(
+                              fontSize: 56,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black54),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        IntrinsicWidth(
+                          child: TextField(
+                            controller: _amountController,
+                            focusNode: _amountFocusNode,
+                            // ここをfalseにするのが重要
+                            autofocus: false,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 56,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                              height: 1.0,
+                            ),
+                            decoration: const InputDecoration(
+                              hintText: '0',
+                              hintStyle: TextStyle(color: Colors.black12),
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _saveData(),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 10),
-
-                  // 3. メモ入力欄
                   Container(
                     width: 240,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -356,31 +370,24 @@ class _InputTabState extends State<InputTab> {
                       ),
                       style: const TextStyle(fontSize: 13),
                       textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
-                  // 4. カテゴリ選択
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: (i) => _changeExpenseIndex(i),
                   ),
-
                   const SizedBox(height: 20),
                 ],
               ),
             ),
           ),
-
-          // 固定フッター (カード選択 + 保存ボタン)
+          // 下部のアクションボタン
           Container(
             width: double.infinity,
             padding: EdgeInsets.only(
-              // キーボードが出ている時は、その上に表示されるようにpadding調整
-              // ScaffoldがresizeToAvoidBottomInset: true (デフォルト) なので、
-              // 基本的には底に張り付くが、安全のためにSafeArea考慮
               bottom: MediaQuery.of(context).viewInsets.bottom > 0
                   ? 0
                   : MediaQuery.of(context).padding.bottom,
@@ -403,7 +410,6 @@ class _InputTabState extends State<InputTab> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  // カード選択エリア
                   Expanded(
                     child: Row(
                       children: [
@@ -426,7 +432,6 @@ class _InputTabState extends State<InputTab> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // カード一覧（横スクロール）
                         Expanded(
                           child: _isCardPayment && _cardList.isNotEmpty
                               ? ListView.builder(
@@ -467,8 +472,6 @@ class _InputTabState extends State<InputTab> {
                       ],
                     ),
                   ),
-
-                  // 保存ボタン
                   const SizedBox(width: 10),
                   ElevatedButton(
                     onPressed: _saveData,

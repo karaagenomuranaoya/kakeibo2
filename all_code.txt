@@ -1373,17 +1373,40 @@ import '../models/transaction_item.dart';
 class TransactionRepository {
   static const String _key = 'history';
 
-  // 保存処理
+  // 保存処理 (追加)
   Future<void> addTransaction(TransactionItem item) async {
-    final prefs = await SharedPreferences.getInstance();
     final List<TransactionItem> currentList = await getAllTransactions();
-
-    // 新しいデータを先頭に追加
     currentList.insert(0, item);
+    await _saveList(currentList);
+  }
 
-    // JSON文字列に変換して保存
+  // 更新処理 (編集)
+  Future<void> updateTransaction(TransactionItem newItem) async {
+    final List<TransactionItem> currentList = await getAllTransactions();
+    // IDが一致するものを探して置き換える
+    final index = currentList.indexWhere((item) => item.id == newItem.id);
+    if (index != -1) {
+      currentList[index] = newItem;
+      await _saveList(currentList);
+    }
+  }
+
+  // 削除処理
+  Future<void> deleteTransaction(String id) async {
+    final List<TransactionItem> currentList = await getAllTransactions();
+    // IDが一致するものを削除
+    currentList.removeWhere((item) => item.id == id);
+    await _saveList(currentList);
+  }
+
+  // 内部共通: リストをJSONにして保存
+  Future<void> _saveList(List<TransactionItem> list) async {
+    final prefs = await SharedPreferences.getInstance();
+    // 日付順（新しい順）にソートしておく
+    list.sort((a, b) => b.date.compareTo(a.date));
+
     final String jsonString = json.encode(
-      currentList.map((e) => e.toJson()).toList(),
+      list.map((e) => e.toJson()).toList(),
     );
     await prefs.setString(_key, jsonString);
   }
@@ -1406,40 +1429,72 @@ class TransactionRepository {
 --- FILE: lib/models/transaction_item.dart ---
 ```dart
 class TransactionItem {
+  final String id;
   final int amount;
   final String expense;
   final String payment;
   final DateTime date;
+  final DateTime? paymentDate;
+  final String memo; // 追加: メモ欄
 
   TransactionItem({
+    String? id,
     required this.amount,
     required this.expense,
     required this.payment,
     required this.date,
-  });
+    this.paymentDate,
+    this.memo = '', // デフォルトは空文字
+  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
 
-  // 表示用日付フォーマット
   String get displayDate {
     return "${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
   }
 
-  // JSON保存用: Mapに変換
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'amount': amount,
       'expense': expense,
       'payment': payment,
       'date_iso': date.toIso8601String(),
+      'payment_date_iso': paymentDate?.toIso8601String(),
+      'memo': memo, // 保存
     };
   }
 
-  // 読み込み用: Mapから生成
   factory TransactionItem.fromJson(Map<String, dynamic> json) {
     return TransactionItem(
+      id: json['id'] as String? ??
+          DateTime.now().microsecondsSinceEpoch.toString() +
+              (json['date_iso'] as String),
       amount: json['amount'] as int,
       expense: json['expense'] as String,
       payment: json['payment'] as String,
       date: DateTime.parse(json['date_iso'] as String),
+      paymentDate: json['payment_date_iso'] != null
+          ? DateTime.parse(json['payment_date_iso'] as String)
+          : null,
+      memo: json['memo'] as String? ?? '', // 読み込み（既存データ対策でnull許容）
+    );
+  }
+
+  TransactionItem copyWith({
+    int? amount,
+    String? expense,
+    String? payment,
+    DateTime? date,
+    DateTime? paymentDate,
+    String? memo,
+  }) {
+    return TransactionItem(
+      id: id,
+      amount: amount ?? this.amount,
+      expense: expense ?? this.expense,
+      payment: payment ?? this.payment,
+      date: date ?? this.date,
+      paymentDate: paymentDate ?? this.paymentDate,
+      memo: memo ?? this.memo,
     );
   }
 }
@@ -1457,11 +1512,20 @@ class CategoryTag {
   final Color color;
   final bool isCircle;
 
+  // --- クレジットカード設定用 ---
+  // null なら「通常モード（即時払い扱い）」、値があれば「締め日モード」
+  final int? closingDay; // 締め日 (1-28, 99=末日)
+  final int? paymentDay; // 支払日 (1-28, 99=末日)
+  final int paymentMonthOffset; // 支払月 (1=翌月, 2=翌々月)
+
   CategoryTag({
     String? id,
     required this.label,
     required this.color,
     this.isCircle = false,
+    this.closingDay,
+    this.paymentDay,
+    this.paymentMonthOffset = 1, // デフォルトは翌月払い
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
 
   // JSONから生成
@@ -1471,6 +1535,9 @@ class CategoryTag {
       label: json['label'],
       color: Color(json['color_value']),
       isCircle: json['is_circle'] ?? false,
+      closingDay: json['closing_day'],
+      paymentDay: json['payment_day'],
+      paymentMonthOffset: json['payment_month_offset'] ?? 1,
     );
   }
 
@@ -1479,12 +1546,34 @@ class CategoryTag {
     return {
       'id': id,
       'label': label,
-      'color_value': color.toARGB32(), // 修正: value -> toARGB32() 推奨
+      'color_value': color.value, // toARGB32()が使えない環境への互換性のためvalue推奨
       'is_circle': isCircle,
+      'closing_day': closingDay,
+      'payment_day': paymentDay,
+      'payment_month_offset': paymentMonthOffset,
     };
   }
 
-  // デフォルトの費目データ
+  // デフォルトのカードデータ（例として楽天カードを末締め翌27日払いに設定）
+  static List<CategoryTag> get defaultCards => [
+        CategoryTag(
+          label: '楽天カード',
+          color: Colors.red,
+          closingDay: 99, // 末日
+          paymentDay: 27, // 27日払い
+          paymentMonthOffset: 1, // 翌月
+        ),
+        CategoryTag(
+          label: '三井住友',
+          color: Colors.green,
+          closingDay: 15, // 15日締め
+          paymentDay: 10, // 10日払い
+          paymentMonthOffset: 1, // 翌月
+        ),
+        CategoryTag(label: 'PayPay', color: Colors.blueGrey), // 設定なし（即時）
+      ];
+
+  // デフォルトの費目データ（変更なし）
   static List<CategoryTag> get defaultExpenses => [
         CategoryTag(label: '食費', color: Colors.orange, isCircle: true),
         CategoryTag(label: '日用品', color: Colors.green, isCircle: true),
@@ -1492,14 +1581,6 @@ class CategoryTag {
         CategoryTag(label: '交際費', color: Colors.pink, isCircle: true),
         CategoryTag(label: '趣味', color: Colors.purple, isCircle: true),
         CategoryTag(label: '美容・衣服', color: Colors.teal, isCircle: true),
-      ];
-
-  // デフォルトのカードデータ
-  static List<CategoryTag> get defaultCards => [
-        CategoryTag(label: '楽天カード', color: Colors.red),
-        CategoryTag(label: '三井住友', color: Colors.green),
-        CategoryTag(label: 'PayPay', color: Colors.blueGrey),
-        CategoryTag(label: 'Amex', color: Colors.blueAccent),
       ];
 }
 
@@ -1510,7 +1591,9 @@ class CategoryTag {
 ```dart
 import 'package:flutter/material.dart';
 import '../models/transaction_item.dart';
+import '../models/category_tag.dart';
 import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
 
 class HistoryScreen extends StatefulWidget {
   final String filterValue;
@@ -1529,8 +1612,313 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
+  // 0: 利用日基準, 1: 支払日基準
+  int _viewMode = 0;
+
+  // タブを表示するかどうか
+  bool _showTab = false;
+
+  // 現在表示中のカード情報
+  CategoryTag? _currentCardTag;
+  bool _isCardType = false;
+
+  final PageController _pageController = PageController(initialPage: 1000);
+  final SettingsRepository _settingsRepository = SettingsRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
+      _isCardType = true;
+    }
+    _loadCardInfo();
+  }
+
+  Future<void> _loadCardInfo() async {
+    if (_isCardType) {
+      final cards = await _settingsRepository.loadCardTags();
+      try {
+        final card = cards.firstWhere((c) => c.label == widget.filterValue);
+        if (mounted) {
+          setState(() {
+            _currentCardTag = card;
+            _showTab = card.closingDay != null;
+            if (!_showTab) {
+              _viewMode = 0;
+            }
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  void _showSetupDialog() {
+    // 現在の設定値を反映
+    bool isEnabled = _currentCardTag?.closingDay != null;
+    int closingDay = _currentCardTag?.closingDay ?? 99;
+    int paymentDay = _currentCardTag?.paymentDay ?? 27;
+    int paymentOffset = _currentCardTag?.paymentMonthOffset ?? 1;
+
+    List<DropdownMenuItem<int>> getDayItems() {
+      final items = List.generate(28, (i) => i + 1)
+          .map((i) => DropdownMenuItem(value: i, child: Text('$i日')))
+          .toList();
+      items.add(const DropdownMenuItem(value: 99, child: Text('末日')));
+      return items;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('カード設定'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('締め日・支払日を管理する'),
+                      ),
+                      Switch(
+                        value: isEnabled,
+                        onChanged: (val) =>
+                            setStateDialog(() => isEnabled = val),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (isEnabled) ...[
+                    const Text(
+                      '締め日と支払日を設定すると、\n「引き落とし予定」タブが表示されます。',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        const Text('締め: '),
+                        DropdownButton<int>(
+                          value: closingDay,
+                          items: getDayItems(),
+                          onChanged: (val) =>
+                              setStateDialog(() => closingDay = val!),
+                        ),
+                        const SizedBox(width: 15),
+                        const Text('払い: '),
+                        DropdownButton<int>(
+                          value: paymentDay,
+                          items: getDayItems(),
+                          onChanged: (val) =>
+                              setStateDialog(() => paymentDay = val!),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Text('支払月: '),
+                        DropdownButton<int>(
+                          value: paymentOffset,
+                          items: const [
+                            DropdownMenuItem(value: 1, child: Text('翌月')),
+                            DropdownMenuItem(value: 2, child: Text('翌々月')),
+                          ],
+                          onChanged: (val) =>
+                              setStateDialog(() => paymentOffset = val!),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    const Text(
+                      'PayPayやデビットカードなど、\n即時決済の場合はオフにしてください。',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('キャンセル'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await _saveCardSettings(isEnabled ? closingDay : null,
+                        isEnabled ? paymentDay : null, paymentOffset);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content:
+                                Text(isEnabled ? '設定を保存しました' : '設定を解除しました')),
+                      );
+                    }
+                  },
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _saveCardSettings(int? closing, int? payment, int offset) async {
+    if (_currentCardTag == null) return;
+
+    final cards = await _settingsRepository.loadCardTags();
+    final index = cards.indexWhere((c) => c.id == _currentCardTag!.id);
+
+    if (index != -1) {
+      final newTag = CategoryTag(
+        id: _currentCardTag!.id,
+        label: _currentCardTag!.label,
+        color: _currentCardTag!.color,
+        isCircle: _currentCardTag!.isCircle,
+        closingDay: closing,
+        paymentDay: payment,
+        paymentMonthOffset: offset,
+      );
+
+      cards[index] = newTag;
+      await _settingsRepository.saveCardTags(cards);
+
+      setState(() {
+        _currentCardTag = newTag;
+        _showTab = newTag.closingDay != null;
+        if (!_showTab) _viewMode = 0;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.filterValue),
+        actions: [
+          if (_isCardType)
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'カード設定',
+              onPressed: _showSetupDialog,
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (_showTab)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(
+                    value: 0,
+                    label: Text('利用履歴'),
+                    icon: Icon(Icons.shopping_bag_outlined),
+                  ),
+                  ButtonSegment(
+                    value: 1,
+                    label: Text('引き落とし予定'),
+                    icon: Icon(Icons.account_balance_wallet_outlined),
+                  ),
+                ],
+                selected: {_viewMode},
+                onSelectionChanged: (newSelection) {
+                  setState(() {
+                    _viewMode = newSelection.first;
+                  });
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: MaterialStateProperty.resolveWith<Color?>(
+                    (Set<MaterialState> states) {
+                      if (states.contains(MaterialState.selected)) {
+                        return widget.color?.withOpacity(0.2) ??
+                            Colors.blue.shade100;
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              itemBuilder: (context, index) {
+                final now = DateTime.now();
+                final targetDate =
+                    DateTime(now.year, now.month + (index - 1000));
+
+                return _MonthPage(
+                  year: targetDate.year,
+                  month: targetDate.month,
+                  filterValue: widget.filterValue,
+                  filterKey: widget.filterKey,
+                  color: widget.color,
+                  viewMode: _viewMode,
+                  onPrev: () {
+                    _pageController.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                  onNext: () {
+                    _pageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MonthPage extends StatefulWidget {
+  final int year;
+  final int month;
+  final String filterValue;
+  final String filterKey;
+  final Color? color;
+  final int viewMode;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+
+  const _MonthPage({
+    required this.year,
+    required this.month,
+    required this.filterValue,
+    required this.filterKey,
+    required this.color,
+    required this.viewMode,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  @override
+  State<_MonthPage> createState() => _MonthPageState();
+}
+
+class _MonthPageState extends State<_MonthPage> {
   List<TransactionItem> _history = [];
   final TransactionRepository _repository = TransactionRepository();
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -1538,96 +1926,254 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant _MonthPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.viewMode != widget.viewMode) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
+    if (!mounted) return;
+
     setState(() {
       _history = allItems.where((i) {
+        bool isTarget = false;
         if (widget.filterKey == 'expense') {
-          return i.expense == widget.filterValue;
-        }
-        if (widget.filterKey == 'payment') {
-          // 支払い方法フィルタの場合は、'現金'などの文字列と一致するかを見る
-          // ただし空文字で保存されたデータは、フィルタ一覧の「現金」と一致させたい場合の考慮が必要
-          // (今回はドロワーの「現金」がfilterValue='現金'で来るので、空文字データを対象にするか要検討だが
-          // シンプルに空文字データはフィルタ対象外、もしくは '現金' タップ時に空文字も拾うなどの対応ができる)
+          isTarget = i.expense == widget.filterValue;
+        } else if (widget.filterKey == 'payment') {
           if (widget.filterValue == '現金' && i.payment.isEmpty) {
-            return true;
+            isTarget = true;
+          } else {
+            isTarget = i.payment == widget.filterValue;
           }
-          return i.payment == widget.filterValue;
         }
-        return false;
+        if (!isTarget) return false;
+
+        if (widget.viewMode == 1) {
+          final targetDate = i.paymentDate ?? i.date;
+          return targetDate.year == widget.year &&
+              targetDate.month == widget.month;
+        } else {
+          return i.date.year == widget.year && i.date.month == widget.month;
+        }
       }).toList();
+      _isLoading = false;
     });
+  }
+
+  // 編集・削除ダイアログ
+  void _showEditDialog(TransactionItem item) {
+    final amountController =
+        TextEditingController(text: item.amount.toString());
+    final memoController = TextEditingController(text: item.memo); // メモ用
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('履歴の編集'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '金額'),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: memoController,
+                  decoration: const InputDecoration(labelText: 'メモ'),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                if (item.paymentDate != null)
+                  Text(
+                    '支払日: ${item.paymentDate!.year}/${item.paymentDate!.month}/${item.paymentDate!.day}',
+                    style: const TextStyle(
+                        color: Colors.orange,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await _repository.deleteTransaction(item.id);
+                if (context.mounted) Navigator.pop(context);
+                _load();
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('削除'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final newAmount = int.tryParse(amountController.text);
+                if (newAmount != null) {
+                  final newItem = item.copyWith(
+                    amount: newAmount,
+                    memo: memoController.text.trim(), // メモ更新
+                  );
+                  await _repository.updateTransaction(newItem);
+                  if (context.mounted) Navigator.pop(context);
+                  _load();
+                }
+              },
+              child: const Text('更新'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     int total = _history.fold(0, (s, i) => s + i.amount);
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.filterValue)),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            color: widget.color?.withOpacity(0.1) ?? Colors.blue.shade50,
-            child: Center(
-              child: Column(
+    final bgColor = widget.color?.withOpacity(0.1) ?? Colors.blue.shade50;
+    final fgColor = widget.color ?? Colors.black;
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+          color: bgColor,
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    widget.filterKey == 'expense' ? '費目累計' : '支払い累計',
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  IconButton(
+                    icon: Icon(Icons.chevron_left, color: fgColor),
+                    onPressed: widget.onPrev,
                   ),
                   Text(
-                    '¥ $total',
+                    '${widget.year}年 ${widget.month}月',
                     style: TextStyle(
-                      fontSize: 28,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: widget.color ?? Colors.black,
+                      color: fgColor,
                     ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.chevron_right, color: fgColor),
+                    onPressed: widget.onNext,
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 5),
+              Text(
+                widget.viewMode == 1
+                    ? '引き落とし予定額'
+                    : (widget.filterKey == 'expense' ? '月間支出計' : '月間利用額'),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              Text(
+                '¥ $total',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: fgColor,
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _history.length,
-              itemBuilder: (c, i) {
-                final item = _history[i];
-
-                String detail = "";
-                if (widget.filterKey == 'expense') {
-                  // 費目でフィルタ中 → 支払い方法を表示
-                  // ▼▼ 変更: 空文字やデフォルトなら表示しない ▼▼
-                  if (item.payment.isNotEmpty &&
-                      item.payment != 'デフォルト' &&
-                      item.payment != '現金') {
-                    detail = "  /  ${item.payment}";
-                  }
-                } else {
-                  // 支払いでフィルタ中 → 費目を表示
-                  if (item.expense != 'デフォルト') {
-                    detail = "  /  ${item.expense}";
-                  }
-                }
-
-                return ListTile(
-                  leading: Icon(
-                    widget.filterKey == 'payment' ? Icons.payment : Icons.label,
-                    color: widget.color,
+        ),
+        Expanded(
+          child: _history.isEmpty
+              ? Center(
+                  child: Text(
+                    "この月の履歴はありません",
+                    style: TextStyle(color: Colors.grey.shade400),
                   ),
-                  title: Text(
-                    '¥${item.amount}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text("${item.displayDate}$detail"),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  itemCount: _history.length,
+                  itemBuilder: (c, i) {
+                    final item = _history[i];
+                    String detail = "";
+
+                    if (widget.filterKey == 'expense') {
+                      if (item.payment.isNotEmpty &&
+                          item.payment != 'デフォルト' &&
+                          item.payment != '現金') {
+                        detail = "  /  ${item.payment}";
+                      }
+                    } else {
+                      if (item.expense != 'デフォルト') {
+                        detail = "  /  ${item.expense}";
+                      }
+                    }
+
+                    String dateInfo = item.displayDate;
+                    if (widget.viewMode == 1) {
+                      if (item.paymentDate != null) {
+                        dateInfo = "利用: ${item.date.month}/${item.date.day}";
+                      } else {
+                        dateInfo =
+                            "利用: ${item.date.month}/${item.date.day} (未確定)";
+                      }
+                    }
+
+                    return ListTile(
+                      leading: Icon(
+                        widget.filterKey == 'payment'
+                            ? Icons.payment
+                            : Icons.label,
+                        color: widget.color,
+                      ),
+                      title: Text(
+                        '¥${item.amount}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      // サブタイトルをColumnにして、メモがある場合のみ表示
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("$dateInfo$detail"),
+                          if (item.memo.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                item.memo,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 12,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                      onTap: () => _showEditDialog(item),
+                      trailing:
+                          const Icon(Icons.edit, size: 16, color: Colors.grey),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }
@@ -1907,12 +2453,18 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  int _dataVersion = 0;
 
   @override
   void initState() {
     super.initState();
-    // タブは固定で3つ（入力、レポート、ガチャ）
     _tabController = TabController(length: 3, vsync: this);
+
+    _tabController.addListener(() {
+      if (!context.mounted) return;
+      // タブ移動時も念のためフォーカスを外す
+      FocusScope.of(context).unfocus();
+    });
   }
 
   @override
@@ -1921,23 +2473,33 @@ class _MainScreenState extends State<MainScreen>
     super.dispose();
   }
 
+  void _refreshData() {
+    setState(() {
+      _dataVersion++;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Kakeibo')),
-      drawer: const AppDrawer(), // お気に入り更新のコールバックは不要になったので引数なし
+      onDrawerChanged: (isOpened) {
+        // ドロワー開閉時にフォーカスを外す
+        // これにより、ドロワーが閉じた後に勝手にキーボードが戻ってくるのを防ぐ
+        FocusScope.of(context).unfocus();
+      },
+      drawer: AppDrawer(onDataChanged: _refreshData),
       body: TabBarView(
         controller: _tabController,
-        // スワイプで移動できないようにしたければ physics: NeverScrollableScrollPhysics() を追加
-        children: const [
+        children: [
           // 1. 入力タブ
-          InputTab(),
+          InputTab(dataVersion: _dataVersion),
 
           // 2. レポートタブ
-          MonthlyHistoryScreen(),
+          const MonthlyHistoryScreen(),
 
           // 3. ガチャタブ
-          GachaScreen(),
+          const GachaScreen(),
         ],
       ),
       bottomNavigationBar: Material(
@@ -1946,7 +2508,7 @@ class _MainScreenState extends State<MainScreen>
         child: SafeArea(
           child: TabBar(
             controller: _tabController,
-            isScrollable: false, // falseにすると等間隔に広がる
+            isScrollable: false,
             indicatorColor: Colors.blue,
             labelColor: Colors.blue,
             unselectedLabelColor: Colors.grey,
@@ -1977,6 +2539,7 @@ class _MainScreenState extends State<MainScreen>
 --- FILE: lib/screens/input_tab.dart ---
 ```dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 数値入力制限用
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -1985,17 +2548,26 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
-import '../widgets/custom_numeric_keyboard.dart';
+
+// ▼▼ 変更点: ファイルレベルの変数で「初回実行済みか」を管理 ▼▼
+// クラスの外にあるので、InputTab画面が何度作り直されても
+// アプリが起動している間はこの値が保持されます。
+bool _hasInitialFocusExecuted = false;
 
 class InputTab extends StatefulWidget {
-  const InputTab({super.key});
+  final int dataVersion;
+  const InputTab({super.key, this.dataVersion = 0});
 
   @override
   State<InputTab> createState() => _InputTabState();
 }
 
-class _InputTabState extends State<InputTab> {
-  String _amountStr = "0";
+class _InputTabState extends State<InputTab>
+    with AutomaticKeepAliveClientMixin {
+  final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _memoController = TextEditingController();
+  final FocusNode _amountFocusNode = FocusNode();
+
   final TransactionRepository _repository = TransactionRepository();
   final GachaRepository _gachaRepository = GachaRepository();
   final SettingsRepository _settingsRepository = SettingsRepository();
@@ -2011,9 +2583,41 @@ class _InputTabState extends State<InputTab> {
   int _selectedCardIndex = 0;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _loadAllData();
+
+    // ▼▼ 変更点: シンプルな初回判定 ▼▼
+    // アプリ起動後、まだ一度も実行していなければ実行する。
+    // ドロワー操作などでこの画面が再生成（initState）されても、
+    // 変数はtrueになっているので、二度と中には入らない。
+    if (!_hasInitialFocusExecuted) {
+      _hasInitialFocusExecuted = true; // 即座にフラグを立てる
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _amountFocusNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _memoController.dispose();
+    _amountFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant InputTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dataVersion != widget.dataVersion) {
+      _loadAllData();
+    }
   }
 
   Future<void> _loadAllData() async {
@@ -2066,36 +2670,6 @@ class _InputTabState extends State<InputTab> {
     await prefs.setInt('last_card_index', index);
   }
 
-  void _onNumberTap(String key) {
-    if (key == '.') return;
-    setState(() {
-      if (_amountStr == "0") {
-        if (key == "00") return;
-        _amountStr = key;
-      } else {
-        if (_amountStr.length < 9) {
-          _amountStr += key;
-        }
-      }
-    });
-  }
-
-  void _onBackspace() {
-    setState(() {
-      if (_amountStr.length > 1) {
-        _amountStr = _amountStr.substring(0, _amountStr.length - 1);
-      } else {
-        _amountStr = "0";
-      }
-    });
-  }
-
-  void _onClear() {
-    setState(() {
-      _amountStr = "0";
-    });
-  }
-
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -2109,27 +2683,55 @@ class _InputTabState extends State<InputTab> {
   Future<void> _saveData() async {
     if (_isLoading) return;
 
-    final int amount = int.tryParse(_amountStr) ?? 0;
+    final String amountText = _amountController.text;
+    final int amount = int.tryParse(amountText) ?? 0;
+
     if (amount == 0) {
       _showSnackBar('金額を入力してください', Colors.redAccent);
       return;
     }
 
-    // ▼▼ 変更: カテゴリが無い場合のエラーメッセージ ▼▼
     if (_expenseList.isEmpty) {
       _showSnackBar('カテゴリがありません。設定から追加してください', Colors.redAccent);
       return;
     }
 
-    // 念のためインデックス範囲チェック
     if (_selectedExpenseIndex >= _expenseList.length) {
       _selectedExpenseIndex = 0;
     }
 
-    // ▼▼ 変更: カードOFFなら空文字で保存 ▼▼
-    final String paymentMethod = _isCardPayment
-        ? (_cardList.isNotEmpty ? _cardList[_selectedCardIndex].label : 'カード')
-        : '';
+    // --- 支払い方法と支払日の計算 ---
+    String paymentMethod = '';
+    DateTime? paymentDate;
+
+    if (_isCardPayment) {
+      if (_cardList.isNotEmpty) {
+        final card = _cardList[_selectedCardIndex];
+        paymentMethod = card.label;
+
+        if (card.closingDay != null && card.paymentDay != null) {
+          int monthsToAdd = card.paymentMonthOffset;
+          if (card.closingDay != 99) {
+            if (_selectedDate.day > card.closingDay!) {
+              monthsToAdd++;
+            }
+          }
+          int targetYear = _selectedDate.year;
+          int targetMonth = _selectedDate.month + monthsToAdd;
+          int targetDay = card.paymentDay!;
+
+          if (targetDay == 99) {
+            paymentDate = DateTime(targetYear, targetMonth + 1, 0);
+          } else {
+            paymentDate = DateTime(targetYear, targetMonth, targetDay);
+          }
+        }
+      } else {
+        paymentMethod = 'カード';
+      }
+    } else {
+      paymentMethod = '';
+    }
 
     final String expenseLabel = _expenseList[_selectedExpenseIndex].label;
 
@@ -2145,6 +2747,8 @@ class _InputTabState extends State<InputTab> {
           DateTime.now().hour,
           DateTime.now().minute,
         ),
+        paymentDate: paymentDate,
+        memo: _memoController.text.trim(),
       );
 
       await _repository.addTransaction(newItem);
@@ -2158,13 +2762,18 @@ class _InputTabState extends State<InputTab> {
       await prefs.setBool('last_is_card', _isCardPayment);
 
       setState(() {
-        _amountStr = "0";
+        _amountController.clear();
+        _memoController.clear();
       });
 
-      if (newCredits % 3 == 0) {
-        _showSnackBar('ガチャが回せます！', Colors.orange);
-      } else {
-        _showSnackBar('保存しました', Colors.blue);
+      if (mounted) {
+        String msg = '保存しました';
+        if (newCredits % 3 == 0) {
+          msg = 'ガチャが回せます！';
+        } else if (paymentDate != null) {
+          msg = '保存しました（支払日: ${paymentDate!.month}/${paymentDate!.day}）';
+        }
+        _showSnackBar(msg, newCredits % 3 == 0 ? Colors.orange : Colors.blue);
       }
     } catch (e) {
       _showSnackBar('保存エラー: $e', Colors.red);
@@ -2184,160 +2793,242 @@ class _InputTabState extends State<InputTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const SizedBox(height: 5),
-                GestureDetector(
-                  onTap: _pickDate,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.blue.shade100),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.calendar_today,
-                            size: 16, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        Text(
-                          "$dateStr (${_getDayOfWeek(_selectedDate)})",
-                          style: const TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
+    // 画面全体をタップでキーボード閉じる（背景タップ時のみ）
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: _pickDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.calendar_today,
+                              size: 14, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            "$dateStr (${_getDayOfWeek(_selectedDate)})",
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      const Text(
+                        "¥",
+                        style: TextStyle(
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black54),
+                      ),
+                      const SizedBox(width: 10),
+                      IntrinsicWidth(
+                        child: TextField(
+                          controller: _amountController,
+                          focusNode: _amountFocusNode,
+                          autofocus: false, // 常にfalse、initStateで制御
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                            height: 1.0,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: '0',
+                            hintStyle: TextStyle(color: Colors.black12),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _saveData(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 240,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: TextField(
+                      controller: _memoController,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        hintText: 'メモを入力...',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                        prefixIcon:
+                            Icon(Icons.edit, size: 14, color: Colors.grey),
+                        prefixIconConstraints: BoxConstraints(minWidth: 24),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                      textInputAction: TextInputAction.done,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  CategorySelector(
+                    tags: _expenseList,
+                    selectedIndex: _selectedExpenseIndex,
+                    onSelected: (i) => _changeExpenseIndex(i),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom > 0
+                  ? 0
+                  : MediaQuery.of(context).padding.bottom,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, -2),
+                )
+              ],
+              border: Border(
+                top: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Text(
+                          "カード",
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _isCardPayment ? Colors.blue : Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Transform.scale(
+                          scale: 0.8,
+                          child: Switch(
+                            value: _isCardPayment,
+                            activeColor: Colors.blue,
+                            onChanged: (bool value) =>
+                                _toggleCardPayment(value),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _isCardPayment && _cardList.isNotEmpty
+                              ? ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  itemCount: _cardList.length,
+                                  itemBuilder: (context, index) {
+                                    final tag = _cardList[index];
+                                    final isSelected =
+                                        _selectedCardIndex == index;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: ChoiceChip(
+                                        label: Text(tag.label),
+                                        labelStyle: TextStyle(
+                                          fontSize: 11,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : Colors.black87,
+                                          fontWeight: isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                        selected: isSelected,
+                                        showCheckmark: false,
+                                        selectedColor: tag.color,
+                                        backgroundColor: Colors.grey.shade100,
+                                        onSelected: (_) =>
+                                            _changeCardIndex(index),
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                    );
+                                  },
+                                )
+                              : const SizedBox.shrink(),
                         ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                FittedBox(
-                  child: Text(
-                    "¥ $_amountStr",
-                    style: const TextStyle(
-                      fontSize: 56,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: _saveData,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 0),
                     ),
+                    child: const Text('保存',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
-                ),
-                const SizedBox(height: 10),
-                CategorySelector(
-                  tags: _expenseList,
-                  selectedIndex: _selectedExpenseIndex,
-                  rowCount: 2,
-                  onSelected: (i) => _changeExpenseIndex(i),
-                ),
-                const SizedBox(height: 10),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        Container(
-          width: double.infinity,
-          height: 56,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, -2),
-              )
-            ],
-            border: Border(
-              top: BorderSide(color: Colors.grey.shade200),
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: _isCardPayment && _cardList.isNotEmpty
-                    ? ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        itemCount: _cardList.length,
-                        itemBuilder: (context, index) {
-                          final tag = _cardList[index];
-                          final isSelected = _selectedCardIndex == index;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(
-                                tag.label,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                              selected: isSelected,
-                              showCheckmark: false,
-                              selectedColor: tag.color,
-                              backgroundColor: Colors.grey.shade100,
-                              onSelected: (_) => _changeCardIndex(index),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          );
-                        },
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 16, left: 8),
-                child: Row(
-                  children: [
-                    Text(
-                      "カード",
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: _isCardPayment ? Colors.blue : Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Transform.scale(
-                      scale: 0.8,
-                      child: Switch(
-                        value: _isCardPayment,
-                        activeColor: Colors.blue,
-                        onChanged: (bool value) => _toggleCardPayment(value),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        CustomNumericKeyboard(
-          onNumberTap: _onNumberTap,
-          onBackspace: _onBackspace,
-          onClear: _onClear,
-          onDone: _saveData,
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -2419,6 +3110,75 @@ class _MonthPageState extends State<MonthPage> {
     }
   }
 
+  // 編集・削除ダイアログ
+  void _showEditDialog(TransactionItem item) {
+    final amountController =
+        TextEditingController(text: item.amount.toString());
+    final memoController = TextEditingController(text: item.memo); // メモ用
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('履歴の編集'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '金額'),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: memoController,
+                  decoration: const InputDecoration(labelText: 'メモ'),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '利用日: ${item.date.year}/${item.date.month}/${item.date.day}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await _repository.deleteTransaction(item.id);
+                if (context.mounted) Navigator.pop(context);
+                _load();
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('削除'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final newAmount = int.tryParse(amountController.text);
+                if (newAmount != null) {
+                  final newItem = item.copyWith(
+                    amount: newAmount,
+                    memo: memoController.text.trim(), // メモ更新
+                  );
+                  await _repository.updateTransaction(newItem);
+                  if (context.mounted) Navigator.pop(context);
+                  _load();
+                }
+              },
+              child: const Text('更新'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     int total = _history.fold(0, (s, i) => s + i.amount);
@@ -2435,13 +3195,12 @@ class _MonthPageState extends State<MonthPage> {
         Expanded(
           child: ListView.builder(
             itemCount: _history.length,
+            padding: const EdgeInsets.only(bottom: 20),
             itemBuilder: (c, i) {
               final item = _history[i];
-              // 費目は必ずあるはずだが念のため
               final expenseStr =
                   item.expense == 'デフォルト' ? '' : ' (${item.expense})';
 
-              // ▼▼ 変更: 空文字または「デフォルト」なら表示しない ▼▼
               final paymentStr = (item.payment.isEmpty ||
                       item.payment == 'デフォルト' ||
                       item.payment == '現金')
@@ -2450,7 +3209,28 @@ class _MonthPageState extends State<MonthPage> {
 
               return ListTile(
                 title: Text('¥${item.amount}$expenseStr'),
-                subtitle: Text('$paymentStr${item.displayDate}'),
+                // サブタイトルをColumnにして、メモがある場合のみ表示
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$paymentStr${item.displayDate}'),
+                    if (item.memo.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          item.memo,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+                trailing: const Icon(Icons.edit, size: 16, color: Colors.grey),
+                onTap: () => _showEditDialog(item),
               );
             },
           ),
@@ -2612,7 +3392,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     await _repository.saveCardTags(_cardList);
   }
 
-  // 追加・編集ダイアログ
   void _showEditDialog({
     required bool isExpense,
     CategoryTag? item,
@@ -2620,9 +3399,14 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   }) {
     final TextEditingController nameController =
         TextEditingController(text: item?.label ?? '');
-    // デフォルト色
     Color selectedColor =
         item?.color ?? (isExpense ? Colors.orange : Colors.blue);
+
+    // --- カード設定用の変数 ---
+    bool isClosingMode = (item?.closingDay != null); // 締め日設定があるか
+    int closingDay = item?.closingDay ?? 99; // デフォルト末日
+    int paymentDay = item?.paymentDay ?? 27; // デフォルト27日
+    int paymentOffset = item?.paymentMonthOffset ?? 1; // デフォルト翌月
 
     // 簡易カラーパレット
     final List<Color> colors = [
@@ -2648,6 +3432,15 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       Colors.black,
     ];
 
+    // 日付選択用のドロップダウンアイテム生成
+    List<DropdownMenuItem<int>> getDayItems() {
+      final items = List.generate(28, (i) => i + 1)
+          .map((i) => DropdownMenuItem(value: i, child: Text('$i日')))
+          .toList();
+      items.add(const DropdownMenuItem(value: 99, child: Text('末日')));
+      return items;
+    }
+
     showDialog(
       context: context,
       builder: (context) {
@@ -2658,6 +3451,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextField(
                       controller: nameController,
@@ -2687,6 +3481,65 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                         );
                       }).toList(),
                     ),
+
+                    // --- カードの場合のみ、締め日設定を表示 ---
+                    if (!isExpense) ...[
+                      const Divider(height: 30),
+                      Row(
+                        children: [
+                          const Text('締め日・支払日設定',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          Switch(
+                            value: isClosingMode,
+                            onChanged: (val) {
+                              setStateDialog(() => isClosingMode = val);
+                            },
+                          ),
+                        ],
+                      ),
+                      if (isClosingMode) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Text('締め: '),
+                            DropdownButton<int>(
+                              value: closingDay,
+                              items: getDayItems(),
+                              onChanged: (val) =>
+                                  setStateDialog(() => closingDay = val!),
+                            ),
+                            const SizedBox(width: 15),
+                            const Text('払い: '),
+                            DropdownButton<int>(
+                              value: paymentDay,
+                              items: getDayItems(),
+                              onChanged: (val) =>
+                                  setStateDialog(() => paymentDay = val!),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Text('支払月: '),
+                            DropdownButton<int>(
+                              value: paymentOffset,
+                              items: const [
+                                DropdownMenuItem(value: 1, child: Text('翌月')),
+                                DropdownMenuItem(value: 2, child: Text('翌々月')),
+                              ],
+                              onChanged: (val) =>
+                                  setStateDialog(() => paymentOffset = val!),
+                            ),
+                          ],
+                        ),
+                        const Text(
+                          '※設定すると入力時に支払日が自動計算されます',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ],
                   ],
                 ),
               ),
@@ -2700,10 +3553,16 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                     if (nameController.text.isEmpty) return;
 
                     final newTag = CategoryTag(
-                      id: item?.id, // IDを引き継ぐ（新規なら自動生成）
+                      id: item?.id,
                       label: nameController.text,
                       color: selectedColor,
-                      isCircle: isExpense, // 費目は丸、カードは四角(Chip)
+                      isCircle: isExpense,
+                      // 締め日モードOFFならnullを保存
+                      closingDay:
+                          (!isExpense && isClosingMode) ? closingDay : null,
+                      paymentDay:
+                          (!isExpense && isClosingMode) ? paymentDay : null,
+                      paymentMonthOffset: paymentOffset,
                     );
 
                     setState(() {
@@ -2797,6 +3656,15 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       },
       itemBuilder: (context, index) {
         final item = list[index];
+        // 設定情報の要約を表示
+        String subtitle = "";
+        if (!isExpense && item.closingDay != null) {
+          final closeStr = item.closingDay == 99 ? "末" : "${item.closingDay}日";
+          final payStr = item.paymentDay == 99 ? "末" : "${item.paymentDay}日";
+          final offsetStr = item.paymentMonthOffset == 1 ? "翌月" : "翌々月";
+          subtitle = "締め: $closeStr / 払い: $offsetStr$payStr";
+        }
+
         return ListTile(
           key: ValueKey(item.id),
           leading: Container(
@@ -2809,6 +3677,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
             ),
           ),
           title: Text(item.label),
+          subtitle: subtitle.isNotEmpty
+              ? Text(subtitle, style: const TextStyle(fontSize: 11))
+              : null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2959,47 +3830,104 @@ import '../models/category_tag.dart';
 class CategorySelector extends StatelessWidget {
   final List<CategoryTag> tags;
   final int? selectedIndex;
-  final int rowCount;
   final Function(int) onSelected;
 
   const CategorySelector({
     super.key,
     required this.tags,
     required this.selectedIndex,
-    required this.rowCount,
     required this.onSelected,
   });
 
+  IconData _getIconForLabel(String label) {
+    if (label.contains('食')) return Icons.restaurant;
+    if (label.contains('日用')) return Icons.shopping_bag;
+    if (label.contains('交際')) return Icons.wine_bar;
+    if (label.contains('交通') || label.contains('電')) return Icons.train;
+    if (label.contains('趣味') || label.contains('推'))
+      return Icons.sports_esports;
+    if (label.contains('美容') || label.contains('服')) return Icons.checkroom;
+    if (label.contains('医療') || label.contains('薬'))
+      return Icons.medical_services;
+    if (label.contains('教育') || label.contains('本')) return Icons.menu_book;
+    if (label.contains('光熱') || label.contains('家賃') || label.contains('住'))
+      return Icons.home;
+    if (label.contains('通信') || label.contains('スマホ')) return Icons.wifi;
+    if (label.contains('車') || label.contains('ガソリン'))
+      return Icons.directions_car;
+    if (label.contains('給料')) return Icons.attach_money;
+    return Icons.category;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: rowCount == 2 ? 100 : 50,
-      child: GridView.builder(
-        scrollDirection: Axis.horizontal,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: rowCount,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 6,
-          childAspectRatio: rowCount == 2 ? 0.45 : 0.4,
-        ),
-        itemCount: tags.length,
-        itemBuilder: (context, index) {
-          final tag = tags[index];
-          final isSelected = selectedIndex == index;
-          return ChoiceChip(
-            label: Text(tag.label, style: const TextStyle(fontSize: 12)),
-            selected: isSelected,
-            onSelected: (_) => onSelected(index),
-            shape: tag.isCircle
-                ? const StadiumBorder()
-                : RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-            selectedColor: tag.color.withOpacity(0.3),
-            visualDensity: VisualDensity.compact,
-          );
-        },
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      // 余白を少し詰める
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 8, // 間隔を少し詰める
+        crossAxisSpacing: 8,
+        // ▼▼ 変更点: 横長比率を上げて、ボタンの高さを低くする (1.5 -> 2.0) ▼▼
+        // これにより、同じ画面スペースにより多くの行（ボタン）が表示されます。
+        childAspectRatio: 2.0,
       ),
+      itemCount: tags.length,
+      itemBuilder: (context, index) {
+        final tag = tags[index];
+        final isSelected = selectedIndex == index;
+        final icon = _getIconForLabel(tag.label);
+
+        return Material(
+          color: isSelected ? tag.color : Colors.white,
+          elevation: isSelected ? 2 : 1, // 影を少し控えめに
+          // MaterialのborderRadius指定は削除し、shapeのみで管理
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10), // 角丸も少し控えめに
+            side: BorderSide(
+              color:
+                  isSelected ? Colors.transparent : tag.color.withOpacity(0.3),
+              width: 1.5,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => onSelected(index),
+            child: Padding(
+              // 内部の余白も詰める
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Row(
+                // ColumnではなくRow（横並び）または、コンパクトなColumnにする手もあるが、
+                // 今回は「アイコン＋文字」が見やすいコンパクトなColumnを維持しつつ調整
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    color: isSelected ? Colors.white : tag.color,
+                    size: 20, // アイコンを少し小さく
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        tag.label,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.black87,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -3017,9 +3945,10 @@ import '../screens/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
 
 class AppDrawer extends StatefulWidget {
-  final VoidCallback? onFavoritesUpdated;
+  // MainScreenから渡される更新用コールバック
+  final VoidCallback? onDataChanged;
 
-  const AppDrawer({super.key, this.onFavoritesUpdated});
+  const AppDrawer({super.key, this.onDataChanged});
 
   @override
   State<AppDrawer> createState() => _AppDrawerState();
@@ -3084,7 +4013,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                // 現金は手動で追加 (const を削除)
+                // 現金は手動で追加
                 _buildFilterTile(context,
                     CategoryTag(label: '現金', color: Colors.grey), 'payment'),
                 // 動的なカードリストを展開
@@ -3108,7 +4037,8 @@ class _AppDrawerState extends State<AppDrawer> {
               );
               // 戻ってきたらタグ情報を再読み込み
               _loadTags();
-              widget.onFavoritesUpdated?.call();
+              // MainScreenにも通知して、InputTabなどを更新させる
+              widget.onDataChanged?.call();
             },
           ),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 10),
@@ -3151,155 +4081,6 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         );
       },
-    );
-  }
-}
-
-```
-
-
---- FILE: lib/widgets/custom_numeric_keyboard.dart ---
-```dart
-import 'package:flutter/material.dart';
-
-class CustomNumericKeyboard extends StatelessWidget {
-  final Function(String) onNumberTap;
-  final VoidCallback onBackspace;
-  final VoidCallback onClear;
-  final VoidCallback onDone;
-
-  const CustomNumericKeyboard({
-    super.key,
-    required this.onNumberTap,
-    required this.onBackspace,
-    required this.onClear,
-    required this.onDone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // ▼▼ 変更: 280 -> 230 に変更してコンパクト化 ▼▼
-    const double height = 230;
-
-    return Container(
-      height: height,
-      color: Colors.grey.shade100,
-      padding: const EdgeInsets.all(6),
-      child: Row(
-        // ... 中身は変更なし ...
-        children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              children: [
-                _buildRow(['7', '8', '9']),
-                _buildRow(['4', '5', '6']),
-                _buildRow(['1', '2', '3']),
-                _buildRow(['0', '00', '.']),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 1,
-            child: Column(
-              children: [
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.backspace,
-                    color: Colors.blueGrey.shade200,
-                    onTap: onBackspace,
-                    onLongPress: onClear,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Expanded(
-                  flex: 2,
-                  child: _buildActionButton(
-                    icon: Icons.check,
-                    label: '決定',
-                    color: Colors.blue,
-                    textColor: Colors.white,
-                    onTap: onDone,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ... _buildRow などは変更なし ...
-  Widget _buildRow(List<String> keys) {
-    return Expanded(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: keys.map((key) {
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: ElevatedButton(
-                onPressed: () => onNumberTap(key),
-                style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  backgroundColor: Colors.white,
-                  surfaceTintColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  elevation: 1,
-                ),
-                child: Text(
-                  key,
-                  style: const TextStyle(fontSize: 24, color: Colors.black87),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    IconData? icon,
-    String? label,
-    required Color color,
-    Color textColor = Colors.black,
-    required VoidCallback onTap,
-    VoidCallback? onLongPress,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: onTap,
-        onLongPress: onLongPress,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-          padding: EdgeInsets.zero,
-          elevation: 1,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null)
-              Icon(icon, color: textColor, size: 24), // アイコン少し小さく
-            if (label != null)
-              Text(
-                label,
-                style: TextStyle(
-                    color: textColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14), // フォント少し小さく
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

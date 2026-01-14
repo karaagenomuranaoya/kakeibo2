@@ -68,16 +68,13 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const Divider(),
                 _buildSectionHeader("費目別 履歴"),
-                // 動的リストを展開
                 ..._expenseList.map(
                   (tag) => _buildFilterTile(context, tag, 'expense'),
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                // 現金は手動で追加
                 _buildFilterTile(context,
                     CategoryTag(label: '現金', color: Colors.grey), 'payment'),
-                // 動的なカードリストを展開
                 ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
@@ -96,9 +93,9 @@ class _AppDrawerState extends State<AppDrawer> {
                   builder: (context) => const SettingsScreen(),
                 ),
               );
-              // 戻ってきたらタグ情報を再読み込み
+              // 設定から戻ってきたらタグ情報を再読み込み
               _loadTags();
-              // MainScreenにも通知して、InputTabなどを更新させる
+              // MainScreenにも通知
               widget.onDataChanged?.call();
             },
           ),

@@ -13,14 +13,20 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  // データ更新を管理するためのバージョン番号
   int _dataVersion = 0;
 
   @override
   void initState() {
     super.initState();
-    // タブは固定で3つ（入力、レポート、ガチャ）
     _tabController = TabController(length: 3, vsync: this);
+
+    _tabController.addListener(() {
+      if (!context.mounted) return;
+      // タブ移動時はキーボードを閉じる（これはUXとして自然なので残す）
+      if (_tabController.indexIsChanging) {
+        FocusScope.of(context).unfocus();
+      }
+    });
   }
 
   @override
@@ -29,7 +35,6 @@ class _MainScreenState extends State<MainScreen>
     super.dispose();
   }
 
-  // 設定から戻ってきた時などにデータを更新する
   void _refreshData() {
     setState(() {
       _dataVersion++;
@@ -40,22 +45,31 @@ class _MainScreenState extends State<MainScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Kakeibo')),
-      // 設定変更後にデータを更新するためのコールバックを渡す
+      // onDrawerChangedの処理は不要になったため削除
+      // ドロワーを開いたからといって、フォーカスをどうこうする必要はない。
+      // なぜなら、そもそも「勝手にフォーカスが当たる機能」を捨てたから。
       drawer: AppDrawer(onDataChanged: _refreshData),
-      body: TabBarView(
-        controller: _tabController,
-        // スワイプで移動できないようにしたければ physics: NeverScrollableScrollPhysics() を追加
-        children: [
-          // 1. 入力タブ
-          // dataVersionを渡すことで、変更があったときに再読み込みさせる
-          InputTab(dataVersion: _dataVersion),
 
-          // 2. レポートタブ
-          const MonthlyHistoryScreen(),
+      // 画面全体のタップでキーボードを閉じるのは便利な機能なので残す
+      body: GestureDetector(
+        onTap: () {
+          FocusScope.of(context).unfocus();
+        },
+        behavior: HitTestBehavior.translucent,
+        child: TabBarView(
+          controller: _tabController,
+          physics: const ClampingScrollPhysics(),
+          children: [
+            // 1. 入力タブ
+            InputTab(dataVersion: _dataVersion),
 
-          // 3. ガチャタブ
-          const GachaScreen(),
-        ],
+            // 2. レポートタブ
+            const MonthlyHistoryScreen(),
+
+            // 3. ガチャタブ
+            const GachaScreen(),
+          ],
+        ),
       ),
       bottomNavigationBar: Material(
         color: Colors.white,
@@ -63,10 +77,11 @@ class _MainScreenState extends State<MainScreen>
         child: SafeArea(
           child: TabBar(
             controller: _tabController,
-            isScrollable: false, // falseにすると等間隔に広がる
+            isScrollable: false,
             indicatorColor: Colors.blue,
             labelColor: Colors.blue,
             unselectedLabelColor: Colors.grey,
+            onTap: (_) => FocusScope.of(context).unfocus(),
             tabs: const [
               Tab(
                 icon: Icon(Icons.edit),
