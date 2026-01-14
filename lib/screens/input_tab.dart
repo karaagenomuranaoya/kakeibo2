@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // TextInputFormatter等は不要になるがSystemChannelsで使うかも
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -8,8 +8,8 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
-import '../widgets/custom_number_keyboard.dart'; // 追加
-import '../utils/simple_calculator.dart'; // 追加
+import '../widgets/custom_number_keyboard.dart';
+import '../utils/simple_calculator.dart';
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -73,14 +73,12 @@ class _InputTabState extends State<InputTab>
 
   @override
   void didChangeMetrics() {
-    // 画面サイズ変更（OSキーボード開閉など）の検知が必要ならここに記述
     super.didChangeMetrics();
   }
 
   void _onAmountFocusChange() {
     if (_amountFocusNode.hasFocus) {
       // 金額入力にフォーカスが当たったら、ラグなしでカスタムキーボードを表示
-      // OSキーボードは readOnly: true により抑制される
       setState(() {
         _showCustomKeyboard = true;
       });
@@ -135,8 +133,6 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _selectedExpenseIndex = index;
     });
-    // カテゴリ選択時はキーボードを閉じないほうが連続入力しやすいが、
-    // 要件やUXに応じて閉じることも可能。ここでは維持する。
     await prefs.setInt('last_expense_index', index);
   }
 
@@ -179,8 +175,9 @@ class _InputTabState extends State<InputTab>
     });
   }
 
-  // OKボタンまたは保存ボタン押下時の処理
-  Future<void> _saveData() async {
+  // 保存処理
+  // keepKeyboard: true にすると、保存後にキーボードを閉じずに連続入力を受け付ける
+  Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
 
     // 計算を実行して確定させる
@@ -212,8 +209,10 @@ class _InputTabState extends State<InputTab>
       _selectedExpenseIndex = 0;
     }
 
-    // キーボードを閉じる
-    _closeKeyboard();
+    // キーボードを閉じるかどうか
+    if (!keepKeyboard) {
+      _closeKeyboard();
+    }
 
     String paymentMethod = '';
     DateTime? paymentDate;
@@ -277,8 +276,13 @@ class _InputTabState extends State<InputTab>
 
       setState(() {
         _amountController.clear();
-        _memoController.clear();
+        _memoController.clear(); // メモもクリア
       });
+
+      // 連続入力のためにフォーカスを維持/再取得
+      if (keepKeyboard) {
+        _amountFocusNode.requestFocus();
+      }
 
       if (mounted) {
         String msg = '保存しました';
@@ -315,10 +319,8 @@ class _InputTabState extends State<InputTab>
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    // 画面構成: Column (コンテンツ + キーボードエリア)
-    // メモ入力時はOSキーボードが出るため、ScaffoldのresizeToAvoidBottomInsetが効く前提
     return GestureDetector(
-      onTap: _closeKeyboard, // 背景タップで閉じる
+      onTap: _closeKeyboard,
       behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
@@ -333,7 +335,9 @@ class _InputTabState extends State<InputTab>
                     onTap: _pickDate,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 6),
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(20),
@@ -342,8 +346,11 @@ class _InputTabState extends State<InputTab>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.calendar_today,
-                              size: 14, color: Colors.blue),
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 14,
+                            color: Colors.blue,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             "$dateStr (${_getDayOfWeek(_selectedDate)})",
@@ -372,18 +379,18 @@ class _InputTabState extends State<InputTab>
                         const Text(
                           "¥",
                           style: TextStyle(
-                              fontSize: 56,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black54),
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black54,
+                          ),
                         ),
                         const SizedBox(width: 10),
                         IntrinsicWidth(
                           child: TextField(
                             controller: _amountController,
                             focusNode: _amountFocusNode,
-                            // 重要: OSのキーボードを出さない設定
-                            readOnly: true,
-                            showCursor: true, // カーソルは出す
+                            readOnly: true, // OSキーボード抑制
+                            showCursor: true,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 56,
@@ -423,13 +430,15 @@ class _InputTabState extends State<InputTab>
                         contentPadding: EdgeInsets.symmetric(vertical: 8),
                         border: InputBorder.none,
                         hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                        prefixIcon:
-                            Icon(Icons.edit, size: 14, color: Colors.grey),
+                        prefixIcon: Icon(
+                          Icons.edit,
+                          size: 14,
+                          color: Colors.grey,
+                        ),
                         prefixIconConstraints: BoxConstraints(minWidth: 24),
                       ),
                       style: const TextStyle(fontSize: 13),
                       textInputAction: TextInputAction.done,
-                      // 完了時はフォーカスを外す（結果キーボードも閉じる）
                       onSubmitted: (_) => _memoFocusNode.unfocus(),
                     ),
                   ),
@@ -443,28 +452,19 @@ class _InputTabState extends State<InputTab>
                   ),
                   const SizedBox(height: 20),
 
-                  // カード選択など
-                  // 保存ボタンもここにあるが、キーボードが出ているときは隠れる場合がある
-                  // キーボードの「OK」でも保存できるので問題ない
                   _buildBottomControlPanel(context),
                 ],
               ),
             ),
           ),
 
-          // カスタムキーボード領域
-          // VisibilityやOffstageを使うより、heightアニメーションの方が自然だが
-          // ラグを0にするために常駐させておくアプローチもある。
-          // ここではシンプルに表示状態に応じてWidgetを出す。
-          // _showCustomKeyboardがtrueのときだけ表示。
           if (_showCustomKeyboard)
             CustomNumberKeyboard(
               controller: _amountController,
-              onSubmitted: _saveData,
+              // 次へボタンで呼び出すときはキーボードを維持
+              onSubmitted: () => _saveData(keepKeyboard: true),
               onClose: _closeKeyboard,
-              onChanged: (val) {
-                // 値が変わった瞬間の処理が必要ならここに書く
-              },
+              onChanged: (val) {},
             ),
         ],
       ),
@@ -483,7 +483,7 @@ class _InputTabState extends State<InputTab>
             color: Colors.black.withOpacity(0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
-          )
+          ),
         ],
         border: Border.all(color: Colors.grey.shade200),
       ),
@@ -551,7 +551,7 @@ class _InputTabState extends State<InputTab>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _saveData,
+              onPressed: () => _saveData(keepKeyboard: false),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
@@ -561,8 +561,10 @@ class _InputTabState extends State<InputTab>
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              child: const Text('保存',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text(
+                '保存',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ),
         ],

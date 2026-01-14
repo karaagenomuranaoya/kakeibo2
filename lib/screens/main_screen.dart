@@ -83,14 +83,8 @@ class _MainScreenState extends State<MainScreen>
             unselectedLabelColor: Colors.grey,
             onTap: (_) => FocusScope.of(context).unfocus(),
             tabs: const [
-              Tab(
-                icon: Icon(Icons.edit),
-                text: '入力',
-              ),
-              Tab(
-                icon: Icon(Icons.calendar_month),
-                text: 'レポート',
-              ),
+              Tab(icon: Icon(Icons.edit), text: '入力'),
+              Tab(icon: Icon(Icons.calendar_month), text: 'レポート'),
               Tab(
                 icon: Icon(Icons.star, color: Colors.orange),
                 text: 'ガチャ',

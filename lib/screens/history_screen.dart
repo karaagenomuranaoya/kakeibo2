@@ -8,12 +8,16 @@ class HistoryScreen extends StatefulWidget {
   final String filterValue;
   final String filterKey; // 'expense' or 'payment'
   final Color? color;
+  final int? year; // 追加: 年フィルタ (nullなら全期間)
+  final int? month; // 追加: 月フィルタ
 
   const HistoryScreen({
     super.key,
     required this.filterValue,
     required this.filterKey,
     this.color,
+    this.year,
+    this.month,
   });
 
   @override
@@ -62,16 +66,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _showSetupDialog() {
-    // 現在の設定値を反映
+    // カード設定ダイアログ（省略せず実装）
     bool isEnabled = _currentCardTag?.closingDay != null;
     int closingDay = _currentCardTag?.closingDay ?? 99;
     int paymentDay = _currentCardTag?.paymentDay ?? 27;
     int paymentOffset = _currentCardTag?.paymentMonthOffset ?? 1;
 
     List<DropdownMenuItem<int>> getDayItems() {
-      final items = List.generate(28, (i) => i + 1)
-          .map((i) => DropdownMenuItem(value: i, child: Text('$i日')))
-          .toList();
+      final items = List.generate(
+        28,
+        (i) => i + 1,
+      ).map((i) => DropdownMenuItem(value: i, child: Text('$i日'))).toList();
       items.add(const DropdownMenuItem(value: 99, child: Text('末日')));
       return items;
     }
@@ -89,9 +94,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 children: [
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text('締め日・支払日を管理する'),
-                      ),
+                      const Expanded(child: Text('締め日・支払日を管理する')),
                       Switch(
                         value: isEnabled,
                         onChanged: (val) =>
@@ -155,14 +158,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    await _saveCardSettings(isEnabled ? closingDay : null,
-                        isEnabled ? paymentDay : null, paymentOffset);
+                    await _saveCardSettings(
+                      isEnabled ? closingDay : null,
+                      isEnabled ? paymentDay : null,
+                      paymentOffset,
+                    );
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                            content:
-                                Text(isEnabled ? '設定を保存しました' : '設定を解除しました')),
+                          content: Text(isEnabled ? '設定を保存しました' : '設定を解除しました'),
+                        ),
                       );
                     }
                   },
@@ -178,7 +184,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _saveCardSettings(int? closing, int? payment, int offset) async {
     if (_currentCardTag == null) return;
-
     final cards = await _settingsRepository.loadCardTags();
     final index = cards.indexWhere((c) => c.id == _currentCardTag!.id);
 
@@ -212,9 +217,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 年月指定がある場合、タイトルに年月を表示
+    String title = widget.filterValue;
+    if (widget.year != null && widget.month != null) {
+      title = "${widget.year}/${widget.month} $title";
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.filterValue),
+        title: Text(title),
         actions: [
           if (_isCardType)
             IconButton(
@@ -250,48 +261,66 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 },
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
-                  backgroundColor: MaterialStateProperty.resolveWith<Color?>(
-                    (Set<MaterialState> states) {
-                      if (states.contains(MaterialState.selected)) {
-                        return widget.color?.withOpacity(0.2) ??
-                            Colors.blue.shade100;
-                      }
-                      return null;
-                    },
-                  ),
+                  backgroundColor: MaterialStateProperty.resolveWith<Color?>((
+                    Set<MaterialState> states,
+                  ) {
+                    if (states.contains(MaterialState.selected)) {
+                      return widget.color?.withOpacity(0.2) ??
+                          Colors.blue.shade100;
+                    }
+                    return null;
+                  }),
                 ),
               ),
             ),
+          // 年月指定がある場合はPageViewを使わず単一ページ表示
+          // 年月指定がない場合（全期間モード）はPageViewで月送り可能にする
           Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemBuilder: (context, index) {
-                final now = DateTime.now();
-                final targetDate =
-                    DateTime(now.year, now.month + (index - 1000));
+            child: (widget.year != null && widget.month != null)
+                ? _MonthPage(
+                    year: widget.year!,
+                    month: widget.month!,
+                    filterValue: widget.filterValue,
+                    filterKey: widget.filterKey,
+                    color: widget.color,
+                    viewMode: _viewMode,
+                    // 年月固定時は前次ボタン不要
+                    onPrev: () {},
+                    onNext: () {},
+                    showNavButtons: false,
+                  )
+                : PageView.builder(
+                    controller: _pageController,
+                    itemBuilder: (context, index) {
+                      final now = DateTime.now();
+                      final targetDate = DateTime(
+                        now.year,
+                        now.month + (index - 1000),
+                      );
 
-                return _MonthPage(
-                  year: targetDate.year,
-                  month: targetDate.month,
-                  filterValue: widget.filterValue,
-                  filterKey: widget.filterKey,
-                  color: widget.color,
-                  viewMode: _viewMode,
-                  onPrev: () {
-                    _pageController.previousPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  onNext: () {
-                    _pageController.nextPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                );
-              },
-            ),
+                      return _MonthPage(
+                        year: targetDate.year,
+                        month: targetDate.month,
+                        filterValue: widget.filterValue,
+                        filterKey: widget.filterKey,
+                        color: widget.color,
+                        viewMode: _viewMode,
+                        onPrev: () {
+                          _pageController.previousPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        onNext: () {
+                          _pageController.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        showNavButtons: true,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -308,6 +337,7 @@ class _MonthPage extends StatefulWidget {
   final int viewMode;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final bool showNavButtons;
 
   const _MonthPage({
     required this.year,
@@ -318,6 +348,7 @@ class _MonthPage extends StatefulWidget {
     required this.viewMode,
     required this.onPrev,
     required this.onNext,
+    this.showNavButtons = true,
   });
 
   @override
@@ -338,7 +369,9 @@ class _MonthPageState extends State<_MonthPage> {
   @override
   void didUpdateWidget(covariant _MonthPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.viewMode != widget.viewMode) {
+    if (oldWidget.viewMode != widget.viewMode ||
+        oldWidget.year != widget.year ||
+        oldWidget.month != widget.month) {
       _load();
     }
   }
@@ -369,15 +402,18 @@ class _MonthPageState extends State<_MonthPage> {
           return i.date.year == widget.year && i.date.month == widget.month;
         }
       }).toList();
+      // 日付順ソート
+      _history.sort((a, b) => b.date.compareTo(a.date));
       _isLoading = false;
     });
   }
 
-  // 編集・削除ダイアログ
   void _showEditDialog(TransactionItem item) {
-    final amountController =
-        TextEditingController(text: item.amount.toString());
-    final memoController = TextEditingController(text: item.memo); // メモ用
+    // 編集ダイアログ（既存と同じロジック）
+    final amountController = TextEditingController(
+      text: item.amount.toString(),
+    );
+    final memoController = TextEditingController(text: item.memo);
 
     showDialog(
       context: context,
@@ -408,9 +444,10 @@ class _MonthPageState extends State<_MonthPage> {
                   Text(
                     '支払日: ${item.paymentDate!.year}/${item.paymentDate!.month}/${item.paymentDate!.day}',
                     style: const TextStyle(
-                        color: Colors.orange,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
+                      color: Colors.orange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
               ],
             ),
@@ -435,7 +472,7 @@ class _MonthPageState extends State<_MonthPage> {
                 if (newAmount != null) {
                   final newItem = item.copyWith(
                     amount: newAmount,
-                    memo: memoController.text.trim(), // メモ更新
+                    memo: memoController.text.trim(),
                   );
                   await _repository.updateTransaction(newItem);
                   if (context.mounted) Navigator.pop(context);
@@ -471,10 +508,13 @@ class _MonthPageState extends State<_MonthPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    icon: Icon(Icons.chevron_left, color: fgColor),
-                    onPressed: widget.onPrev,
-                  ),
+                  if (widget.showNavButtons)
+                    IconButton(
+                      icon: Icon(Icons.chevron_left, color: fgColor),
+                      onPressed: widget.onPrev,
+                    )
+                  else
+                    const SizedBox(width: 48),
                   Text(
                     '${widget.year}年 ${widget.month}月',
                     style: TextStyle(
@@ -483,10 +523,13 @@ class _MonthPageState extends State<_MonthPage> {
                       color: fgColor,
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(Icons.chevron_right, color: fgColor),
-                    onPressed: widget.onNext,
-                  ),
+                  if (widget.showNavButtons)
+                    IconButton(
+                      icon: Icon(Icons.chevron_right, color: fgColor),
+                      onPressed: widget.onNext,
+                    )
+                  else
+                    const SizedBox(width: 48),
                 ],
               ),
               const SizedBox(height: 5),
@@ -555,7 +598,6 @@ class _MonthPageState extends State<_MonthPage> {
                         '¥${item.amount}',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      // サブタイトルをColumnにして、メモがある場合のみ表示
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -576,8 +618,11 @@ class _MonthPageState extends State<_MonthPage> {
                         ],
                       ),
                       onTap: () => _showEditDialog(item),
-                      trailing:
-                          const Icon(Icons.edit, size: 16, color: Colors.grey),
+                      trailing: const Icon(
+                        Icons.edit,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
                     );
                   },
                 ),

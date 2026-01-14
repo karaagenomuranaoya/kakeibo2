@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart'; // グラフ用
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
+import 'summary_detail_screen.dart'; // 詳細画面
 
 class MonthlyHistoryScreen extends StatefulWidget {
   const MonthlyHistoryScreen({super.key});
@@ -10,12 +12,17 @@ class MonthlyHistoryScreen extends StatefulWidget {
   State<MonthlyHistoryScreen> createState() => _MonthlyHistoryScreenState();
 }
 
-class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
+class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
+    with SingleTickerProviderStateMixin {
   final PageController _pageController = PageController(initialPage: 1000);
+  late TabController _tabController;
 
   // AppBarに表示するための現在の年月
   late int _currentYear;
   late int _currentMonth;
+
+  // 現在のタブインデックス (0:カレンダー, 1:グラフ)
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
@@ -23,6 +30,22 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
     final now = DateTime.now();
     _currentYear = now.year;
     _currentMonth = now.month;
+
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _pageController.dispose();
+    super.dispose();
   }
 
   // ページ切り替え時にAppBarのタイトルを更新
@@ -41,11 +64,17 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // 中央に配置してカレンダー感を出す
         centerTitle: true,
         title: Text(
           '$_currentYear年 $_currentMonth月',
           style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'カレンダー', icon: Icon(Icons.calendar_month)),
+            Tab(text: '円グラフ', icon: Icon(Icons.pie_chart)),
+          ],
         ),
       ),
       body: PageView.builder(
@@ -56,7 +85,11 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
             DateTime.now().year,
             DateTime.now().month + (index - 1000),
           );
-          return MonthPage(year: d.year, month: d.month);
+          return MonthPage(
+            year: d.year,
+            month: d.month,
+            tabIndex: _currentTabIndex,
+          );
         },
       ),
     );
@@ -66,7 +99,15 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
 class MonthPage extends StatefulWidget {
   final int year;
   final int month;
-  const MonthPage({super.key, required this.year, required this.month});
+  final int tabIndex; // 0: カレンダー, 1: グラフ
+
+  const MonthPage({
+    super.key,
+    required this.year,
+    required this.month,
+    required this.tabIndex,
+  });
+
   @override
   State<MonthPage> createState() => _MonthPageState();
 }
@@ -103,7 +144,6 @@ class _MonthPageState extends State<MonthPage> {
     }
   }
 
-  // 指定した日付へスクロールする
   void _scrollToDate(int day) {
     final key = _dayKeys[day];
     if (key != null && key.currentContext != null) {
@@ -111,17 +151,16 @@ class _MonthPageState extends State<MonthPage> {
         key.currentContext!,
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
-        alignment: 0.0, // 0.0 = 画面上部に合わせる
+        alignment: 0.0,
       );
-    } else {
-      // その日のデータがない場合などのフォールバック（何もしない、またはトースト表示など）
     }
   }
 
   // 編集・削除ダイアログ
   void _showEditDialog(TransactionItem item) {
-    final amountController =
-        TextEditingController(text: item.amount.toString());
+    final amountController = TextEditingController(
+      text: item.amount.toString(),
+    );
     final memoController = TextEditingController(text: item.memo);
 
     showDialog(
@@ -191,106 +230,106 @@ class _MonthPageState extends State<MonthPage> {
   Widget build(BuildContext context) {
     int total = _history.fold(0, (s, i) => s + i.amount);
 
-    // リストを1ヶ月程度の量ならSingleChildScrollViewで丸ごと描画する方式に変更
-    // これにより Scrollable.ensureVisible が容易に使えるようになる
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 50),
       child: Column(
         children: [
-          _buildSummaryCard(total),
-          _buildCalendar(),
+          // 共通: 合計カード（タップで詳細へ）
+          _buildTotalCard(total),
+
+          // タブによって表示を切り替え
+          // アニメーション付きで切り替えるとリッチに見える
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: widget.tabIndex == 0
+                ? _buildCalendarView()
+                : _buildGraphView(),
+          ),
+
           const Divider(height: 1),
+
+          // 共通: 日別トランザクションリスト
+          // 「どちらのタブでも下には同じように履歴が並んでいる」という要望に対応
           _buildTransactionList(),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryCard(int total) {
-    // 費目ごとの集計
-    final expenseSums = <String, int>{};
-    for (var item in _history) {
-      expenseSums[item.expense] =
-          (expenseSums[item.expense] ?? 0) + item.amount;
-    }
-
-    return Container(
-      width: double.infinity,
+  Widget _buildTotalCard(int total) {
+    return Material(
       color: Colors.blue.shade50,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-      child: Column(
-        children: [
-          const Text(
-            '合計支出',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          Text(
-            '¥ $total',
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
+      child: InkWell(
+        onTap: () {
+          // 合計タップで詳細画面へ遷移
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  SummaryDetailScreen(year: widget.year, month: widget.month),
             ),
-          ),
-          if (expenseSums.isNotEmpty) ...[
-            const SizedBox(height: 15),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 12,
-              runSpacing: 4,
-              children: expenseSums.entries.map((e) {
-                if (e.key == 'デフォルト') return const SizedBox.shrink();
-
-                Color color = Colors.grey;
-                try {
-                  color =
-                      _expenseList.firstWhere((t) => t.label == e.key).color;
-                } catch (_) {}
-
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
+          );
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+          child: Stack(
+            children: [
+              Center(
+                child: Column(
                   children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration:
-                          BoxDecoration(color: color, shape: BoxShape.circle),
+                    const Text(
+                      '合計支出',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${e.key} ${e.value}',
-                      style:
-                          const TextStyle(fontSize: 12, color: Colors.black54),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '¥ $total',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 6, left: 5),
+                          child: Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Text(
+                      'タップして詳細を見る',
+                      style: TextStyle(fontSize: 10, color: Colors.blueGrey),
                     ),
                   ],
-                );
-              }).toList(),
-            ),
-          ],
-        ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildCalendar() {
-    // カレンダー構築用の計算
+  // --- カレンダー表示 ---
+  Widget _buildCalendarView() {
     final daysInMonth = DateTime(widget.year, widget.month + 1, 0).day;
-    final firstWeekday =
-        DateTime(widget.year, widget.month, 1).weekday; // 1(Mon)..7(Sun)
-
-    // 日曜始まりにするためのオフセット計算 (日曜=0, 月曜=1...とするには % 7)
-    // DateTime.weekdayは 月=1, ..., 日=7
-    // カレンダーの左上(日曜)からの空白セル数
+    final firstWeekday = DateTime(widget.year, widget.month, 1).weekday;
     final int emptyCount = (firstWeekday == 7) ? 0 : firstWeekday;
-
-    // 支出がある日をセットに
     final hasDataDays = _history.map((e) => e.date.day).toSet();
 
-    return Padding(
+    return Container(
+      color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         children: [
-          // 曜日ヘッダー
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: const [
@@ -304,7 +343,6 @@ class _MonthPageState extends State<MonthPage> {
             ],
           ),
           const SizedBox(height: 5),
-          // 日付グリッド
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -338,8 +376,9 @@ class _MonthPageState extends State<MonthPage> {
                         '$day',
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight:
-                              hasData ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: hasData
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                           color: hasData ? Colors.black87 : Colors.grey,
                         ),
                       ),
@@ -364,6 +403,80 @@ class _MonthPageState extends State<MonthPage> {
     );
   }
 
+  // --- グラフ表示 ---
+  Widget _buildGraphView() {
+    int total = _history.fold(0, (s, i) => s + i.amount);
+
+    // 費目ごとの集計
+    final expenseSums = <String, int>{};
+    for (var item in _history) {
+      expenseSums[item.expense] =
+          (expenseSums[item.expense] ?? 0) + item.amount;
+    }
+    final sortedEntries = expenseSums.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    List<PieChartSectionData> sections = [];
+    if (total > 0) {
+      sections = sortedEntries.map((e) {
+        final percentage = (e.value / total) * 100;
+        Color color = Colors.grey;
+        try {
+          color = _expenseList.firstWhere((t) => t.label == e.key).color;
+        } catch (_) {}
+        return PieChartSectionData(
+          color: color,
+          value: e.value.toDouble(),
+          title: '${percentage.toStringAsFixed(0)}%',
+          radius: 50,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        );
+      }).toList();
+    } else {
+      sections = [
+        PieChartSectionData(
+          color: Colors.grey.shade200,
+          value: 1,
+          title: '',
+          radius: 50,
+        ),
+      ];
+    }
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      // カレンダーと高さを近づけると切り替え時のガタつきが減る
+      constraints: const BoxConstraints(minHeight: 300),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 200,
+            child: PieChart(
+              PieChartData(
+                sections: sections,
+                centerSpaceRadius: 40,
+                sectionsSpace: 2,
+                borderData: FlBorderData(show: false),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            "※費目ごとの詳細は合計金額をタップ",
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- トランザクションリスト ---
   Widget _buildTransactionList() {
     if (_history.isEmpty) {
       return const Padding(
@@ -372,7 +485,6 @@ class _MonthPageState extends State<MonthPage> {
       );
     }
 
-    // データを日付ごとにグルーピング
     final grouped = <int, List<TransactionItem>>{};
     for (var item in _history) {
       if (!grouped.containsKey(item.date.day)) {
@@ -381,35 +493,31 @@ class _MonthPageState extends State<MonthPage> {
       grouped[item.date.day]!.add(item);
     }
 
-    // 日付の降順キーリスト
-    final sortedDays = grouped.keys.toList()
-      ..sort((a, b) => b.compareTo(a)); // 新しい日付順
+    final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: sortedDays.map((day) {
         final items = grouped[day]!;
-        // 日付ごとのGlobalKeyを生成・登録
         if (!_dayKeys.containsKey(day)) {
           _dayKeys[day] = GlobalKey();
         }
 
-        // その日の合計
         final dayTotal = items.fold(0, (sum, i) => sum + i.amount);
-        // 曜日取得
         final dateObj = items.first.date;
         const weekDays = ["月", "火", "水", "木", "金", "土", "日"];
         final weekStr = weekDays[dateObj.weekday - 1];
 
         return Container(
-          key: _dayKeys[day], // ここにキーをセットしてジャンプ先に指定
+          key: _dayKeys[day],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 日付ヘッダー
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 color: Colors.grey.shade100,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -431,18 +539,20 @@ class _MonthPageState extends State<MonthPage> {
                   ],
                 ),
               ),
-              // その日の明細リスト
               ...items.map((item) {
-                final paymentStr = (item.payment.isEmpty ||
+                final paymentStr =
+                    (item.payment.isEmpty ||
                         item.payment == 'デフォルト' ||
                         item.payment == '現金')
                     ? ''
                     : '${item.payment}';
 
                 return ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                  dense: true, // 少しコンパクトに
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 0,
+                  ),
+                  dense: true,
                   leading: _buildCategoryIcon(item.expense),
                   title: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -464,9 +574,10 @@ class _MonthPageState extends State<MonthPage> {
                       ? Padding(
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
-                            [paymentStr, item.memo]
-                                .where((s) => s.isNotEmpty)
-                                .join(' / '),
+                            [
+                              paymentStr,
+                              item.memo,
+                            ].where((s) => s.isNotEmpty).join(' / '),
                             style: const TextStyle(fontSize: 11),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -492,10 +603,7 @@ class _MonthPageState extends State<MonthPage> {
     return Container(
       width: 10,
       height: 10,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
