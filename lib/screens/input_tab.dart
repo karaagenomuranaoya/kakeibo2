@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 数値入力制限用
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -7,7 +8,7 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
-import '../widgets/custom_numeric_keyboard.dart';
+// CustomNumericKeyboard のインポートは削除
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -18,7 +19,8 @@ class InputTab extends StatefulWidget {
 }
 
 class _InputTabState extends State<InputTab> {
-  String _amountStr = "0";
+  // 金額もTextEditingControllerで管理
+  final TextEditingController _amountController = TextEditingController();
   final TextEditingController _memoController = TextEditingController();
 
   final TransactionRepository _repository = TransactionRepository();
@@ -43,6 +45,7 @@ class _InputTabState extends State<InputTab> {
 
   @override
   void dispose() {
+    _amountController.dispose();
     _memoController.dispose();
     super.dispose();
   }
@@ -105,36 +108,6 @@ class _InputTabState extends State<InputTab> {
     await prefs.setInt('last_card_index', index);
   }
 
-  void _onNumberTap(String key) {
-    if (key == '.') return;
-    setState(() {
-      if (_amountStr == "0") {
-        if (key == "00") return;
-        _amountStr = key;
-      } else {
-        if (_amountStr.length < 9) {
-          _amountStr += key;
-        }
-      }
-    });
-  }
-
-  void _onBackspace() {
-    setState(() {
-      if (_amountStr.length > 1) {
-        _amountStr = _amountStr.substring(0, _amountStr.length - 1);
-      } else {
-        _amountStr = "0";
-      }
-    });
-  }
-
-  void _onClear() {
-    setState(() {
-      _amountStr = "0";
-    });
-  }
-
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -148,7 +121,9 @@ class _InputTabState extends State<InputTab> {
   Future<void> _saveData() async {
     if (_isLoading) return;
 
-    final int amount = int.tryParse(_amountStr) ?? 0;
+    final String amountText = _amountController.text;
+    final int amount = int.tryParse(amountText) ?? 0;
+
     if (amount == 0) {
       _showSnackBar('金額を入力してください', Colors.redAccent);
       return;
@@ -224,11 +199,15 @@ class _InputTabState extends State<InputTab> {
       }
       await prefs.setBool('last_is_card', _isCardPayment);
 
+      // フォームクリア
       setState(() {
-        _amountStr = "0";
+        _amountController.clear();
         _memoController.clear();
       });
-      // キーボードを閉じる
+
+      // 保存したらキーボードは閉じる？ 連続入力するなら開けたまま？
+      // 今回は「Quick」なので、次の入力に備えてもいいが、完了感も大事。
+      // いったん閉じる挙動にします。
       if (mounted) FocusScope.of(context).unfocus();
 
       if (mounted) {
@@ -264,18 +243,15 @@ class _InputTabState extends State<InputTab> {
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    // ▼▼ 追加: GestureDetectorで画面全体を包み、タップでフォーカスを外す ▼▼
+    // 画面全体をタップでキーボード閉じる
     return GestureDetector(
-      onTap: () {
-        // 余白をタップしたらキーボードを閉じる
-        FocusScope.of(context).unfocus();
-      },
-      behavior: HitTestBehavior.opaque, // 空白部分のタップも検知する
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -308,25 +284,58 @@ class _InputTabState extends State<InputTab> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 15),
 
-                  // 2. 金額
-                  FittedBox(
-                    child: Text(
-                      "¥ $_amountStr",
-                      style: const TextStyle(
-                        fontSize: 44,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                        height: 1.0,
+                  // 2. 金額入力 (TextField化)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      const Text(
+                        "¥",
+                        style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black54),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      IntrinsicWidth(
+                        child: TextField(
+                          controller: _amountController,
+                          // 自動でキーボードを開く
+                          autofocus: true,
+                          keyboardType: TextInputType.number,
+                          // 数字のみ許可
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                            height: 1.0,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: '0',
+                            hintStyle: TextStyle(color: Colors.black12),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          // エンターキーで保存する場合
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _saveData(),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 10),
 
                   // 3. メモ入力欄
                   Container(
-                    width: 200,
+                    width: 240,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
@@ -347,13 +356,10 @@ class _InputTabState extends State<InputTab> {
                       ),
                       style: const TextStyle(fontSize: 13),
                       textInputAction: TextInputAction.done,
-                      onSubmitted: (_) {
-                        FocusScope.of(context).unfocus();
-                      },
                     ),
                   ),
 
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 20),
 
                   // 4. カテゴリ選択
                   CategorySelector(
@@ -362,16 +368,23 @@ class _InputTabState extends State<InputTab> {
                     onSelected: (i) => _changeExpenseIndex(i),
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
           ),
 
-          // 固定フッター (カード選択バー)
+          // 固定フッター (カード選択 + 保存ボタン)
           Container(
             width: double.infinity,
-            height: 50,
+            padding: EdgeInsets.only(
+              // キーボードが出ている時は、その上に表示されるようにpadding調整
+              // ScaffoldがresizeToAvoidBottomInset: true (デフォルト) なので、
+              // 基本的には底に張り付くが、安全のためにSafeArea考慮
+              bottom: MediaQuery.of(context).viewInsets.bottom > 0
+                  ? 0
+                  : MediaQuery.of(context).padding.bottom,
+            ),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
@@ -385,79 +398,96 @@ class _InputTabState extends State<InputTab> {
                 top: BorderSide(color: Colors.grey.shade200),
               ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _isCardPayment && _cardList.isNotEmpty
-                      ? ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          itemCount: _cardList.length,
-                          itemBuilder: (context, index) {
-                            final tag = _cardList[index];
-                            final isSelected = _selectedCardIndex == index;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(
-                                  tag.label,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : Colors.black87,
-                                    fontWeight: isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                                  ),
-                                ),
-                                selected: isSelected,
-                                showCheckmark: false,
-                                selectedColor: tag.color,
-                                backgroundColor: Colors.grey.shade100,
-                                onSelected: (_) => _changeCardIndex(index),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                            );
-                          },
-                        )
-                      : const SizedBox.shrink(),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 16, left: 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        "カード",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _isCardPayment ? Colors.blue : Colors.grey,
+            child: Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  // カード選択エリア
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Text(
+                          "カード",
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _isCardPayment ? Colors.blue : Colors.grey,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 5),
-                      Transform.scale(
-                        scale: 0.8,
-                        child: Switch(
-                          value: _isCardPayment,
-                          activeColor: Colors.blue,
-                          onChanged: (bool value) => _toggleCardPayment(value),
+                        const SizedBox(width: 5),
+                        Transform.scale(
+                          scale: 0.8,
+                          child: Switch(
+                            value: _isCardPayment,
+                            activeColor: Colors.blue,
+                            onChanged: (bool value) =>
+                                _toggleCardPayment(value),
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        // カード一覧（横スクロール）
+                        Expanded(
+                          child: _isCardPayment && _cardList.isNotEmpty
+                              ? ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  itemCount: _cardList.length,
+                                  itemBuilder: (context, index) {
+                                    final tag = _cardList[index];
+                                    final isSelected =
+                                        _selectedCardIndex == index;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: ChoiceChip(
+                                        label: Text(tag.label),
+                                        labelStyle: TextStyle(
+                                          fontSize: 11,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : Colors.black87,
+                                          fontWeight: isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                        selected: isSelected,
+                                        showCheckmark: false,
+                                        selectedColor: tag.color,
+                                        backgroundColor: Colors.grey.shade100,
+                                        onSelected: (_) =>
+                                            _changeCardIndex(index),
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                    );
+                                  },
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
 
-          // テンキー
-          CustomNumericKeyboard(
-            onNumberTap: _onNumberTap,
-            onBackspace: _onBackspace,
-            onClear: _onClear,
-            onDone: _saveData,
+                  // 保存ボタン
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: _saveData,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 0),
+                    ),
+                    child: const Text('保存',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
