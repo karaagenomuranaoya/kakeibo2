@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // TextInputFormatter等は不要になるがSystemChannelsで使うかも
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -8,6 +8,8 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
+import '../widgets/custom_number_keyboard.dart'; // 追加
+import '../utils/simple_calculator.dart'; // 追加
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -18,11 +20,12 @@ class InputTab extends StatefulWidget {
 }
 
 class _InputTabState extends State<InputTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _memoController = TextEditingController();
-  // FocusNodeは管理し続けるが、自動制御はしない
+
   final FocusNode _amountFocusNode = FocusNode();
+  final FocusNode _memoFocusNode = FocusNode();
 
   final TransactionRepository _repository = TransactionRepository();
   final GachaRepository _gachaRepository = GachaRepository();
@@ -38,23 +41,59 @@ class _InputTabState extends State<InputTab>
   bool _isCardPayment = false;
   int _selectedCardIndex = 0;
 
+  // カスタムキーボードの表示状態
+  bool _showCustomKeyboard = false;
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadAllData();
-    // ここにあった「初回のみフォーカス」のロジックは全削除しました。
-    // アプリ起動時はキーボードが出ない「クリーンな状態」で始まります。
+
+    // フォーカス制御リスナー
+    _amountFocusNode.addListener(_onAmountFocusChange);
+    _memoFocusNode.addListener(_onMemoFocusChange);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _amountFocusNode.removeListener(_onAmountFocusChange);
+    _memoFocusNode.removeListener(_onMemoFocusChange);
+
     _amountController.dispose();
     _memoController.dispose();
     _amountFocusNode.dispose();
+    _memoFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // 画面サイズ変更（OSキーボード開閉など）の検知が必要ならここに記述
+    super.didChangeMetrics();
+  }
+
+  void _onAmountFocusChange() {
+    if (_amountFocusNode.hasFocus) {
+      // 金額入力にフォーカスが当たったら、ラグなしでカスタムキーボードを表示
+      // OSキーボードは readOnly: true により抑制される
+      setState(() {
+        _showCustomKeyboard = true;
+      });
+    }
+  }
+
+  void _onMemoFocusChange() {
+    if (_memoFocusNode.hasFocus) {
+      // メモ入力にフォーカスが当たったら、カスタムキーボードを即座に隠す
+      setState(() {
+        _showCustomKeyboard = false;
+      });
+    }
   }
 
   @override
@@ -96,8 +135,8 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _selectedExpenseIndex = index;
     });
-    // カテゴリを変えても入力継続したい場合もあるので、unfocusは強制しない
-    // もし閉じたければ FocusScope.of(context).unfocus(); を入れてください
+    // カテゴリ選択時はキーボードを閉じないほうが連続入力しやすいが、
+    // 要件やUXに応じて閉じることも可能。ここでは維持する。
     await prefs.setInt('last_expense_index', index);
   }
 
@@ -106,7 +145,8 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _isCardPayment = value;
     });
-    FocusScope.of(context).unfocus();
+    // カード切り替え時はフォーカスを外す（キーボード閉じる）
+    _closeKeyboard();
     await prefs.setBool('last_is_card', value);
   }
 
@@ -115,12 +155,12 @@ class _InputTabState extends State<InputTab>
     setState(() {
       _selectedCardIndex = index;
     });
-    FocusScope.of(context).unfocus();
+    _closeKeyboard();
     await prefs.setInt('last_card_index', index);
   }
 
   Future<void> _pickDate() async {
-    FocusScope.of(context).unfocus();
+    _closeKeyboard();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -130,14 +170,33 @@ class _InputTabState extends State<InputTab>
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
+  // キーボードを閉じる処理
+  void _closeKeyboard() {
+    _amountFocusNode.unfocus();
+    _memoFocusNode.unfocus();
+    setState(() {
+      _showCustomKeyboard = false;
+    });
+  }
+
+  // OKボタンまたは保存ボタン押下時の処理
   Future<void> _saveData() async {
     if (_isLoading) return;
 
-    // 保存時はキーボードを閉じる
-    FocusScope.of(context).unfocus();
+    // 計算を実行して確定させる
+    final rawText = _amountController.text;
+    final calculatedText = SimpleCalculator.calculate(rawText);
 
-    final String amountText = _amountController.text;
-    final int amount = int.tryParse(amountText) ?? 0;
+    // 計算結果が空、あるいは0の場合は保存しない
+    if (calculatedText.isEmpty || calculatedText == "0") {
+      _showSnackBar('金額を入力してください', Colors.redAccent);
+      return;
+    }
+
+    // コントローラーの値を計算済みの値に更新
+    _amountController.text = calculatedText;
+
+    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
 
     if (amount == 0) {
       _showSnackBar('金額を入力してください', Colors.redAccent);
@@ -152,6 +211,9 @@ class _InputTabState extends State<InputTab>
     if (_selectedExpenseIndex >= _expenseList.length) {
       _selectedExpenseIndex = 0;
     }
+
+    // キーボードを閉じる
+    _closeKeyboard();
 
     String paymentMethod = '';
     DateTime? paymentDate;
@@ -253,9 +315,10 @@ class _InputTabState extends State<InputTab>
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    // 背景タップでキーボードを閉じる
+    // 画面構成: Column (コンテンツ + キーボードエリア)
+    // メモ入力時はOSキーボードが出るため、ScaffoldのresizeToAvoidBottomInsetが効く前提
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
+      onTap: _closeKeyboard, // 背景タップで閉じる
       behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
@@ -297,9 +360,7 @@ class _InputTabState extends State<InputTab>
                   const SizedBox(height: 15),
 
                   // 金額入力部分
-                  // タップすればキーボードが出る、という当たり前の実装に戻す
                   GestureDetector(
-                    // IntrinsicWidth等をタップした時の判定を広げるため
                     onTap: () {
                       _amountFocusNode.requestFocus();
                     },
@@ -320,12 +381,9 @@ class _InputTabState extends State<InputTab>
                           child: TextField(
                             controller: _amountController,
                             focusNode: _amountFocusNode,
-                            // ここをfalseにするのが重要
-                            autofocus: false,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly
-                            ],
+                            // 重要: OSのキーボードを出さない設定
+                            readOnly: true,
+                            showCursor: true, // カーソルは出す
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 56,
@@ -340,14 +398,14 @@ class _InputTabState extends State<InputTab>
                               isDense: true,
                               contentPadding: EdgeInsets.zero,
                             ),
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _saveData(),
                           ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 10),
+
+                  // メモ入力
                   Container(
                     width: 240,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -357,6 +415,7 @@ class _InputTabState extends State<InputTab>
                     ),
                     child: TextField(
                       controller: _memoController,
+                      focusNode: _memoFocusNode,
                       textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'メモを入力...',
@@ -370,126 +429,140 @@ class _InputTabState extends State<InputTab>
                       ),
                       style: const TextStyle(fontSize: 13),
                       textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                      // 完了時はフォーカスを外す（結果キーボードも閉じる）
+                      onSubmitted: (_) => _memoFocusNode.unfocus(),
                     ),
                   ),
                   const SizedBox(height: 20),
+
+                  // カテゴリ選択
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: (i) => _changeExpenseIndex(i),
                   ),
                   const SizedBox(height: 20),
+
+                  // カード選択など
+                  // 保存ボタンもここにあるが、キーボードが出ているときは隠れる場合がある
+                  // キーボードの「OK」でも保存できるので問題ない
+                  _buildBottomControlPanel(context),
                 ],
               ),
             ),
           ),
-          // 下部のアクションボタン
-          Container(
+
+          // カスタムキーボード領域
+          // VisibilityやOffstageを使うより、heightアニメーションの方が自然だが
+          // ラグを0にするために常駐させておくアプローチもある。
+          // ここではシンプルに表示状態に応じてWidgetを出す。
+          // _showCustomKeyboardがtrueのときだけ表示。
+          if (_showCustomKeyboard)
+            CustomNumberKeyboard(
+              controller: _amountController,
+              onSubmitted: _saveData,
+              onClose: _closeKeyboard,
+              onChanged: (val) {
+                // 値が変わった瞬間の処理が必要ならここに書く
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 画面下部のカード選択や保存ボタンのUI
+  Widget _buildBottomControlPanel(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          )
+        ],
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                "カード",
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _isCardPayment ? Colors.blue : Colors.grey,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Transform.scale(
+                scale: 0.8,
+                child: Switch(
+                  value: _isCardPayment,
+                  activeColor: Colors.blue,
+                  onChanged: (bool value) => _toggleCardPayment(value),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _isCardPayment && _cardList.isNotEmpty
+                    ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: _cardList.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final tag = entry.value;
+                            final isSelected = _selectedCardIndex == index;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(tag.label),
+                                labelStyle: TextStyle(
+                                  fontSize: 11,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.black87,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                                selected: isSelected,
+                                showCheckmark: false,
+                                selectedColor: tag.color,
+                                backgroundColor: Colors.grey.shade100,
+                                onSelected: (_) => _changeCardIndex(index),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
             width: double.infinity,
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom > 0
-                  ? 0
-                  : MediaQuery.of(context).padding.bottom,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                )
-              ],
-              border: Border(
-                top: BorderSide(color: Colors.grey.shade200),
+            child: ElevatedButton(
+              onPressed: _saveData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-            ),
-            child: Container(
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Text(
-                          "カード",
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: _isCardPayment ? Colors.blue : Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        Transform.scale(
-                          scale: 0.8,
-                          child: Switch(
-                            value: _isCardPayment,
-                            activeColor: Colors.blue,
-                            onChanged: (bool value) =>
-                                _toggleCardPayment(value),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _isCardPayment && _cardList.isNotEmpty
-                              ? ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
-                                  itemCount: _cardList.length,
-                                  itemBuilder: (context, index) {
-                                    final tag = _cardList[index];
-                                    final isSelected =
-                                        _selectedCardIndex == index;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: ChoiceChip(
-                                        label: Text(tag.label),
-                                        labelStyle: TextStyle(
-                                          fontSize: 11,
-                                          color: isSelected
-                                              ? Colors.white
-                                              : Colors.black87,
-                                          fontWeight: isSelected
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
-                                        ),
-                                        selected: isSelected,
-                                        showCheckmark: false,
-                                        selectedColor: tag.color,
-                                        backgroundColor: Colors.grey.shade100,
-                                        onSelected: (_) =>
-                                            _changeCardIndex(index),
-                                        visualDensity: VisualDensity.compact,
-                                      ),
-                                    );
-                                  },
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: _saveData,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 0),
-                    ),
-                    child: const Text('保存',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
+              child: const Text('保存',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],
