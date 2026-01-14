@@ -264,195 +264,203 @@ class _InputTabState extends State<InputTab> {
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            // キーボードが出た時のためのパディング調整
-            padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // 1. 日付
-                GestureDetector(
-                  onTap: _pickDate,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.blue.shade100),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.calendar_today,
-                            size: 14, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        Text(
-                          "$dateStr (${_getDayOfWeek(_selectedDate)})",
-                          style: const TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+    // ▼▼ 追加: GestureDetectorで画面全体を包み、タップでフォーカスを外す ▼▼
+    return GestureDetector(
+      onTap: () {
+        // 余白をタップしたらキーボードを閉じる
+        FocusScope.of(context).unfocus();
+      },
+      behavior: HitTestBehavior.opaque, // 空白部分のタップも検知する
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // 1. 日付
+                  GestureDetector(
+                    onTap: _pickDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.calendar_today,
+                              size: 14, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            "$dateStr (${_getDayOfWeek(_selectedDate)})",
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+
+                  // 2. 金額
+                  FittedBox(
+                    child: Text(
+                      "¥ $_amountStr",
+                      style: const TextStyle(
+                        fontSize: 44,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+
+                  // 3. メモ入力欄
+                  Container(
+                    width: 200,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: TextField(
+                      controller: _memoController,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        hintText: 'メモを入力...',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                        prefixIcon:
+                            Icon(Icons.edit, size: 14, color: Colors.grey),
+                        prefixIconConstraints: BoxConstraints(minWidth: 24),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) {
+                        FocusScope.of(context).unfocus();
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  // 4. カテゴリ選択
+                  CategorySelector(
+                    tags: _expenseList,
+                    selectedIndex: _selectedExpenseIndex,
+                    onSelected: (i) => _changeExpenseIndex(i),
+                  ),
+
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+          ),
+
+          // 固定フッター (カード選択バー)
+          Container(
+            width: double.infinity,
+            height: 50,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, -2),
+                )
+              ],
+              border: Border(
+                top: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _isCardPayment && _cardList.isNotEmpty
+                      ? ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          itemCount: _cardList.length,
+                          itemBuilder: (context, index) {
+                            final tag = _cardList[index];
+                            final isSelected = _selectedCardIndex == index;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(
+                                  tag.label,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                                selected: isSelected,
+                                showCheckmark: false,
+                                selectedColor: tag.color,
+                                backgroundColor: Colors.grey.shade100,
+                                onSelected: (_) => _changeCardIndex(index),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          },
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 16, left: 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        "カード",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: _isCardPayment ? Colors.blue : Colors.grey,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 5),
+                      Transform.scale(
+                        scale: 0.8,
+                        child: Switch(
+                          value: _isCardPayment,
+                          activeColor: Colors.blue,
+                          onChanged: (bool value) => _toggleCardPayment(value),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 5),
-
-                // 2. 金額
-                FittedBox(
-                  child: Text(
-                    "¥ $_amountStr",
-                    style: const TextStyle(
-                      fontSize: 44,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                      height: 1.0,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 5),
-
-                // 3. メモ入力欄 (ここへ移動)
-                Container(
-                  width: 200, // 横幅を制限してスッキリ見せる
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: TextField(
-                    controller: _memoController,
-                    textAlign: TextAlign.center,
-                    decoration: const InputDecoration(
-                      hintText: 'メモを入力...',
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 8),
-                      border: InputBorder.none,
-                      hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                      // アイコンも小さく添える
-                      prefixIcon:
-                          Icon(Icons.edit, size: 14, color: Colors.grey),
-                      prefixIconConstraints: BoxConstraints(minWidth: 24),
-                    ),
-                    style: const TextStyle(fontSize: 13),
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) {
-                      FocusScope.of(context).unfocus();
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 15),
-
-                // 4. カテゴリ選択 (下に配置)
-                CategorySelector(
-                  tags: _expenseList,
-                  selectedIndex: _selectedExpenseIndex,
-                  onSelected: (i) => _changeExpenseIndex(i),
-                ),
-
-                const SizedBox(height: 10),
               ],
             ),
           ),
-        ),
 
-        // 固定フッター
-        Container(
-          width: double.infinity,
-          height: 50,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, -2),
-              )
-            ],
-            border: Border(
-              top: BorderSide(color: Colors.grey.shade200),
-            ),
+          // テンキー
+          CustomNumericKeyboard(
+            onNumberTap: _onNumberTap,
+            onBackspace: _onBackspace,
+            onClear: _onClear,
+            onDone: _saveData,
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: _isCardPayment && _cardList.isNotEmpty
-                    ? ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        itemCount: _cardList.length,
-                        itemBuilder: (context, index) {
-                          final tag = _cardList[index];
-                          final isSelected = _selectedCardIndex == index;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(
-                                tag.label,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                              selected: isSelected,
-                              showCheckmark: false,
-                              selectedColor: tag.color,
-                              backgroundColor: Colors.grey.shade100,
-                              onSelected: (_) => _changeCardIndex(index),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          );
-                        },
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 16, left: 8),
-                child: Row(
-                  children: [
-                    Text(
-                      "カード",
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: _isCardPayment ? Colors.blue : Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Transform.scale(
-                      scale: 0.8,
-                      child: Switch(
-                        value: _isCardPayment,
-                        activeColor: Colors.blue,
-                        onChanged: (bool value) => _toggleCardPayment(value),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        CustomNumericKeyboard(
-          onNumberTap: _onNumberTap,
-          onBackspace: _onBackspace,
-          onClear: _onClear,
-          onDone: _saveData,
-        ),
-      ],
+        ],
+      ),
     );
   }
 
