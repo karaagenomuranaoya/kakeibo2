@@ -52,6 +52,9 @@ class _InputTabState extends State<InputTab>
   // キーボード高さ (キーエリア 272 + 閉じるバー 40)
   static const double _keyboardHeight = 312.0;
 
+  // 直前の入力IDを保持して、Undoできるようにする
+  String? _lastInputId;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -280,6 +283,7 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _amountController.clear();
         _memoController.clear();
+        _lastInputId = newItem.id; // Undo用にIDを記録
       });
 
       if (keepKeyboard) {
@@ -300,8 +304,61 @@ class _InputTabState extends State<InputTab>
     }
   }
 
+  // 直前の入力を取り消す処理
+  Future<void> _undoLastInput() async {
+    if (_lastInputId == null) return;
+
+    // 最新のデータを取得して確認メッセージを作る
+    final allItems = await _repository.getAllTransactions();
+    TransactionItem? targetItem;
+    try {
+      targetItem = allItems.firstWhere((e) => e.id == _lastInputId);
+    } catch (_) {
+      // 既に見つからない場合
+      setState(() => _lastInputId = null);
+      return;
+    }
+
+    if (!mounted) return;
+
+    // 確認ダイアログ
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('直前の入力を取り消しますか？'),
+          content: Text(
+            '¥${targetItem!.amount} (${targetItem.expense})\n'
+            '日時: ${_getDayOfWeek(targetItem.date)} ${targetItem.date.hour}:${targetItem.date.minute.toString().padLeft(2, '0')}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context); // ダイアログを閉じる
+                await _repository.deleteTransaction(_lastInputId!);
+                if (mounted) {
+                  setState(() {
+                    _lastInputId = null; // IDをクリア
+                  });
+                  _showSnackBar('入力を取り消しました', Colors.grey);
+                }
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('削除する'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showSnackBar(String msg, Color color) {
     if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar(); // 連打対策
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
@@ -476,7 +533,7 @@ class _InputTabState extends State<InputTab>
               child: CustomNumberKeyboard(
                 controller: _amountController,
                 onSubmitted: () => _saveData(keepKeyboard: true),
-                onClose: _closeKeyboard, // 閉じるボタンでキーボードを閉じる
+                onClose: _closeKeyboard,
                 onChanged: (val) {},
               ),
             ),
@@ -580,6 +637,26 @@ class _InputTabState extends State<InputTab>
               ),
             ),
           ),
+          // 直前の入力を取り消すボタン
+          if (_lastInputId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SizedBox(
+                height: 30,
+                child: TextButton.icon(
+                  onPressed: _undoLastInput,
+                  icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
+                  label: const Text(
+                    '直前の入力を取り消す',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
