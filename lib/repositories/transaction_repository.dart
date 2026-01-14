@@ -5,17 +5,40 @@ import '../models/transaction_item.dart';
 class TransactionRepository {
   static const String _key = 'history';
 
-  // 保存処理
+  // 保存処理 (追加)
   Future<void> addTransaction(TransactionItem item) async {
-    final prefs = await SharedPreferences.getInstance();
     final List<TransactionItem> currentList = await getAllTransactions();
-
-    // 新しいデータを先頭に追加
     currentList.insert(0, item);
+    await _saveList(currentList);
+  }
 
-    // JSON文字列に変換して保存
+  // 更新処理 (編集)
+  Future<void> updateTransaction(TransactionItem newItem) async {
+    final List<TransactionItem> currentList = await getAllTransactions();
+    // IDが一致するものを探して置き換える
+    final index = currentList.indexWhere((item) => item.id == newItem.id);
+    if (index != -1) {
+      currentList[index] = newItem;
+      await _saveList(currentList);
+    }
+  }
+
+  // 削除処理
+  Future<void> deleteTransaction(String id) async {
+    final List<TransactionItem> currentList = await getAllTransactions();
+    // IDが一致するものを削除
+    currentList.removeWhere((item) => item.id == id);
+    await _saveList(currentList);
+  }
+
+  // 内部共通: リストをJSONにして保存
+  Future<void> _saveList(List<TransactionItem> list) async {
+    final prefs = await SharedPreferences.getInstance();
+    // 日付順（新しい順）にソートしておく
+    list.sort((a, b) => b.date.compareTo(a.date));
+
     final String jsonString = json.encode(
-      currentList.map((e) => e.toJson()).toList(),
+      list.map((e) => e.toJson()).toList(),
     );
     await prefs.setString(_key, jsonString);
   }

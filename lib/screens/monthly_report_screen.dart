@@ -65,6 +65,66 @@ class _MonthPageState extends State<MonthPage> {
     }
   }
 
+  // 編集・削除ダイアログ
+  void _showEditDialog(TransactionItem item) {
+    final amountController =
+        TextEditingController(text: item.amount.toString());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('履歴の編集'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '金額'),
+                autofocus: true,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                '${item.date.year}/${item.date.month}/${item.date.day} の記録',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                // 削除処理
+                await _repository.deleteTransaction(item.id);
+                if (context.mounted) Navigator.pop(context);
+                _load(); // 再読み込み
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('削除'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // 更新処理
+                final newAmount = int.tryParse(amountController.text);
+                if (newAmount != null) {
+                  final newItem = item.copyWith(amount: newAmount);
+                  await _repository.updateTransaction(newItem);
+                  if (context.mounted) Navigator.pop(context);
+                  _load(); // 再読み込み
+                }
+              },
+              child: const Text('更新'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     int total = _history.fold(0, (s, i) => s + i.amount);
@@ -81,13 +141,14 @@ class _MonthPageState extends State<MonthPage> {
         Expanded(
           child: ListView.builder(
             itemCount: _history.length,
+            padding: const EdgeInsets.only(bottom: 20),
             itemBuilder: (c, i) {
               final item = _history[i];
               // 費目は必ずあるはずだが念のため
               final expenseStr =
                   item.expense == 'デフォルト' ? '' : ' (${item.expense})';
 
-              // ▼▼ 変更: 空文字または「デフォルト」なら表示しない ▼▼
+              // 空文字または「デフォルト」なら表示しない
               final paymentStr = (item.payment.isEmpty ||
                       item.payment == 'デフォルト' ||
                       item.payment == '現金')
@@ -97,6 +158,8 @@ class _MonthPageState extends State<MonthPage> {
               return ListTile(
                 title: Text('¥${item.amount}$expenseStr'),
                 subtitle: Text('$paymentStr${item.displayDate}'),
+                trailing: const Icon(Icons.edit, size: 16, color: Colors.grey),
+                onTap: () => _showEditDialog(item),
               );
             },
           ),
