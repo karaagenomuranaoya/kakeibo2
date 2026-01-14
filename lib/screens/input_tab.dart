@@ -19,7 +19,7 @@ class InputTab extends StatefulWidget {
 
 class _InputTabState extends State<InputTab> {
   String _amountStr = "0";
-  final TextEditingController _memoController = TextEditingController(); // 追加
+  final TextEditingController _memoController = TextEditingController();
 
   final TransactionRepository _repository = TransactionRepository();
   final GachaRepository _gachaRepository = GachaRepository();
@@ -211,7 +211,7 @@ class _InputTabState extends State<InputTab> {
           DateTime.now().minute,
         ),
         paymentDate: paymentDate,
-        memo: _memoController.text.trim(), // メモを保存
+        memo: _memoController.text.trim(),
       );
 
       await _repository.addTransaction(newItem);
@@ -226,7 +226,7 @@ class _InputTabState extends State<InputTab> {
 
       setState(() {
         _amountStr = "0";
-        _memoController.clear(); // 保存後にクリア
+        _memoController.clear();
       });
       // キーボードを閉じる
       if (mounted) FocusScope.of(context).unfocus();
@@ -268,11 +268,12 @@ class _InputTabState extends State<InputTab> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            // メモ入力でキーボードが出てもスクロールできるように
+            // キーボードが出た時のためのパディング調整
             padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // 1. 日付
                 GestureDetector(
                   onTap: _pickDate,
                   child: Container(
@@ -302,6 +303,8 @@ class _InputTabState extends State<InputTab> {
                   ),
                 ),
                 const SizedBox(height: 5),
+
+                // 2. 金額
                 FittedBox(
                   child: Text(
                     "¥ $_amountStr",
@@ -313,37 +316,47 @@ class _InputTabState extends State<InputTab> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 5),
+
+                // 3. メモ入力欄 (ここへ移動)
+                Container(
+                  width: 200, // 横幅を制限してスッキリ見せる
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: TextField(
+                    controller: _memoController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'メモを入力...',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 8),
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                      // アイコンも小さく添える
+                      prefixIcon:
+                          Icon(Icons.edit, size: 14, color: Colors.grey),
+                      prefixIconConstraints: BoxConstraints(minWidth: 24),
+                    ),
+                    style: const TextStyle(fontSize: 13),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      FocusScope.of(context).unfocus();
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 15),
+
+                // 4. カテゴリ選択 (下に配置)
                 CategorySelector(
                   tags: _expenseList,
                   selectedIndex: _selectedExpenseIndex,
                   onSelected: (i) => _changeExpenseIndex(i),
                 ),
-                // メモ入力欄を追加
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: TextField(
-                    controller: _memoController,
-                    decoration: const InputDecoration(
-                      hintText: 'メモ (任意)',
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-                      prefixIcon:
-                          Icon(Icons.edit, size: 16, color: Colors.grey),
-                      prefixIconConstraints: BoxConstraints(minWidth: 24),
-                      border: InputBorder.none, // 線を消してシンプルに
-                      hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
-                    style: const TextStyle(fontSize: 14),
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) {
-                      // 完了ボタンでキーボードを閉じる
-                      FocusScope.of(context).unfocus();
-                    },
-                  ),
-                ),
+
                 const SizedBox(height: 10),
               ],
             ),
