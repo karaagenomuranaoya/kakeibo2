@@ -61,6 +61,10 @@ class _MainScreenState extends State<MainScreen>
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Kakeibo')),
       drawer: AppDrawer(onDataChanged: _refreshData),
+      // ▼▼ 変更点: OSキーボードが出ても画面サイズを変えない（押し上げない）設定 ▼▼
+      // これにより、カスタムキーボードが常に画面最下部に固定され「どっしり」構えるようになります。
+      resizeToAvoidBottomInset: false,
+
       body: GestureDetector(
         onTap: () {
           FocusScope.of(context).unfocus();
@@ -68,12 +72,9 @@ class _MainScreenState extends State<MainScreen>
         behavior: HitTestBehavior.translucent,
         child: TabBarView(
           controller: _tabController,
-          // スワイプでタブ移動するとキーボード状態と矛盾しやすいので無効化推奨だが、
-          // 利便性のため残す場合はInputTab側で制御が必要。
-          // ここではキーボード出しっぱなしでのスワイプは稀としてそのままにする。
           physics: const ClampingScrollPhysics(),
           children: [
-            // 1. 入力タブ (コールバックを渡す)
+            // 1. 入力タブ
             InputTab(
               dataVersion: _dataVersion,
               onTabBarVisibilityChanged: _setTabBarVisible,
@@ -111,7 +112,7 @@ class _MainScreenState extends State<MainScreen>
                 ),
               ),
             )
-          : null, // 非表示時はnullにして画面領域を広げる
+          : null,
     );
   }
 }

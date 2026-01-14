@@ -1,3 +1,4 @@
+import 'dart:math'; // max関数用
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -13,7 +14,6 @@ import '../utils/simple_calculator.dart';
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
-  // MainScreenのタブバー表示を制御するコールバック
   final Function(bool visible)? onTabBarVisibilityChanged;
 
   const InputTab({
@@ -48,10 +48,7 @@ class _InputTabState extends State<InputTab>
   bool _isCardPayment = false;
   int _selectedCardIndex = 0;
 
-  // カスタムキーボードの表示状態
   bool _showCustomKeyboard = false;
-
-  // キーボードの高さ（Widget側と合わせる）
   static const double _keyboardHeight = 320.0;
 
   @override
@@ -80,15 +77,16 @@ class _InputTabState extends State<InputTab>
     super.dispose();
   }
 
-  // OSのキーボード表示状態の変化などを検知
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    // OSキーボードが開いたとき（viewInsets.bottom > 0）
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
-    if (bottomInset > 0 && _showCustomKeyboard) {
-      // OSキーボード優先のためカスタムキーボードは閉じるが、
-      // 実際にはフォーカス移動で制御しているのでここは補助的な処理
+
+    // 修正: OSキーボードが表示されている(bottomInset > 0)とき、カスタムキーボードを隠すのが基本だが、
+    // 「金額入力中（_amountFocusNode.hasFocus）」の場合は例外とする。
+    // これにより、メモ入力(OSキーボード)から金額入力へ移動した際に、
+    // OSキーボードが閉じるアニメーション中でもカスタムキーボードが消されずに済む。
+    if (bottomInset > 0 && _showCustomKeyboard && !_amountFocusNode.hasFocus) {
       setState(() {
         _showCustomKeyboard = false;
       });
@@ -97,28 +95,19 @@ class _InputTabState extends State<InputTab>
 
   void _onAmountFocusChange() {
     if (_amountFocusNode.hasFocus) {
-      // 金額入力にフォーカス: カスタムキーボード表示
       setState(() {
         _showCustomKeyboard = true;
       });
-      // タブバーを隠す
       widget.onTabBarVisibilityChanged?.call(false);
     }
   }
 
   void _onMemoFocusChange() {
     if (_memoFocusNode.hasFocus) {
-      // メモ入力にフォーカス: カスタムキーボード非表示、OSキーボードが出る
       setState(() {
         _showCustomKeyboard = false;
       });
-      // メモ入力時も画面を広く使うなら隠したままでも良いが、
-      // 完了ボタンがないOSキーボードの場合もあるので、
-      // ここでは「OSキーボードが出る＝タブバー云々はOS任せ」とする。
-      // ただし、金額入力から移動してきた場合は隠れたままになる可能性があるため、
-      // 一旦表示に戻すか、あるいは隠したままにするか。
-      // UX的にはOSキーボードが出るとTabBarは見えなくなるので、falseのままでも実害はない。
-      // 完了時に戻す処理があればOK。
+      // メモ入力時はOSキーボードが出るので、タブバーの制御はOSに任せる（隠れる）
     }
   }
 
@@ -135,13 +124,10 @@ class _InputTabState extends State<InputTab>
     final cards = await _settingsRepository.loadCardTags();
 
     final prefs = await SharedPreferences.getInstance();
-
     int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
     if (savedExpenseIndex >= expenses.length) savedExpenseIndex = 0;
-
     int savedCardIndex = prefs.getInt('last_card_index') ?? 0;
     if (savedCardIndex >= cards.length) savedCardIndex = 0;
-
     final savedIsCard = prefs.getBool('last_is_card') ?? false;
 
     if (mounted) {
@@ -193,14 +179,12 @@ class _InputTabState extends State<InputTab>
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
-  // キーボードを閉じる処理
   void _closeKeyboard() {
     _amountFocusNode.unfocus();
     _memoFocusNode.unfocus();
     setState(() {
       _showCustomKeyboard = false;
     });
-    // タブバーを再表示
     widget.onTabBarVisibilityChanged?.call(true);
   }
 
@@ -340,9 +324,20 @@ class _InputTabState extends State<InputTab>
 
     final dateStr = DateFormat('MM/dd').format(_selectedDate);
 
-    // --- Stack構成への変更点 ---
-    // Columnで配置するのではなく、Stackでキーボードを最下部にオーバーレイさせる。
-    // これにより、キーボードの表示/非表示でコンテンツが「押し上げられる/押し下がる」挙動（＝降ってくる動き）を防ぐ。
+    // 下部余白の計算
+    // メモ入力時はOSキーボードの高さ(bottomInset)を確保し、
+    // 金額入力時はカスタムキーボードの高さ(_keyboardHeight)を確保する。
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    // 基本余白80に加え、キーボードが出ている分だけ底上げする
+    // _showCustomKeyboardがtrueならカスタムキーボード優先、
+    // そうでなければOSキーボード(bottomInset)を優先
+    final double additionalPadding = _showCustomKeyboard
+        ? _keyboardHeight
+        : bottomInset;
+
+    final double bottomPadding = 80 + additionalPadding;
+
     return GestureDetector(
       onTap: _closeKeyboard,
       behavior: HitTestBehavior.opaque,
@@ -351,13 +346,7 @@ class _InputTabState extends State<InputTab>
           // コンテンツ領域
           Positioned.fill(
             child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                10,
-                16,
-                // キーボード表示時は、スクロール可能な余白を下部に作る
-                _showCustomKeyboard ? _keyboardHeight + 20 : 80,
-              ),
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -485,9 +474,6 @@ class _InputTabState extends State<InputTab>
             ),
           ),
 
-          // カスタムキーボード（オーバーレイ）
-          // タブバーを隠したスペースに「どっしり」表示するため、
-          // BottomNavigationBarと同じレベルの最下部に配置。
           if (_showCustomKeyboard)
             Positioned(
               left: 0,
