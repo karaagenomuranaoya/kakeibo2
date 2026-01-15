@@ -59,7 +59,7 @@ class _GachaScreenState extends State<GachaScreen> {
     final item = await _repository.drawItem();
     final newCount = await _repository.unlockItem(item.id);
 
-    // ▼▼ 追加: レベルMAXを超えていたら 2pt 還元 ▼▼
+    // カンスト救済
     if (newCount > _maxLevel) {
       await _repository.addCredits(2);
     }
@@ -85,12 +85,26 @@ class _GachaScreenState extends State<GachaScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  "${item.baseName}の進化記録",
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Column(
+                  children: [
+                    // ▼▼ IDを表示 ▼▼
+                    Text(
+                      "No.${item.id}",
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "${item.baseName}の進化記録",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const Divider(height: 1),
@@ -156,7 +170,6 @@ class _GachaScreenState extends State<GachaScreen> {
     final int level = item.getStage(count);
     final bool isNew = count == 1;
     final bool isMax = level == _maxLevel;
-    // ▼▼ 追加: カンスト被り判定 ▼▼
     final bool isDuplicate = count > _maxLevel;
 
     String title = "LEVEL UP!!";
@@ -221,7 +234,17 @@ class _GachaScreenState extends State<GachaScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 10),
+              // ▼▼ IDを表示 ▼▼
+              Text(
+                "No.${item.id}",
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 5),
+
               Text(
                 "Lv.$level / $_maxLevel",
                 style: const TextStyle(
@@ -238,7 +261,6 @@ class _GachaScreenState extends State<GachaScreen> {
               ),
               const SizedBox(height: 20),
 
-              // ▼▼ ゲージ表示 or 還元メッセージ ▼▼
               if (isDuplicate) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -459,62 +481,82 @@ class _GachaScreenState extends State<GachaScreen> {
                             ),
                         ],
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      // ▼▼ Stackに変更して左上に番号を表示 ▼▼
+                      child: Stack(
                         children: [
-                          Expanded(
-                            child: Center(
-                              child: isUnlocked
-                                  ? Icon(
-                                      item.iconData,
-                                      size: 40,
-                                      color: itemColor,
-                                    )
-                                  : Icon(
-                                      Icons.lock,
-                                      size: 30,
-                                      color: Colors.grey.shade300,
-                                    ),
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Center(
+                                  child: isUnlocked
+                                      ? Icon(
+                                          item.iconData,
+                                          size: 40,
+                                          color: itemColor,
+                                        )
+                                      : Icon(
+                                          Icons.lock,
+                                          size: 30,
+                                          color: Colors.grey.shade300,
+                                        ),
+                                ),
+                              ),
+                              if (isUnlocked)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        "Lv.$level",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: itemColor,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(2),
+                                        child: LinearProgressIndicator(
+                                          value: level / _maxLevel,
+                                          minHeight: 4,
+                                          backgroundColor: Colors.grey.shade100,
+                                          color: itemColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                const Text(
+                                  "???",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              const SizedBox(height: 10),
+                            ],
+                          ),
+                          // ID表示部分
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Text(
+                              "No.${item.id}",
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isUnlocked
+                                    ? Colors.grey.shade500
+                                    : Colors.grey.shade300,
+                              ),
                             ),
                           ),
-                          if (isUnlocked)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    "Lv.$level",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: itemColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(2),
-                                    child: LinearProgressIndicator(
-                                      value: level / _maxLevel,
-                                      minHeight: 4,
-                                      backgroundColor: Colors.grey.shade100,
-                                      color: itemColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          else
-                            const Text(
-                              "???",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          const SizedBox(height: 10),
                         ],
                       ),
                     ),
