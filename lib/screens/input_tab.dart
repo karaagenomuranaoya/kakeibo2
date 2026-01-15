@@ -10,6 +10,7 @@ import '../widgets/category_selector.dart';
 import '../widgets/custom_number_keyboard.dart';
 import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
+import '../widgets/input/payment_selector.dart';
 import '../utils/simple_calculator.dart';
 import 'settings/category_manage_screen.dart';
 import 'history_screen.dart';
@@ -199,14 +200,16 @@ class _InputTabState extends State<InputTab>
   Future<void> _toggleCardPayment(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _isCardPayment = value);
-    _closeKeyboard();
+    // ▼▼ 修正: キーボードを閉じる処理を削除 ▼▼
+    // _closeKeyboard();
     await prefs.setBool('last_is_card', value);
   }
 
   Future<void> _changeCardIndex(int index) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _selectedCardIndex = index);
-    _closeKeyboard();
+    // ▼▼ 修正: キーボードを閉じる処理を削除 ▼▼
+    // _closeKeyboard();
     await prefs.setInt('last_card_index', index);
   }
 
@@ -241,7 +244,6 @@ class _InputTabState extends State<InputTab>
     if (_isLoading) return;
 
     final rawText = _amountController.text;
-    // 計算実行
     final calculatedText = SimpleCalculator.calculate(rawText);
 
     if (calculatedText.isEmpty) {
@@ -249,11 +251,9 @@ class _InputTabState extends State<InputTab>
       return;
     }
 
-    // 計算結果をフォームに反映
     _amountController.text = calculatedText;
     final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
 
-    // ▼▼ 修正: 0以下（0および負の数）は保存しない ▼▼
     if (amount <= 0) {
       _showFlashMessage('1円以上の金額を入力してください', Colors.redAccent);
       return;
@@ -441,7 +441,14 @@ class _InputTabState extends State<InputTab>
                     onDateTap: _pickDate,
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
-                  const SizedBox(height: 20),
+                  PaymentSelector(
+                    isCardPayment: _isCardPayment,
+                    onToggle: _toggleCardPayment,
+                    cardList: _cardList,
+                    selectedCardIndex: _selectedCardIndex,
+                    onCardSelected: _changeCardIndex,
+                    onCardLongPress: _onCardLongPress,
+                  ),
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
@@ -453,12 +460,6 @@ class _InputTabState extends State<InputTab>
                   ),
                   const SizedBox(height: 20),
                   InputControlPanel(
-                    isCardPayment: _isCardPayment,
-                    onToggleCard: _toggleCardPayment,
-                    cardList: _cardList,
-                    selectedCardIndex: _selectedCardIndex,
-                    onCardSelected: _changeCardIndex,
-                    onCardLongPress: _onCardLongPress,
                     onSave: () => _saveData(keepKeyboard: false),
                     onUndo: _undoLastInput,
                     showUndo: _lastInputId != null,
