@@ -5,7 +5,6 @@ import '../screens/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
 
 class AppDrawer extends StatefulWidget {
-  // MainScreenから渡される更新用コールバック
   final VoidCallback? onDataChanged;
 
   const AppDrawer({super.key, this.onDataChanged});
@@ -52,8 +51,6 @@ class _AppDrawerState extends State<AppDrawer> {
                     style: TextStyle(color: Colors.white, fontSize: 24),
                   ),
                 ),
-
-                // ▼▼ 月別レポートへのリンクを削除しました ▼▼
                 _buildSectionHeader("費目別 履歴"),
                 ..._expenseList.map(
                   (tag) => _buildFilterTile(context, tag, 'expense'),
@@ -81,9 +78,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 context,
                 MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
-              // 設定から戻ってきたらタグ情報を再読み込み
               _loadTags();
-              // MainScreenにも通知
               widget.onDataChanged?.call();
             },
           ),
@@ -108,11 +103,16 @@ class _AppDrawerState extends State<AppDrawer> {
     CategoryTag tag,
     String filterKey,
   ) {
+    // ▼▼ アイコン表示ロジック ▼▼
+    IconData icon;
+    if (tag.icon != null) {
+      icon = tag.icon!;
+    } else {
+      icon = filterKey == 'payment' ? Icons.payment : Icons.label;
+    }
+
     return ListTile(
-      leading: Icon(
-        filterKey == 'payment' ? Icons.payment : Icons.label,
-        color: tag.color,
-      ),
+      leading: Icon(icon, color: tag.color),
       title: Text(tag.label),
       onTap: () {
         Navigator.pop(context);

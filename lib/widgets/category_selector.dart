@@ -5,7 +5,6 @@ class CategorySelector extends StatelessWidget {
   final List<CategoryTag> tags;
   final int? selectedIndex;
   final Function(int) onSelected;
-  // ▼▼ 追加: 長押しコールバック ▼▼
   final Function(int)? onLongPress;
   final VoidCallback? onAddPressed;
 
@@ -14,11 +13,18 @@ class CategorySelector extends StatelessWidget {
     required this.tags,
     required this.selectedIndex,
     required this.onSelected,
-    this.onLongPress, // 追加
+    this.onLongPress,
     this.onAddPressed,
   });
 
-  IconData _getIconForLabel(String label) {
+  IconData _getIconForLabel(CategoryTag tag) {
+    // ▼▼ 設定されたアイコンがあればそれを使用 ▼▼
+    if (tag.icon != null) {
+      return tag.icon!;
+    }
+
+    // なければラベルから推測（デフォルトロジック）
+    final label = tag.label;
     if (label.contains('食')) return Icons.restaurant;
     if (label.contains('日用')) return Icons.shopping_bag;
     if (label.contains('交際')) return Icons.wine_bar;
@@ -35,6 +41,14 @@ class CategorySelector extends StatelessWidget {
     if (label.contains('車') || label.contains('ガソリン'))
       return Icons.directions_car;
     if (label.contains('給料')) return Icons.attach_money;
+
+    // カード系のデフォルト
+    if (tag.closingDay != null ||
+        label.contains('カード') ||
+        label.contains('Pay')) {
+      return Icons.credit_card;
+    }
+
     return Icons.category;
   }
 
@@ -64,7 +78,6 @@ class CategorySelector extends StatelessWidget {
           tag,
           isSelected,
           () => onSelected(index),
-          // ▼▼ 長押し処理を渡す ▼▼
           onLongPress != null ? () => onLongPress!(index) : null,
         );
       },
@@ -107,7 +120,7 @@ class CategorySelector extends StatelessWidget {
     CategoryTag tag,
     bool isSelected,
     VoidCallback onTap,
-    VoidCallback? onLongPress, // 追加
+    VoidCallback? onLongPress,
   ) {
     return Material(
       color: isSelected ? tag.color : Colors.white,
@@ -122,14 +135,14 @@ class CategorySelector extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        onLongPress: onLongPress, // 追加
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                _getIconForLabel(tag.label),
+                _getIconForLabel(tag), // 修正: tagを渡す
                 color: isSelected ? Colors.white : tag.color,
                 size: 20,
               ),
