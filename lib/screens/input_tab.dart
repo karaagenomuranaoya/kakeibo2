@@ -47,6 +47,7 @@ class _InputTabState extends State<InputTab>
   List<CategoryTag> _cardList = [];
   bool _isGachaEnabled = true;
   bool _isCategoryLongPressEnabled = true;
+  bool _showCardOnInput = true;
   bool _isLoading = true;
 
   int _selectedExpenseIndex = 0;
@@ -138,6 +139,7 @@ class _InputTabState extends State<InputTab>
     final gachaEnabled = await _settingsRepository.loadGachaEnabled();
     final catLongPressEnabled = await _settingsRepository
         .loadCategoryLongPressEnabled();
+    final showCard = await _settingsRepository.loadShowCardOnInput();
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -153,6 +155,7 @@ class _InputTabState extends State<InputTab>
         _cardList = cards;
         _isGachaEnabled = gachaEnabled;
         _isCategoryLongPressEnabled = catLongPressEnabled;
+        _showCardOnInput = showCard;
         _selectedExpenseIndex = savedExpenseIndex;
         _selectedCardIndex = savedCardIndex;
         _isCardPayment = savedIsCard;
@@ -200,16 +203,12 @@ class _InputTabState extends State<InputTab>
   Future<void> _toggleCardPayment(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _isCardPayment = value);
-    // ▼▼ 修正: キーボードを閉じる処理を削除 ▼▼
-    // _closeKeyboard();
     await prefs.setBool('last_is_card', value);
   }
 
   Future<void> _changeCardIndex(int index) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _selectedCardIndex = index);
-    // ▼▼ 修正: キーボードを閉じる処理を削除 ▼▼
-    // _closeKeyboard();
     await prefs.setInt('last_card_index', index);
   }
 
@@ -272,7 +271,10 @@ class _InputTabState extends State<InputTab>
     String paymentMethod = '';
     DateTime? paymentDate;
 
-    if (_isCardPayment && _cardList.isNotEmpty) {
+    // 設定でカードが隠されている場合は、強制的に現金扱いにする
+    final bool shouldUseCard = _showCardOnInput && _isCardPayment;
+
+    if (shouldUseCard && _cardList.isNotEmpty) {
       final card = _cardList[_selectedCardIndex];
       paymentMethod = card.label;
 
@@ -289,7 +291,7 @@ class _InputTabState extends State<InputTab>
             ? DateTime(targetYear, targetMonth + 1, 0)
             : DateTime(targetYear, targetMonth, targetDay);
       }
-    } else if (_isCardPayment) {
+    } else if (shouldUseCard) {
       paymentMethod = 'カード';
     }
 
@@ -318,7 +320,7 @@ class _InputTabState extends State<InputTab>
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
-      if (_isCardPayment) {
+      if (shouldUseCard) {
         await prefs.setInt('last_card_index', _selectedCardIndex);
       }
       await prefs.setBool('last_is_card', _isCardPayment);
@@ -441,14 +443,26 @@ class _InputTabState extends State<InputTab>
                     onDateTap: _pickDate,
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
-                  PaymentSelector(
-                    isCardPayment: _isCardPayment,
-                    onToggle: _toggleCardPayment,
-                    cardList: _cardList,
-                    selectedCardIndex: _selectedCardIndex,
-                    onCardSelected: _changeCardIndex,
-                    onCardLongPress: _onCardLongPress,
-                  ),
+
+                  // ▼▼ 変更: カード欄を表示する場合としない場合で処理を分ける ▼▼
+                  if (_showCardOnInput)
+                    // GestureDetectorで囲むことで、このエリア内のタップが
+                    // 背景の _closeKeyboard に伝播しないようにする（キーボード閉じ防止）
+                    GestureDetector(
+                      onTap: () {},
+                      child: PaymentSelector(
+                        isCardPayment: _isCardPayment,
+                        onToggle: _toggleCardPayment,
+                        cardList: _cardList,
+                        selectedCardIndex: _selectedCardIndex,
+                        onCardSelected: _changeCardIndex,
+                        onCardLongPress: _onCardLongPress,
+                      ),
+                    )
+                  else
+                    // カード欄がない場合は余白を確保してカテゴリとくっつかないようにする
+                    const SizedBox(height: 24),
+
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,

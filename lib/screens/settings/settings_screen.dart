@@ -13,7 +13,9 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsRepository _repository = SettingsRepository();
   bool _isGachaEnabled = true;
-  bool _isCategoryLongPressEnabled = true; // 追加
+  bool _isCategoryLongPressEnabled = true;
+  // ▼▼ 追加: 入力画面でのカード表示設定 ▼▼
+  bool _showCardOnInput = true;
 
   @override
   void initState() {
@@ -23,10 +25,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final gacha = await _repository.loadGachaEnabled();
-    final catLongPress = await _repository.loadCategoryLongPressEnabled(); // 追加
+    final catLongPress = await _repository.loadCategoryLongPressEnabled();
+    final showCard = await _repository.loadShowCardOnInput(); // 追加
     setState(() {
       _isGachaEnabled = gacha;
-      _isCategoryLongPressEnabled = catLongPress; // 追加
+      _isCategoryLongPressEnabled = catLongPress;
+      _showCardOnInput = showCard;
     });
   }
 
@@ -37,12 +41,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _repository.saveGachaEnabled(value);
   }
 
-  // 追加
   Future<void> _toggleCategoryLongPress(bool value) async {
     setState(() {
       _isCategoryLongPressEnabled = value;
     });
     await _repository.saveCategoryLongPressEnabled(value);
+  }
+
+  // ▼▼ 追加: 設定切り替え処理 ▼▼
+  Future<void> _toggleShowCardOnInput(bool value) async {
+    setState(() {
+      _showCardOnInput = value;
+    });
+    await _repository.saveShowCardOnInput(value);
   }
 
   @override
@@ -68,7 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // ▼▼ 追加: カテゴリ長押し設定 ▼▼
+          // カテゴリ長押し設定
           SwitchListTile(
             secondary: const Icon(Icons.touch_app, color: Colors.blueGrey),
             title: const Text('カテゴリ長押しで履歴へ'),
@@ -76,6 +87,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _isCategoryLongPressEnabled,
             activeColor: Colors.blue,
             onChanged: _toggleCategoryLongPress,
+          ),
+          const Divider(),
+
+          // ▼▼ 追加: カード表示設定 ▼▼
+          SwitchListTile(
+            secondary: const Icon(Icons.credit_card, color: Colors.purple),
+            title: const Text('入力画面にカード選択を表示'),
+            subtitle: const Text('オフにしても履歴データは消えません。\n入力画面から隠してシンプルにする機能です。'),
+            isThreeLine: true,
+            value: _showCardOnInput,
+            activeColor: Colors.purple,
+            onChanged: _toggleShowCardOnInput,
           ),
           const Divider(),
 

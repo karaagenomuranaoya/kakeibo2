@@ -7,8 +7,9 @@ class SettingsRepository {
   static const String _expenseTagsKey = 'expense_tags_list';
   static const String _cardTagsKey = 'card_tags_list';
   static const String _gachaEnabledKey = 'gacha_enabled';
-  // ▼▼ 追加: カテゴリ長押し機能の有効無効設定キー ▼▼
   static const String _categoryLongPressKey = 'category_long_press_enabled';
+  // ▼▼ 追加: 入力画面でのカード表示設定キー ▼▼
+  static const String _showCardOnInputKey = 'show_card_on_input';
 
   // --- お気に入り機能 (既存) ---
   static const List<String> _defaultFavorites = ['expense:食費', 'payment:楽天カード'];
@@ -68,15 +69,26 @@ class SettingsRepository {
     await prefs.setBool(_gachaEnabledKey, enabled);
   }
 
-  // --- ▼▼ 追加: カテゴリ長押し設定の管理 ▼▼ ---
+  // --- カテゴリ長押し設定の管理 ---
   Future<bool> loadCategoryLongPressEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    // デフォルトは true (オン)
     return prefs.getBool(_categoryLongPressKey) ?? true;
   }
 
   Future<void> saveCategoryLongPressEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_categoryLongPressKey, enabled);
+  }
+
+  // --- ▼▼ 追加: 入力画面でのカード表示設定 ▼▼ ---
+  Future<bool> loadShowCardOnInput() async {
+    final prefs = await SharedPreferences.getInstance();
+    // デフォルトは true (表示する)
+    return prefs.getBool(_showCardOnInputKey) ?? true;
+  }
+
+  Future<void> saveShowCardOnInput(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showCardOnInputKey, enabled);
   }
 }
