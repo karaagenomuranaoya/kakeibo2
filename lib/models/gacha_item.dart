@@ -1,57 +1,93 @@
+import 'package:flutter/material.dart';
+
 class GachaItem {
   final String id;
   final int rarity;
   final int weight;
-
-  // 第1形態
-  final String name1;
-  final String description1;
-  // 第2形態
-  final String name2;
-  final String description2;
-  // 第3形態 (最終)
-  final String name3;
-  final String description3;
+  final IconData iconData;
+  final String baseName;
+  // 変更: 説明文を1つではなく、レベルごとのリストに変更
+  final List<String> descriptions;
 
   const GachaItem({
     required this.id,
     required this.rarity,
     required this.weight,
-    required this.name1,
-    required this.description1,
-    required this.name2,
-    required this.description2,
-    required this.name3,
-    required this.description3,
+    required this.iconData,
+    required this.baseName,
+    required this.descriptions,
   });
 
-  // 現在のステージを判定 (1, 2, 3)
+  // 現在のステージを判定 (1〜10)
   int getStage(int count) {
-    if (count >= 10) return 3; // 10枚以上で最終形態
-    if (count >= 5) return 2; // 5枚以上で第2形態
-    return 1; // それ以外は初期
+    if (count <= 0) return 0; // 未所持
+    if (count > 10) return 10; // カンスト
+    return count;
   }
 
-  // 画像パス
-  String getImagePath(int count) {
+  // ステージごとの色定義
+  static const List<Color> _stageColors = [
+    Colors.grey, // Lv1
+    Colors.brown, // Lv2
+    Colors.blueGrey, // Lv3
+    Colors.green, // Lv4
+    Colors.cyan, // Lv5
+    Colors.blue, // Lv6
+    Colors.indigo, // Lv7
+    Colors.purple, // Lv8
+    Colors.red, // Lv9
+    Colors.amber, // Lv10
+  ];
+
+  // ステージごとの称号（Prefix）
+  static const List<String> _stagePrefixes = [
+    "迷子の", // Lv1
+    "見習い", // Lv2
+    "駆け出し", // Lv3
+    "一人前の", // Lv4
+    "熟練の", // Lv5
+    "達人の", // Lv6
+    "師範代", // Lv7
+    "将軍", // Lv8
+    "英雄", // Lv9
+    "伝説の", // Lv10
+  ];
+
+  // ステージに応じた色を取得
+  Color getColor(int count) {
     final stage = getStage(count);
-    return 'assets/images/gacha/$id-$stage.png';
+    // countがレベルとして渡される場合と、1~10のindexとして渡される場合の両方に対応
+    // ここでは count が 1以上前提のロジックで安全策をとる
+    int safeIndex = stage - 1;
+    if (safeIndex < 0) safeIndex = 0;
+    if (safeIndex >= _stageColors.length) safeIndex = _stageColors.length - 1;
+
+    return _stageColors[safeIndex];
   }
 
-  // 名前
+  // ステージに応じた名前を取得
   String getName(int count) {
     final stage = getStage(count);
-    if (stage == 3) return name3;
-    if (stage == 2) return name2;
-    return name1;
+    if (stage == 0) return "???";
+
+    int safeIndex = stage - 1;
+    if (safeIndex >= _stagePrefixes.length)
+      safeIndex = _stagePrefixes.length - 1;
+
+    return "${_stagePrefixes[safeIndex]}$baseName";
   }
 
-  // 説明文
+  // 変更: ステージに応じた説明文をリストから取得
   String getDescription(int count) {
     final stage = getStage(count);
-    if (stage == 3) return description3;
-    if (stage == 2) return description2;
-    return description1;
+    if (stage == 0) return "";
+
+    int safeIndex = stage - 1;
+    // データ不足エラー回避
+    if (safeIndex >= descriptions.length) {
+      return "（説明文データがありません）";
+    }
+    return descriptions[safeIndex];
   }
 
   factory GachaItem.fromJson(Map<String, dynamic> json) {
@@ -59,17 +95,9 @@ class GachaItem {
       id: json['id'] as String,
       rarity: json['rarity'] as int? ?? 1,
       weight: json['weight'] as int? ?? 10,
-      name1: json['name_1'] as String? ?? '名前未設定',
-      description1: json['description_1'] as String? ?? '',
-      name2: json['name_2'] as String? ?? '名前未設定(進化)',
-      description2: json['description_2'] as String? ?? '',
-      // ▼▼ 追加: 第3形態の読み込み（なければ第2形態と同じにする） ▼▼
-      name3:
-          json['name_3'] as String? ?? json['name_2'] as String? ?? '名前未設定(最終)',
-      description3:
-          json['description_3'] as String? ??
-          json['description_2'] as String? ??
-          '',
+      iconData: Icons.help_outline,
+      baseName: '不明なデータ',
+      descriptions: ['データ読み込みエラー'],
     );
   }
 }

@@ -16,9 +16,7 @@ class _GachaScreenState extends State<GachaScreen> {
   List<GachaItem> _allItems = [];
   bool _isLoading = true;
 
-  // 進化に必要な枚数定義
-  static const int _evo2Count = 5; // 第2形態へ
-  static const int _evo3Count = 10; // 第3形態へ
+  static const int _maxLevel = 10;
 
   @override
   void initState() {
@@ -66,25 +64,103 @@ class _GachaScreenState extends State<GachaScreen> {
     }
   }
 
-  void _showResultDialog(GachaItem item, int count) {
-    final bool isNew = count == 1;
-    final bool isEvo2 = count == _evo2Count;
-    final bool isEvo3 = count == _evo3Count;
-    final bool isMax = count > _evo3Count;
+  // --- 進化の軌跡（履歴）表示用ダイアログ ---
+  void _showHistoryDialog(GachaItem item, int maxLevel) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  "${item.baseName}の進化記録",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: maxLevel > _maxLevel ? _maxLevel : maxLevel,
+                    itemBuilder: (context, index) {
+                      // index は 0 始まりなので level は index + 1
+                      final level = index + 1;
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: item.getColor(level).withOpacity(0.5),
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(
+                            item.iconData,
+                            color: item.getColor(level),
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(
+                          item.getName(level),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          item.getDescription(level),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: Text(
+                          "Lv.$level",
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("閉じる"),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
-    String title = "GET!!";
+  void _showResultDialog(GachaItem item, int count) {
+    final int level = item.getStage(count);
+    final bool isNew = count == 1;
+    final bool isMax = level == _maxLevel;
+
+    String title = "LEVEL UP!!";
     Color titleColor = Colors.orange;
 
     if (isNew) {
       title = "NEW GET!!";
       titleColor = Colors.redAccent;
-    } else if (isEvo3) {
-      title = "FINAL EVOLUTION!!"; // 最終進化
+    } else if (isMax && count == _maxLevel) {
+      title = "MAX EVOLUTION!!";
       titleColor = Colors.purpleAccent;
-    } else if (isEvo2) {
-      title = "EVOLUTION!!";
-      titleColor = Colors.deepPurpleAccent;
-    } else if (isMax) {
+    } else if (count > _maxLevel) {
       title = "DUPLICATE";
       titleColor = Colors.grey;
     }
@@ -94,189 +170,98 @@ class _GachaScreenState extends State<GachaScreen> {
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 26,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 30),
+              GestureDetector(
+                onTap: () {
+                  // アイコンタップでも履歴が見れるようにする
+                  _showHistoryDialog(item, level);
+                },
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.grey.shade100,
+                    border: Border.all(
+                      color: item.getColor(count).withOpacity(0.5),
+                      width: 4,
+                    ),
+                  ),
+                  child: Icon(
+                    item.iconData,
+                    size: 60,
+                    color: item.getColor(count),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
-              SizedBox(
-                height: 150,
-                width: 150,
-                child: Image.asset(
-                  item.getImagePath(count),
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.broken_image,
-                      size: 80,
-                      color: Colors.grey,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              _buildRarityBadge(item.rarity),
-              const SizedBox(height: 10),
               Text(
                 item.getName(count),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 20,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "Lv.$level / $_maxLevel",
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueGrey,
                 ),
               ),
               const SizedBox(height: 10),
               Text(
                 item.getDescription(count),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey),
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+              const SizedBox(height: 20),
+              if (!isMax) ...[
+                LinearProgressIndicator(
+                  value: level / _maxLevel,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey.shade200,
+                  color: item.getColor(count),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  "あと ${_maxLevel - level}枚で最大進化",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // ▼▼ 履歴を見るボタンを追加 ▼▼
+              OutlinedButton.icon(
+                onPressed: () => _showHistoryDialog(item, level),
+                icon: const Icon(Icons.history_edu),
+                label: const Text("進化の記録を見る"),
               ),
               const SizedBox(height: 10),
 
-              // --- ゲージ表示ロジック ---
-              if (count < _evo2Count) ...[
-                // Lv1 -> Lv2
-                _buildProgressSection(count, _evo2Count, "進化"),
-              ] else if (count < _evo3Count) ...[
-                // Lv2 -> Lv3
-                _buildProgressSection(
-                  count - _evo2Count,
-                  _evo3Count - _evo2Count,
-                  "最終進化",
-                  baseCount: _evo2Count,
-                ),
-              ] else if (isEvo3) ...[
-                const SizedBox(height: 10),
-                const Text(
-                  "究極覚醒しました！",
-                  style: TextStyle(
-                    color: Colors.purple,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ] else ...[
-                // Max後
-                const SizedBox(height: 10),
-                const Text("限界突破中！", style: TextStyle(color: Colors.grey)),
-              ],
-
-              const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('閉じる'),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressSection(
-    int current,
-    int max,
-    String label, {
-    int baseCount = 0,
-  }) {
-    return Column(
-      children: [
-        const SizedBox(height: 10),
-        Text(
-          "$labelまで",
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-        ),
-        const SizedBox(height: 5),
-        SizedBox(
-          width: 150,
-          child: LinearProgressIndicator(
-            value: current / max,
-            backgroundColor: Colors.grey.shade200,
-            color: Colors.blue,
-            minHeight: 10,
-          ),
-        ),
-        Text(
-          "${baseCount + current} / ${baseCount + max}",
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRarityBadge(int rarity) {
-    Color color;
-    String label;
-    switch (rarity) {
-      case 5:
-        color = Colors.purple;
-        label = "UR";
-        break;
-      case 4:
-        color = Colors.orange;
-        label = "SSR";
-        break;
-      case 3:
-        color = Colors.blue;
-        label = "SR";
-        break;
-      case 2:
-        color = Colors.green;
-        label = "R";
-        break;
-      default:
-        color = Colors.grey;
-        label = "N";
-        break;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  // --- 一覧画面のバッジ ---
-  Widget _buildMiniBadge(int rarity) {
-    Color color;
-    String text;
-    if (rarity == 5) {
-      color = Colors.purple;
-      text = "UR";
-    } else if (rarity == 4) {
-      color = Colors.orange;
-      text = "SSR";
-    } else {
-      return const SizedBox.shrink();
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 8,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -290,9 +275,12 @@ class _GachaScreenState extends State<GachaScreen> {
 
     final int spins = _credits ~/ 3;
     final double progress = (_credits % 3) / 3.0;
-    final int unlockedCount = _itemCounts.keys.length;
+
+    final int maxLevelItems = _itemCounts.entries
+        .where((e) => e.value >= _maxLevel)
+        .length;
     final int totalItems = _allItems.length;
-    final double completeRate = totalItems > 0 ? unlockedCount / totalItems : 0;
+    final double completeRate = totalItems > 0 ? maxLevelItems / totalItems : 0;
 
     return Scaffold(
       backgroundColor: Colors.yellow.shade50,
@@ -350,11 +338,11 @@ class _GachaScreenState extends State<GachaScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         const Text(
-                          "収集率",
+                          "伝説到達率",
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                         Text(
-                          "$unlockedCount / $totalItems (${(completeRate * 100).toStringAsFixed(0)}%)",
+                          "$maxLevelItems / $totalItems (${(completeRate * 100).toStringAsFixed(0)}%)",
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -382,6 +370,7 @@ class _GachaScreenState extends State<GachaScreen> {
                       foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey.shade300,
                       padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: spins > 0 ? 4 : 0,
                     ),
                     child: Text(
                       spins > 0
@@ -399,136 +388,102 @@ class _GachaScreenState extends State<GachaScreen> {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 0.75,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.8,
                 ),
                 itemCount: _allItems.length,
                 itemBuilder: (context, index) {
                   final item = _allItems[index];
                   final int count = _itemCounts[item.id] ?? 0;
+                  final int level = item.getStage(count);
                   final bool isUnlocked = count > 0;
-                  final int stage = item.getStage(count); // 現在のステージ
+                  final Color itemColor = item.getColor(count);
 
                   return GestureDetector(
+                    // ロックされていても未取得としてタップは無効のまま
                     onTap: isUnlocked
                         ? () => _showResultDialog(item, count)
                         : null,
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(15),
                         border: Border.all(
-                          // ステージによって枠の色を変える
-                          color: stage == 3
-                              ? Colors.purple.shade200
-                              : stage == 2
-                              ? Colors.blue.shade200
-                              : isUnlocked
-                              ? Colors.orange.shade100
+                          color: isUnlocked
+                              ? itemColor.withOpacity(0.5)
                               : Colors.grey.shade200,
-                          width: stage >= 2 ? 3 : 2,
+                          width: level == _maxLevel ? 3 : 1.5,
                         ),
+                        boxShadow: [
+                          if (isUnlocked)
+                            BoxShadow(
+                              color: itemColor.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                        ],
                       ),
-                      child: Stack(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: isUnlocked
-                                      ? Image.asset(
-                                          item.getImagePath(count),
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (c, e, s) => const Icon(
-                                            Icons.broken_image,
-                                            color: Colors.grey,
-                                          ),
-                                        )
-                                      : Icon(
-                                          Icons.help_outline,
-                                          size: 40,
-                                          color: Colors.grey.shade300,
-                                        ),
-                                ),
-                              ),
-                              // ゲージ (進化途中のみ表示)
-                              if (isUnlocked && count < _evo3Count)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 2,
-                                  ),
-                                  child: LinearProgressIndicator(
-                                    // Lv1なら /5, Lv2なら (c-5)/5
-                                    value: count < _evo2Count
-                                        ? count / _evo2Count
-                                        : (count - _evo2Count) /
-                                              (_evo3Count - _evo2Count),
-                                    minHeight: 4,
-                                    backgroundColor: Colors.grey.shade200,
-                                    color: Colors.blueAccent,
-                                  ),
-                                ),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                  horizontal: 2,
-                                ),
-                                color: isUnlocked
-                                    ? Colors.orange.shade50
-                                    : Colors.grey.shade100,
-                                child: Text(
-                                  isUnlocked ? item.getName(count) : "???",
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: isUnlocked
-                                        ? Colors.black
-                                        : Colors.grey,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                          Expanded(
+                            child: Center(
+                              child: isUnlocked
+                                  ? Icon(
+                                      item.iconData,
+                                      size: 40,
+                                      color: itemColor,
+                                    )
+                                  : Icon(
+                                      Icons.lock,
+                                      size: 30,
+                                      color: Colors.grey.shade300,
+                                    ),
+                            ),
                           ),
                           if (isUnlocked)
-                            Positioned(
-                              top: 4,
-                              right: 4,
-                              child: _buildMiniBadge(item.rarity),
-                            ),
-                          // 最終進化マーク
-                          if (stage == 3)
-                            const Positioned(
-                              top: 4,
-                              left: 4,
-                              child: Icon(
-                                Icons.auto_awesome,
-                                color: Colors.purple,
-                                size: 16,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    "Lv.$level",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: itemColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(2),
+                                    child: LinearProgressIndicator(
+                                      value: level / _maxLevel,
+                                      minHeight: 4,
+                                      backgroundColor: Colors.grey.shade100,
+                                      color: itemColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            const Text(
+                              "???",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          // 第2形態マーク
-                          if (stage == 2)
-                            const Positioned(
-                              top: 4,
-                              left: 4,
-                              child: Icon(
-                                Icons.arrow_upward,
-                                color: Colors.blue,
-                                size: 16,
-                              ),
-                            ),
+                          const SizedBox(height: 10),
                         ],
                       ),
                     ),

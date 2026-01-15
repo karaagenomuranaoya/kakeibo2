@@ -1478,12 +1478,12 @@ class SettingsRepository {
   static const String _favoritesKey = 'favorites_list';
   static const String _expenseTagsKey = 'expense_tags_list';
   static const String _cardTagsKey = 'card_tags_list';
+  static const String _gachaEnabledKey = 'gacha_enabled';
+  // ▼▼ 追加: カテゴリ長押し機能の有効無効設定キー ▼▼
+  static const String _categoryLongPressKey = 'category_long_press_enabled';
 
   // --- お気に入り機能 (既存) ---
-  static const List<String> _defaultFavorites = [
-    'expense:食費',
-    'payment:楽天カード', // デフォルト名に合わせて修正
-  ];
+  static const List<String> _defaultFavorites = ['expense:食費', 'payment:楽天カード'];
 
   Future<List<String>> loadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
@@ -1495,7 +1495,7 @@ class SettingsRepository {
     await prefs.setStringList(_favoritesKey, favorites);
   }
 
-  // --- 費目リスト管理 (新規) ---
+  // --- 費目リスト管理 ---
   Future<List<CategoryTag>> loadExpenseTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_expenseTagsKey);
@@ -1512,7 +1512,7 @@ class SettingsRepository {
     await prefs.setString(_expenseTagsKey, jsonString);
   }
 
-  // --- カードリスト管理 (新規) ---
+  // --- カードリスト管理 ---
   Future<List<CategoryTag>> loadCardTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_cardTagsKey);
@@ -1527,6 +1527,29 @@ class SettingsRepository {
     final prefs = await SharedPreferences.getInstance();
     final String jsonString = json.encode(tags.map((e) => e.toJson()).toList());
     await prefs.setString(_cardTagsKey, jsonString);
+  }
+
+  // --- ガチャ設定の管理 ---
+  Future<bool> loadGachaEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_gachaEnabledKey) ?? true;
+  }
+
+  Future<void> saveGachaEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_gachaEnabledKey, enabled);
+  }
+
+  // --- ▼▼ 追加: カテゴリ長押し設定の管理 ▼▼ ---
+  Future<bool> loadCategoryLongPressEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    // デフォルトは true (オン)
+    return prefs.getBool(_categoryLongPressKey) ?? true;
+  }
+
+  Future<void> saveCategoryLongPressEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_categoryLongPressKey, enabled);
   }
 }
 
@@ -3001,6 +3024,7 @@ class _GachaScreenState extends State<GachaScreen> {
 --- FILE: lib/screens/main_screen.dart ---
 ```dart
 import 'package:flutter/material.dart';
+import '../repositories/settings_repository.dart';
 import '../widgets/app_drawer.dart';
 import 'input_tab.dart';
 import 'monthly_report_screen.dart';
@@ -3012,20 +3036,61 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen>
-    with SingleTickerProviderStateMixin {
+// ▼▼ 修正箇所: SingleTickerProviderStateMixin を TickerProviderStateMixin に変更 ▼▼
+class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late TabController _tabController;
+  final SettingsRepository _settingsRepository = SettingsRepository();
+
   int _dataVersion = 0;
-  bool _isTabBarVisible = true; // タブバーの表示状態管理
+  bool _isTabBarVisible = true;
+  bool _isGachaEnabled = true; // ガチャの有効状態（デフォルトON）
+  bool _isLoading = true; // 設定読み込み中フラグ
 
   @override
   void initState() {
     super.initState();
+    // 初期化時は仮でコントローラーを作成し、すぐに設定を読み込む
     _tabController = TabController(length: 3, vsync: this);
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final enabled = await _settingsRepository.loadGachaEnabled();
+      if (mounted) {
+        setState(() {
+          _isGachaEnabled = enabled;
+          _isLoading = false;
+          // 設定に合わせてコントローラーを作り直す
+          _setupTabController();
+        });
+      }
+    } catch (e) {
+      debugPrint('Settings load error: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          // エラー時もデフォルト設定で続行
+        });
+      }
+    }
+  }
+
+  void _setupTabController() {
+    // 現在のインデックスを保持（範囲外になる場合は0に戻す）
+    int newIndex = _tabController.index;
+    int length = _isGachaEnabled ? 3 : 2;
+    if (newIndex >= length) newIndex = 0;
+
+    _tabController.dispose();
+    _tabController = TabController(
+      length: length,
+      vsync: this,
+      initialIndex: newIndex,
+    );
 
     _tabController.addListener(() {
       if (!context.mounted) return;
-      // タブ切り替え開始時にキーボードを閉じてタブバーを再表示
       if (_tabController.indexIsChanging) {
         FocusScope.of(context).unfocus();
         if (!_isTabBarVisible) {
@@ -3043,14 +3108,15 @@ class _MainScreenState extends State<MainScreen>
     super.dispose();
   }
 
-  // ドロワーや設定画面からの戻りでデータをリフレッシュさせるためのバージョン管理
-  void _refreshData() {
+  // ドロワーや設定画面からの戻りでデータをリフレッシュ
+  void _refreshData() async {
+    // ガチャ設定が変わっている可能性があるので再読み込み
+    await _loadSettings();
     setState(() {
       _dataVersion++;
     });
   }
 
-  // InputTabから呼ばれる、タブバー表示切替コールバック
   void _setTabBarVisible(bool visible) {
     if (_isTabBarVisible != visible) {
       setState(() {
@@ -3061,6 +3127,11 @@ class _MainScreenState extends State<MainScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 読み込み中はローディングを表示
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -3071,22 +3142,12 @@ class _MainScreenState extends State<MainScreen>
         scrolledUnderElevation: 0,
       ),
       drawer: AppDrawer(onDataChanged: _refreshData),
-
-      // カスタムキーボードが下から出てくるときに、
-      // Scaffoldのbodyをリサイズせず（押し上げず）、上に重ねて表示する設定。
-      // これにより、画面全体のレイアウト崩れを防ぎます。
       resizeToAvoidBottomInset: false,
-
       body: GestureDetector(
-        onTap: () {
-          // 画面背景タップでフォーカスを外す
-          FocusScope.of(context).unfocus();
-        },
+        onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
         child: TabBarView(
           controller: _tabController,
-          // スワイプでのタブ切り替えを無効化（誤操作防止 & キーボード制御簡易化のため）
-          // 必要であれば physics: const ClampingScrollPhysics() に戻してください
           physics: const NeverScrollableScrollPhysics(),
           children: [
             // 1. 入力タブ
@@ -3098,37 +3159,36 @@ class _MainScreenState extends State<MainScreen>
             // 2. レポートタブ
             const MonthlyHistoryScreen(),
 
-            // 3. ガチャタブ
-            const GachaScreen(),
+            // 3. ガチャタブ (有効な場合のみ)
+            if (_isGachaEnabled) const GachaScreen(),
           ],
         ),
       ),
-
-      // タブバーの表示制御
-      // _isTabBarVisible が false のときは null にして非表示にする
       bottomNavigationBar: _isTabBarVisible
           ? NavigationBar(
               selectedIndex: _tabController.index,
               onDestinationSelected: (index) {
                 _tabController.animateTo(index);
-                setState(() {}); // NavigationBarの表示更新用
+                setState(() {});
               },
-              destinations: const [
-                NavigationDestination(
+              destinations: [
+                const NavigationDestination(
                   icon: Icon(Icons.edit_outlined),
                   selectedIcon: Icon(Icons.edit),
                   label: '入力',
                 ),
-                NavigationDestination(
+                const NavigationDestination(
                   icon: Icon(Icons.calendar_month_outlined),
                   selectedIcon: Icon(Icons.calendar_month),
                   label: 'レポート',
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.star_outline, color: Colors.orange),
-                  selectedIcon: Icon(Icons.star, color: Colors.orange),
-                  label: 'ガチャ',
-                ),
+                // ガチャが有効な場合のみ表示
+                if (_isGachaEnabled)
+                  const NavigationDestination(
+                    icon: Icon(Icons.star_outline, color: Colors.orange),
+                    selectedIcon: Icon(Icons.star, color: Colors.orange),
+                    label: 'ガチャ',
+                  ),
               ],
             )
           : null,
@@ -3141,6 +3201,7 @@ class _MainScreenState extends State<MainScreen>
 
 --- FILE: lib/screens/input_tab.dart ---
 ```dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -3154,7 +3215,7 @@ import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
 import '../utils/simple_calculator.dart';
 import 'settings/category_manage_screen.dart';
-import 'history_screen.dart'; // ▼▼ 履歴画面への遷移のためにインポート ▼▼
+import 'history_screen.dart';
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -3186,6 +3247,8 @@ class _InputTabState extends State<InputTab>
   // --- State ---
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
+  bool _isGachaEnabled = true;
+  bool _isCategoryLongPressEnabled = true; // 追加: カテゴリ長押し有効フラグ
   bool _isLoading = true;
 
   int _selectedExpenseIndex = 0;
@@ -3197,7 +3260,12 @@ class _InputTabState extends State<InputTab>
   bool _showCustomKeyboard = false;
   String? _lastInputId;
 
-  // キーボード高さ (キーエリア 272 + 閉じるバー 40)
+  // --- フラッシュメッセージ用 State ---
+  bool _isFlashVisible = false;
+  String _flashMsg = '';
+  Color _flashColor = Colors.blue;
+  Timer? _flashTimer;
+
   static const double _keyboardHeight = 312.0;
 
   @override
@@ -3218,6 +3286,7 @@ class _InputTabState extends State<InputTab>
     WidgetsBinding.instance.removeObserver(this);
     _amountFocusNode.removeListener(_onAmountFocusChange);
     _memoFocusNode.removeListener(_onMemoFocusChange);
+    _flashTimer?.cancel();
 
     _amountController.dispose();
     _memoController.dispose();
@@ -3230,7 +3299,6 @@ class _InputTabState extends State<InputTab>
   void didChangeMetrics() {
     super.didChangeMetrics();
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
-    // OSキーボードが出たらカスタムキーボードを隠す
     if (bottomInset > 0 && _showCustomKeyboard && !_amountFocusNode.hasFocus) {
       setState(() => _showCustomKeyboard = false);
     }
@@ -3269,6 +3337,11 @@ class _InputTabState extends State<InputTab>
   Future<void> _loadAllData() async {
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
+    final gachaEnabled = await _settingsRepository.loadGachaEnabled();
+    // ▼▼ 追加: カテゴリ長押し設定の読み込み ▼▼
+    final catLongPressEnabled = await _settingsRepository
+        .loadCategoryLongPressEnabled();
+
     final prefs = await SharedPreferences.getInstance();
 
     int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
@@ -3281,6 +3354,8 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _expenseList = expenses;
         _cardList = cards;
+        _isGachaEnabled = gachaEnabled;
+        _isCategoryLongPressEnabled = catLongPressEnabled; // 反映
         _selectedExpenseIndex = savedExpenseIndex;
         _selectedCardIndex = savedCardIndex;
         _isCardPayment = savedIsCard;
@@ -3305,6 +3380,25 @@ class _InputTabState extends State<InputTab>
     final prefs = await SharedPreferences.getInstance();
     setState(() => _selectedExpenseIndex = index);
     await prefs.setInt('last_expense_index', index);
+  }
+
+  // ▼▼ 追加: カテゴリ長押し時の処理 ▼▼
+  void _onCategoryLongPress(int index) {
+    if (!_isCategoryLongPressEnabled) return;
+    if (index >= _expenseList.length) return;
+
+    _closeKeyboard();
+    final tag = _expenseList[index];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HistoryScreen(
+          filterValue: tag.label,
+          filterKey: 'expense',
+          color: tag.color,
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleCardPayment(bool value) async {
@@ -3333,7 +3427,6 @@ class _InputTabState extends State<InputTab>
     await _loadAllData();
   }
 
-  // --- ▼▼ 追加: カード長押し時の処理 ▼▼ ---
   void _onCardLongPress(CategoryTag tag) {
     _closeKeyboard();
     Navigator.push(
@@ -3356,18 +3449,18 @@ class _InputTabState extends State<InputTab>
     final calculatedText = SimpleCalculator.calculate(rawText);
 
     if (calculatedText.isEmpty || calculatedText == "0") {
-      _showSnackBar('金額を入力してください', Colors.redAccent);
+      _showFlashMessage('金額を入力してください', Colors.redAccent);
       return;
     }
 
     _amountController.text = calculatedText;
     final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
     if (amount == 0) {
-      _showSnackBar('金額を入力してください', Colors.redAccent);
+      _showFlashMessage('金額を入力してください', Colors.redAccent);
       return;
     }
     if (_expenseList.isEmpty) {
-      _showSnackBar('カテゴリがありません', Colors.redAccent);
+      _showFlashMessage('カテゴリがありません', Colors.redAccent);
       return;
     }
     if (_selectedExpenseIndex >= _expenseList.length) {
@@ -3376,7 +3469,6 @@ class _InputTabState extends State<InputTab>
 
     if (!keepKeyboard) _closeKeyboard();
 
-    // 支払い方法と日付の決定
     String paymentMethod = '';
     DateTime? paymentDate;
 
@@ -3418,7 +3510,11 @@ class _InputTabState extends State<InputTab>
       );
 
       await _repository.addTransaction(newItem);
-      final newCredits = await _gachaRepository.addCredit();
+
+      int newCredits = 0;
+      if (_isGachaEnabled) {
+        newCredits = await _gachaRepository.addCredit();
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
@@ -3437,15 +3533,18 @@ class _InputTabState extends State<InputTab>
 
       if (mounted) {
         String msg = '保存しました';
-        if (newCredits % 3 == 0) {
+        Color color = Colors.blue;
+
+        if (_isGachaEnabled && newCredits > 0 && newCredits % 3 == 0) {
           msg = 'ガチャが回せます！';
+          color = Colors.orange;
         } else if (paymentDate != null) {
           msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
         }
-        _showSnackBar(msg, newCredits % 3 == 0 ? Colors.orange : Colors.blue);
+        _showFlashMessage(msg, color);
       }
     } catch (e) {
-      _showSnackBar('保存エラー: $e', Colors.red);
+      _showFlashMessage('保存エラー: $e', Colors.red);
     }
   }
 
@@ -3483,7 +3582,7 @@ class _InputTabState extends State<InputTab>
               await _repository.deleteTransaction(_lastInputId!);
               if (mounted) {
                 setState(() => _lastInputId = null);
-                _showSnackBar('入力を取り消しました', Colors.grey);
+                _showFlashMessage('入力を取り消しました', Colors.grey);
               }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -3494,16 +3593,21 @@ class _InputTabState extends State<InputTab>
     );
   }
 
-  void _showSnackBar(String msg, Color color) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: color,
-        duration: const Duration(milliseconds: 1500),
-      ),
-    );
+  void _showFlashMessage(String msg, Color color) {
+    _flashTimer?.cancel();
+    setState(() {
+      _flashMsg = msg;
+      _flashColor = color;
+      _isFlashVisible = true;
+    });
+
+    _flashTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        setState(() {
+          _isFlashVisible = false;
+        });
+      }
+    });
   }
 
   @override
@@ -3528,7 +3632,6 @@ class _InputTabState extends State<InputTab>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 金額・日付・メモ入力エリア (Widget切り出し)
                   AmountInputArea(
                     selectedDate: _selectedDate,
                     amountController: _amountController,
@@ -3539,24 +3642,23 @@ class _InputTabState extends State<InputTab>
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
                   const SizedBox(height: 20),
-
-                  // カテゴリ選択
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: _changeExpenseIndex,
+                    // ▼▼ 修正: 設定に応じてコールバックを渡す ▼▼
+                    onLongPress: _isCategoryLongPressEnabled
+                        ? _onCategoryLongPress
+                        : null,
                     onAddPressed: _openCategorySettings,
                   ),
                   const SizedBox(height: 20),
-
-                  // 下部コントロールパネル (Widget切り出し)
                   InputControlPanel(
                     isCardPayment: _isCardPayment,
                     onToggleCard: _toggleCardPayment,
                     cardList: _cardList,
                     selectedCardIndex: _selectedCardIndex,
                     onCardSelected: _changeCardIndex,
-                    // ▼▼ 追加: コールバックを渡す ▼▼
                     onCardLongPress: _onCardLongPress,
                     onSave: () => _saveData(keepKeyboard: false),
                     onUndo: _undoLastInput,
@@ -3566,7 +3668,6 @@ class _InputTabState extends State<InputTab>
               ),
             ),
           ),
-          // カスタムキーボード
           if (_showCustomKeyboard)
             Positioned(
               left: 0,
@@ -3580,6 +3681,43 @@ class _InputTabState extends State<InputTab>
                 onChanged: (_) {},
               ),
             ),
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: true,
+              child: AnimatedOpacity(
+                opacity: _isFlashVisible ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _flashColor.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      _flashMsg,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -3598,9 +3736,9 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart';
 import '../widgets/transaction_tile.dart';
-// ▼▼ ここに黄色い波線が出る場合、上の「transaction_edit_dialog.dart」が作成されていません ▼▼
 import '../widgets/transaction_edit_dialog.dart';
 import 'summary_detail_screen.dart';
+import 'history_screen.dart'; // ▼▼ 履歴画面への遷移用にインポートを追加 ▼▼
 
 class MonthlyHistoryScreen extends StatefulWidget {
   const MonthlyHistoryScreen({super.key});
@@ -3762,7 +3900,25 @@ class _MonthPageState extends State<MonthPage> {
                     history: _history,
                     onDateTap: _scrollToDate,
                   )
-                : GraphView(history: _history, expenseTags: _expenseTags),
+                : GraphView(
+                    history: _history,
+                    expenseTags: _expenseTags,
+                    // ▼▼ 追加: 凡例タップ時の処理 ▼▼
+                    onLegendTap: (expense, color) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => HistoryScreen(
+                            filterValue: expense,
+                            filterKey: 'expense',
+                            color: color,
+                            year: widget.year,
+                            month: widget.month,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
           const Divider(height: 1),
           _buildDailyList(),
@@ -3905,7 +4061,6 @@ class _MonthPageState extends State<MonthPage> {
                       context: context,
                       builder: (context) => TransactionEditDialog(
                         item: item,
-                        // ▼▼▼ 型エラー対策として { _load(); } で囲みました ▼▼▼
                         onSuccess: () {
                           _load();
                         },
@@ -3926,14 +4081,228 @@ class _MonthPageState extends State<MonthPage> {
 ```
 
 
+--- FILE: lib/screens/settings/developer_tips_screen.dart ---
+```dart
+import 'package:flutter/material.dart';
+
+class DeveloperTipsScreen extends StatelessWidget {
+  const DeveloperTipsScreen({super.key});
+
+  // データ定義（ここに追加していけばリストが増えます）
+  static const List<_TipItem> _tips = [
+    _TipItem(
+      title: 'ご挨拶',
+      content:
+          'どうも。開発者のからくりです。「次へ家計簿」をダウンロードいただきありがとうございます。\n\nこのアプリは従来の家計簿アプリと比べ、シンプルなのに「なんで今までなかったんだろう」という機能を詰め込みました。\n\nこの独り言に使い方のtipsが置いてあるので、よかったらご覧ください。',
+      icon: Icons.waving_hand,
+      color: Colors.blue,
+    ),
+    _TipItem(
+      title: '変な名前、次へ家計簿',
+      content:
+          '「次へ」はこのアプリの命です。多くのアプリが1回入力をするたびにキーボードがすとんと降りてしまいます。これでは連続入力の手間が倍増です。\n\nそこで、キーボードの右下に「次へ」ボタンを設置し、保存して次の入力をスムーズに再開することができます。\n\n次の入力へスムーズに、次の未来にまっすぐと。\n\nってのはちょっとかっこつけすぎですかね笑\n次へ家計簿、末長くよろしくお願いいたします。',
+      icon: Icons.keyboard_return,
+      color: Colors.indigo,
+    ),
+    _TipItem(
+      title: '収入記録、なくしちゃいました',
+      content:
+          'このアプリは家計簿なのに収入欄がなく支出のみの記録となっています。\n\n私自身が他の家計簿を使っていて、「収入を入力するとあといくら使えるかが明確になる→言い換えれば、きちんと毎回つけないと金銭感覚がずれていく→毎回つけなきゃ！というプレッシャーになる→家計簿をやめる」という経験をしてきたことに基づいています。\n\nたまにサボっても、「ちょっと使いすぎている気がする、まずい」程度の緩いブレーキになれればという思いがあります。',
+      icon: Icons.money_off,
+      color: Colors.green,
+    ),
+    _TipItem(
+      title: '支払い明細にジャンプ',
+      content: '入力欄のカード項目をオンにするとカードの選択が出てきますが、これを長押しするとそのカードの明細に飛びます。地味に便利。',
+      icon: Icons.credit_card,
+      color: Colors.purple,
+    ),
+    _TipItem(
+      title: '円グラフからジャンプ',
+      content: '円グラフ画面の下の凡例からも費目詳細に飛ぶことができます。地味に便利。',
+      icon: Icons.pie_chart,
+      color: Colors.orange,
+    ),
+    _TipItem(
+      title: '気づいていますか？取り消し機能',
+      content:
+          '費目を入力したあと、あ、間違えたと思ったら取り消し機能の出番です。入力画面の下の方にある取り消しボタンで、直前の入力をなかったことにできます。地味に便利。',
+      icon: Icons.undo,
+      color: Colors.redAccent,
+    ),
+    _TipItem(
+      title: 'まさかのガチャ機能',
+      content:
+          '本当におまけ機能ですが、3回品目を入力するとガチャが回せます。キャラクターは100種類程度、2段階進化という謎のこだわりが見えるので、暇があればぜひお試しください。\n\nそんなのいらないよ、という方は、設定からガチャのタブ項目を消すことも可能です。',
+      icon: Icons.star,
+      color: Colors.amber,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('管理人の独り言 & Tips')),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: _tips.length,
+        separatorBuilder: (context, index) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final tip = _tips[index];
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 8,
+            ),
+            leading: CircleAvatar(
+              backgroundColor: tip.color.withOpacity(0.1),
+              child: Icon(tip.icon, color: tip.color),
+            ),
+            title: Text(
+              tip.title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (context) => _TipDetailDialog(tip: tip),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TipItem {
+  final String title;
+  final String content;
+  final IconData icon;
+  final Color color;
+
+  const _TipItem({
+    required this.title,
+    required this.content,
+    required this.icon,
+    required this.color,
+  });
+}
+
+class _TipDetailDialog extends StatelessWidget {
+  final _TipItem tip;
+
+  const _TipDetailDialog({required this.tip});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ヘッダー部分
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: BoxDecoration(
+              color: tip.color.withOpacity(0.1),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
+            ),
+            child: Column(
+              children: [
+                Icon(tip.icon, size: 48, color: tip.color),
+                const SizedBox(height: 10),
+                Text(
+                  tip.title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          // 本文部分（スクロール可能にする）
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                tip.content,
+                style: const TextStyle(fontSize: 15, height: 1.6),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          // 閉じるボタン
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+              child: Text('閉じる', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+```
+
+
 --- FILE: lib/screens/settings/settings_screen.dart ---
 ```dart
 import 'package:flutter/material.dart';
-import 'favorite_settings_screen.dart';
-import 'category_manage_screen.dart'; // 追加
+import '../../repositories/settings_repository.dart';
+import 'category_manage_screen.dart';
+import 'developer_tips_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final SettingsRepository _repository = SettingsRepository();
+  bool _isGachaEnabled = true;
+  bool _isCategoryLongPressEnabled = true; // 追加
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final gacha = await _repository.loadGachaEnabled();
+    final catLongPress = await _repository.loadCategoryLongPressEnabled(); // 追加
+    setState(() {
+      _isGachaEnabled = gacha;
+      _isCategoryLongPressEnabled = catLongPress; // 追加
+    });
+  }
+
+  Future<void> _toggleGacha(bool value) async {
+    setState(() {
+      _isGachaEnabled = value;
+    });
+    await _repository.saveGachaEnabled(value);
+  }
+
+  // 追加
+  Future<void> _toggleCategoryLongPress(bool value) async {
+    setState(() {
+      _isCategoryLongPressEnabled = value;
+    });
+    await _repository.saveCategoryLongPressEnabled(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3957,19 +4326,40 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           const Divider(),
-          // お気に入り設定 (既存のまま)
+
+          // ▼▼ 追加: カテゴリ長押し設定 ▼▼
+          SwitchListTile(
+            secondary: const Icon(Icons.touch_app, color: Colors.blueGrey),
+            title: const Text('カテゴリ長押しで履歴へ'),
+            subtitle: const Text('入力画面のカテゴリを長押しして詳細へ移動'),
+            value: _isCategoryLongPressEnabled,
+            activeColor: Colors.blue,
+            onChanged: _toggleCategoryLongPress,
+          ),
+          const Divider(),
+
+          // ガチャ機能のオンオフ
+          SwitchListTile(
+            secondary: const Icon(Icons.star, color: Colors.orange),
+            title: const Text('おまけガチャ機能'),
+            subtitle: const Text('入力ごとのポイント付与とガチャタブの表示'),
+            value: _isGachaEnabled,
+            activeColor: Colors.orange,
+            onChanged: _toggleGacha,
+          ),
+          const Divider(),
+
+          // 管理人の独り言
           ListTile(
-            leading: const Icon(Icons.star_border),
-            title: const Text('お気に入り設定 (廃止済み機能)'),
-            subtitle: const Text('※現在はタブバー固定のため使用されません'),
-            // もし完全廃止ならこのListTileごと消してもOKですが、
-            // サイドバーで使うかもしれないので残しておきます
+            leading: const Icon(Icons.tips_and_updates, color: Colors.blue),
+            title: const Text('管理人の独り言 & Tips'),
+            subtitle: const Text('使い方や開発の裏話など'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const FavoriteSettingsScreen(),
+                  builder: (context) => const DeveloperTipsScreen(),
                 ),
               );
             },
@@ -4466,6 +4856,8 @@ class CategorySelector extends StatelessWidget {
   final List<CategoryTag> tags;
   final int? selectedIndex;
   final Function(int) onSelected;
+  // ▼▼ 追加: 長押しコールバック ▼▼
+  final Function(int)? onLongPress;
   final VoidCallback? onAddPressed;
 
   const CategorySelector({
@@ -4473,10 +4865,10 @@ class CategorySelector extends StatelessWidget {
     required this.tags,
     required this.selectedIndex,
     required this.onSelected,
+    this.onLongPress, // 追加
     this.onAddPressed,
   });
 
-  // ラベルに応じたアイコンを返すヘルパー
   IconData _getIconForLabel(String label) {
     if (label.contains('食')) return Icons.restaurant;
     if (label.contains('日用')) return Icons.shopping_bag;
@@ -4499,13 +4891,11 @@ class CategorySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 追加ボタンがある場合は要素数を+1
     final int itemCount = onAddPressed != null ? tags.length + 1 : tags.length;
 
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      // パディング調整
       padding: const EdgeInsets.symmetric(horizontal: 2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
@@ -4515,14 +4905,19 @@ class CategorySelector extends StatelessWidget {
       ),
       itemCount: itemCount,
       itemBuilder: (context, index) {
-        // 末尾に追加ボタンを表示する場合
         if (onAddPressed != null && index == tags.length) {
           return _buildAddButton();
         }
 
         final tag = tags[index];
         final isSelected = selectedIndex == index;
-        return _buildCategoryChip(tag, isSelected, () => onSelected(index));
+        return _buildCategoryChip(
+          tag,
+          isSelected,
+          () => onSelected(index),
+          // ▼▼ 長押し処理を渡す ▼▼
+          onLongPress != null ? () => onLongPress!(index) : null,
+        );
       },
     );
   }
@@ -4563,6 +4958,7 @@ class CategorySelector extends StatelessWidget {
     CategoryTag tag,
     bool isSelected,
     VoidCallback onTap,
+    VoidCallback? onLongPress, // 追加
   ) {
     return Material(
       color: isSelected ? tag.color : Colors.white,
@@ -4577,6 +4973,7 @@ class CategorySelector extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress, // 追加
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
@@ -4770,10 +5167,6 @@ class CalendarView extends StatelessWidget {
   Widget build(BuildContext context) {
     final daysInMonth = DateTime(year, month + 1, 0).day;
     final firstWeekday = DateTime(year, month, 1).weekday;
-    // DateTime.weekdayは 月=1 ... 日=7。カレンダーは日曜始まりとするなら調整が必要。
-    // ここでは単純に 月曜始まり(0)〜日曜(6) ではなく、標準的なカレンダー(日曜左)に合わせる計算。
-    // weekday: 1(Mon)..7(Sun). Sunday start: Sun=0, Mon=1...
-    // empty slots = (weekday % 7). If 1st is Sun(7), 7%7=0 slots. If Mon(1), 1 slot.
     final int emptyCount = firstWeekday % 7;
 
     final hasDataDays = history.map((e) => e.date.day).toSet();
@@ -4861,11 +5254,14 @@ class CalendarView extends StatelessWidget {
 class GraphView extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
+  // ▼▼ 追加: 凡例タップ時のコールバック ▼▼
+  final Function(String expense, Color color)? onLegendTap;
 
   const GraphView({
     super.key,
     required this.history,
     required this.expenseTags,
+    this.onLegendTap,
   });
 
   @override
@@ -4887,7 +5283,6 @@ class GraphView extends StatelessWidget {
       sections = sortedEntries.map((e) {
         final percentage = (e.value / total) * 100;
 
-        // 色を検索
         Color color = Colors.grey;
         try {
           color = expenseTags.firstWhere((t) => t.label == e.key).color;
@@ -4897,7 +5292,7 @@ class GraphView extends StatelessWidget {
           color: color,
           value: e.value.toDouble(),
           title: '${percentage.toStringAsFixed(0)}%',
-          radius: 50,
+          radius: 60,
           titleStyle: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
@@ -4906,13 +5301,12 @@ class GraphView extends StatelessWidget {
         );
       }).toList();
     } else {
-      // データがない場合のグレー円
       sections = [
         PieChartSectionData(
           color: Colors.grey.shade200,
           value: 1,
           title: '',
-          radius: 50,
+          radius: 60,
         ),
       ];
     }
@@ -4920,12 +5314,11 @@ class GraphView extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      constraints: const BoxConstraints(minHeight: 300),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       child: Column(
         children: [
           SizedBox(
-            height: 200,
+            height: 220,
             child: PieChart(
               PieChartData(
                 sections: sections,
@@ -4935,11 +5328,81 @@ class GraphView extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            "※費目ごとの詳細は合計金額をタップ",
-            style: TextStyle(fontSize: 11, color: Colors.grey),
-          ),
+          const SizedBox(height: 20),
+          // 凡例エリア
+          if (total > 0)
+            Column(
+              children: sortedEntries.map((e) {
+                final amount = e.value;
+                final percentage = (amount / total * 100).toStringAsFixed(1);
+
+                Color color = Colors.grey;
+                try {
+                  color = expenseTags.firstWhere((t) => t.label == e.key).color;
+                } catch (_) {}
+
+                // ▼▼ 修正: タップ可能なリストに変更 ▼▼
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onLegendTap?.call(e.key, color),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            e.key,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '¥$amount',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 40,
+                            child: Text(
+                              '$percentage%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                          // 遷移できることを示す小さなアイコン
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            )
+          else
+            const Text('データがありません', style: TextStyle(color: Colors.grey)),
         ],
       ),
     );
@@ -4954,7 +5417,6 @@ class GraphView extends StatelessWidget {
 import 'package:flutter/material.dart';
 import '../models/category_tag.dart';
 import '../repositories/settings_repository.dart';
-import '../screens/monthly_report_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
 
@@ -5006,28 +5468,19 @@ class _AppDrawerState extends State<AppDrawer> {
                     style: TextStyle(color: Colors.white, fontSize: 24),
                   ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_month),
-                  title: const Text('月別レポート (全画面)'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MonthlyHistoryScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(),
+
+                // ▼▼ 月別レポートへのリンクを削除しました ▼▼
                 _buildSectionHeader("費目別 履歴"),
                 ..._expenseList.map(
                   (tag) => _buildFilterTile(context, tag, 'expense'),
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                _buildFilterTile(context,
-                    CategoryTag(label: '現金', color: Colors.grey), 'payment'),
+                _buildFilterTile(
+                  context,
+                  CategoryTag(label: '現金', color: Colors.grey),
+                  'payment',
+                ),
                 ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
@@ -5042,9 +5495,7 @@ class _AppDrawerState extends State<AppDrawer> {
               Navigator.pop(context);
               await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const SettingsScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
               // 設定から戻ってきたらタグ情報を再読み込み
               _loadTags();
@@ -5750,9 +6201,8 @@ class InputControlPanel extends StatelessWidget {
   final List<CategoryTag> cardList;
   final int selectedCardIndex;
   final ValueChanged<int> onCardSelected;
-  // ▼▼ 追加: カード長押し時のコールバック定義 ▼▼
+  // カード長押し時のコールバック
   final ValueChanged<CategoryTag>? onCardLongPress;
-
   final VoidCallback onSave;
   final VoidCallback? onUndo;
   final bool showUndo;
@@ -5764,7 +6214,6 @@ class InputControlPanel extends StatelessWidget {
     required this.cardList,
     required this.selectedCardIndex,
     required this.onCardSelected,
-    // ▼▼ 追加: コンストラクタ引数 ▼▼
     this.onCardLongPress,
     required this.onSave,
     this.onUndo,
@@ -5773,8 +6222,8 @@ class InputControlPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ▼▼ ここが重要: エラー回避のためローカル変数に入れます ▼▼
-    final onLongPressCallback = onCardLongPress;
+    // Nullチェック用のローカル変数
+    final callback = onCardLongPress;
 
     return Container(
       width: double.infinity,
@@ -5824,42 +6273,41 @@ class InputControlPanel extends StatelessWidget {
                             final tag = entry.value;
                             final isSelected = selectedCardIndex == index;
 
-                            // ▼▼▼▼ 重要修正ポイント ▼▼▼▼
-                            // ChoiceChip には onLongPress が無いため、
-                            // 必ず 'RawChip' を使用してください。
                             return Padding(
                               padding: const EdgeInsets.only(right: 8),
-                              child: RawChip(
-                                label: Text(tag.label),
-                                labelStyle: TextStyle(
-                                  fontSize: 11,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                                selected: isSelected,
-                                showCheckmark: false, // ChoiceChip風に見せるため
-                                selectedColor: tag.color,
-                                backgroundColor: Colors.grey.shade100,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  side: const BorderSide(
-                                    color: Colors.transparent,
-                                    width: 0,
-                                  ),
-                                ),
-                                onSelected: (_) => onCardSelected(index),
-                                // ▼▼ ここでローカル変数を使用することでエラーを完全に防ぎます ▼▼
-                                onLongPress: onLongPressCallback != null
-                                    ? () => onLongPressCallback(tag)
+                              child: GestureDetector(
+                                // 【解決策】RawChipの外側をGestureDetectorで囲む
+                                onLongPress: callback != null
+                                    ? () => callback(tag)
                                     : null,
-                                visualDensity: VisualDensity.compact,
+                                child: RawChip(
+                                  label: Text(tag.label),
+                                  labelStyle: TextStyle(
+                                    fontSize: 11,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                  selected: isSelected,
+                                  showCheckmark: false,
+                                  selectedColor: tag.color,
+                                  backgroundColor: Colors.grey.shade100,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: const BorderSide(
+                                      color: Colors.transparent,
+                                      width: 0,
+                                    ),
+                                  ),
+                                  onSelected: (_) => onCardSelected(index),
+                                  // ここにあった onLongPress は削除（存在しない引数のため）
+                                  visualDensity: VisualDensity.compact,
+                                ),
                               ),
                             );
-                            // ▲▲▲▲ 修正ここまで ▲▲▲▲
                           }).toList(),
                         ),
                       )
@@ -5916,6 +6364,14 @@ class InputControlPanel extends StatelessWidget {
   }
 }
 
+```
+
+
+--- FILE: .vscode/settings.json ---
+```
+{
+    "commentTranslate.hover.enabled": false
+}
 ```
 
 
