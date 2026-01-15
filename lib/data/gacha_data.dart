@@ -207,7 +207,7 @@ class GachaData {
     GachaItem(
       id: '7',
       rarity: 1,
-      weight: 30,
+      weight: 20,
       iconData: Icons.water_drop,
       baseName: 'スライム',
       descriptions: [
@@ -240,7 +240,7 @@ class GachaData {
     GachaItem(
       id: '8',
       rarity: 1,
-      weight: 25,
+      weight: 20,
       iconData: Icons.grass,
       baseName: 'マンドラゴラ',
       descriptions: [
@@ -306,7 +306,7 @@ class GachaData {
     GachaItem(
       id: '10',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.bolt,
       baseName: 'サンダーバード',
       descriptions: [
@@ -339,7 +339,7 @@ class GachaData {
     GachaItem(
       id: '11',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.ac_unit,
       baseName: 'アイスゴーレム',
       descriptions: [
@@ -372,7 +372,7 @@ class GachaData {
     GachaItem(
       id: '12',
       rarity: 5,
-      weight: 5,
+      weight: 20,
       iconData: Icons.wb_sunny,
       baseName: '太陽神',
       descriptions: [
@@ -405,7 +405,7 @@ class GachaData {
     GachaItem(
       id: '13',
       rarity: 4,
-      weight: 10,
+      weight: 20,
       iconData: Icons.dark_mode,
       baseName: '闇の魔人',
       descriptions: [
@@ -471,7 +471,7 @@ class GachaData {
     GachaItem(
       id: '15',
       rarity: 1,
-      weight: 25,
+      weight: 20,
       iconData: Icons.bubble_chart,
       baseName: 'アメーバ',
       descriptions: [
@@ -504,7 +504,7 @@ class GachaData {
     GachaItem(
       id: '16',
       rarity: 1,
-      weight: 30,
+      weight: 20,
       iconData: Icons.pest_control_rodent,
       baseName: '大ネズミ',
       descriptions: [
@@ -537,7 +537,7 @@ class GachaData {
     GachaItem(
       id: '17',
       rarity: 1,
-      weight: 25,
+      weight: 20,
       iconData: Icons.cruelty_free,
       baseName: 'ラビット',
       descriptions: [
@@ -636,7 +636,7 @@ class GachaData {
     GachaItem(
       id: '20',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.bug_report,
       baseName: '鋼鉄ビートル',
       descriptions: [
@@ -669,7 +669,7 @@ class GachaData {
     GachaItem(
       id: '21',
       rarity: 5,
-      weight: 5,
+      weight: 20,
       iconData: Icons.tsunami,
       baseName: 'リヴァイアサン',
       descriptions: [
@@ -702,7 +702,7 @@ class GachaData {
     GachaItem(
       id: '22',
       rarity: 4,
-      weight: 10,
+      weight: 20,
       iconData: Icons.volcano,
       baseName: 'マグマ巨人',
       descriptions: [
@@ -735,7 +735,7 @@ class GachaData {
     GachaItem(
       id: '23',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.tornado,
       baseName: 'ストーム',
       descriptions: [
@@ -768,7 +768,7 @@ class GachaData {
     GachaItem(
       id: '24',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.terrain,
       baseName: 'ロックゴーレム',
       descriptions: [
@@ -833,7 +833,7 @@ class GachaData {
     GachaItem(
       id: '26',
       rarity: 4,
-      weight: 10,
+      weight: 20,
       iconData: Icons.accessibility_new,
       baseName: 'タイタン',
       descriptions: [
@@ -899,7 +899,7 @@ class GachaData {
     GachaItem(
       id: '28',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.star,
       baseName: 'スターマン',
       descriptions: [
@@ -965,7 +965,7 @@ class GachaData {
     GachaItem(
       id: '30',
       rarity: 4,
-      weight: 10,
+      weight: 20,
       iconData: Icons.rocket_launch,
       baseName: 'ミサイルキラー',
       descriptions: [
@@ -998,7 +998,7 @@ class GachaData {
     GachaItem(
       id: '31',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.directions_boat,
       baseName: 'ゴーストシップ',
       descriptions: [
@@ -1031,7 +1031,7 @@ class GachaData {
     GachaItem(
       id: '32',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.anchor,
       baseName: 'アンカービースト',
       descriptions: [
@@ -1064,7 +1064,7 @@ class GachaData {
     GachaItem(
       id: '33',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.alarm,
       baseName: 'クロックマスター',
       descriptions: [
@@ -1163,7 +1163,7 @@ class GachaData {
     GachaItem(
       id: '36',
       rarity: 4,
-      weight: 10,
+      weight: 20,
       iconData: Icons.wifi_tethering,
       baseName: '電波生命体',
       descriptions: [
@@ -1196,7 +1196,7 @@ class GachaData {
     GachaItem(
       id: '37',
       rarity: 1,
-      weight: 25,
+      weight: 20,
       iconData: Icons.qr_code_2,
       baseName: 'グリッチ',
       descriptions: [
@@ -1295,7 +1295,7 @@ class GachaData {
     GachaItem(
       id: '40',
       rarity: 1,
-      weight: 25,
+      weight: 20,
       iconData: Icons.mouse,
       baseName: 'メカマウス',
       descriptions: [
@@ -1361,7 +1361,7 @@ class GachaData {
     GachaItem(
       id: '42',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.dangerous,
       baseName: 'スカル',
       descriptions: [
@@ -1394,7 +1394,7 @@ class GachaData {
     GachaItem(
       id: '43',
       rarity: 1,
-      weight: 25,
+      weight: 20,
       iconData: Icons.recycling,
       baseName: 'マッドスライム',
       descriptions: [
@@ -1460,9 +1460,1821 @@ class GachaData {
     GachaItem(
       id: '45',
       rarity: 3,
-      weight: 15,
+      weight: 20,
       iconData: Icons.forest,
       baseName: 'エント',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+    // -------------------------------------------------------
+    // No.46 勇者の盾
+    // -------------------------------------------------------
+    GachaItem(
+      id: '46',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.shield,
+      baseName: '勇者の盾',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.47 ウォーハンマー
+    // -------------------------------------------------------
+    GachaItem(
+      id: '47',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.gavel,
+      baseName: 'ウォーハンマー',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.48 匠の剣
+    // -------------------------------------------------------
+    GachaItem(
+      id: '48',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.build,
+      baseName: '匠の剣',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.49 絵筆の杖
+    // -------------------------------------------------------
+    GachaItem(
+      id: '49',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.brush,
+      baseName: '絵筆の杖',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.50 契約のペン
+    // -------------------------------------------------------
+    GachaItem(
+      id: '50',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.edit,
+      baseName: '契約のペン',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.51 双剣
+    // -------------------------------------------------------
+    GachaItem(
+      id: '51',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.cut,
+      baseName: '双剣',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.52 鉄壁の傘
+    // -------------------------------------------------------
+    GachaItem(
+      id: '52',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.umbrella,
+      baseName: '鉄壁の傘',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.53 ポイズンダーツ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '53',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.colorize,
+      baseName: 'ポイズンダーツ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.54 バトルアックス
+    // -------------------------------------------------------
+    GachaItem(
+      id: '54',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.handyman,
+      baseName: 'バトルアックス',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.55 コンパス
+    // -------------------------------------------------------
+    GachaItem(
+      id: '55',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.architecture,
+      baseName: 'コンパス',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.56 歌姫のマイク
+    // -------------------------------------------------------
+    GachaItem(
+      id: '56',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.mic,
+      baseName: '歌姫のマイク',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.57 退魔のライト
+    // -------------------------------------------------------
+    GachaItem(
+      id: '57',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.flashlight_on,
+      baseName: '退魔のライト',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.58 真実のカメラ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '58',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.camera_alt,
+      baseName: '真実のカメラ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.59 懐中時計
+    // -------------------------------------------------------
+    GachaItem(
+      id: '59',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.watch,
+      baseName: '懐中時計',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.60 封印の錠
+    // -------------------------------------------------------
+    GachaItem(
+      id: '60',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.lock,
+      baseName: '封印の錠',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.61 魔法の鍵
+    // -------------------------------------------------------
+    GachaItem(
+      id: '61',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.key,
+      baseName: '魔法の鍵',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.62 イージスの盾
+    // -------------------------------------------------------
+    GachaItem(
+      id: '62',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.security,
+      baseName: 'イージスの盾',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.63 守護の紋章
+    // -------------------------------------------------------
+    GachaItem(
+      id: '63',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.verified_user,
+      baseName: '守護の紋章',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.64 優勝トロフィー
+    // -------------------------------------------------------
+    GachaItem(
+      id: '64',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.emoji_events,
+      baseName: '優勝トロフィー',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.65 勲章
+    // -------------------------------------------------------
+    GachaItem(
+      id: '65',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.military_tech,
+      baseName: '勲章',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+    // -------------------------------------------------------
+    // No.66 賢者の石
+    // -------------------------------------------------------
+    GachaItem(
+      id: '66',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.diamond,
+      baseName: '賢者の石',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.67 魔導書
+    // -------------------------------------------------------
+    GachaItem(
+      id: '67',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.auto_stories,
+      baseName: '魔導書',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.68 冒険の書
+    // -------------------------------------------------------
+    GachaItem(
+      id: '68',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.menu_book,
+      baseName: '冒険の書',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.69 宝の地図
+    // -------------------------------------------------------
+    GachaItem(
+      id: '69',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.map,
+      baseName: '宝の地図',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.70 羅針盤
+    // -------------------------------------------------------
+    GachaItem(
+      id: '70',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.explore,
+      baseName: '羅針盤',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.71 パズルの欠片
+    // -------------------------------------------------------
+    GachaItem(
+      id: '71',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.extension,
+      baseName: 'パズルの欠片',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.72 宝箱
+    // -------------------------------------------------------
+    GachaItem(
+      id: '72',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.card_giftcard,
+      baseName: '宝箱',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.73 アイテムボックス
+    // -------------------------------------------------------
+    GachaItem(
+      id: '73',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.inventory_2,
+      baseName: 'アイテムボックス',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.74 旅人のリュック
+    // -------------------------------------------------------
+    GachaItem(
+      id: '74',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.backpack,
+      baseName: '旅人のリュック',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.75 商人の袋
+    // -------------------------------------------------------
+    GachaItem(
+      id: '75',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.shopping_bag,
+      baseName: '商人の袋',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.76 革の財布
+    // -------------------------------------------------------
+    GachaItem(
+      id: '76',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.wallet,
+      baseName: '革の財布',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.77 金のブタ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '77',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.savings,
+      baseName: '金のブタ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.78 ゴールドコイン
+    // -------------------------------------------------------
+    GachaItem(
+      id: '78',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.monetization_on,
+      baseName: 'ゴールドコイン',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.79 古代コイン
+    // -------------------------------------------------------
+    GachaItem(
+      id: '79',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.currency_bitcoin,
+      baseName: '古代コイン',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.80 エリクサー
+    // -------------------------------------------------------
+    GachaItem(
+      id: '80',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.science,
+      baseName: 'エリクサー',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.81 毒薬
+    // -------------------------------------------------------
+    GachaItem(
+      id: '81',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.local_bar,
+      baseName: '毒薬',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.82 回復のコーヒー
+    // -------------------------------------------------------
+    GachaItem(
+      id: '82',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.local_cafe,
+      baseName: '回復のコーヒー',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.83 王様のケーキ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '83',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.cake,
+      baseName: '王様のケーキ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.84 パワーバーガー
+    // -------------------------------------------------------
+    GachaItem(
+      id: '84',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.lunch_dining,
+      baseName: 'パワーバーガー',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.85 スタミナラーメン
+    // -------------------------------------------------------
+    GachaItem(
+      id: '85',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.ramen_dining,
+      baseName: 'スタミナラーメン',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+    // -------------------------------------------------------
+    // No.86 氷のスイーツ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '86',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.icecream,
+      baseName: '氷のスイーツ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.87 パーティピザ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '87',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.local_pizza,
+      baseName: 'パーティピザ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.88 旅のお弁当
+    // -------------------------------------------------------
+    GachaItem(
+      id: '88',
+      rarity: 1,
+      weight: 20,
+      iconData: Icons.bento,
+      baseName: '旅のお弁当',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.89 晩餐
+    // -------------------------------------------------------
+    GachaItem(
+      id: '89',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.set_meal,
+      baseName: '晩餐',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.90 保存庫
+    // -------------------------------------------------------
+    GachaItem(
+      id: '90',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.kitchen,
+      baseName: '保存庫',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.91 王座
+    // -------------------------------------------------------
+    GachaItem(
+      id: '91',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.chair,
+      baseName: '王座',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.92 ギルドの旗
+    // -------------------------------------------------------
+    GachaItem(
+      id: '92',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.flag,
+      baseName: 'ギルドの旗',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.93 ひらめき
+    // -------------------------------------------------------
+    GachaItem(
+      id: '93',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.lightbulb,
+      baseName: 'ひらめき',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.94 ネットワーク
+    // -------------------------------------------------------
+    GachaItem(
+      id: '94',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.lan,
+      baseName: 'ネットワーク',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.95 古代チップ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '95',
+      rarity: 4,
+      weight: 20,
+      iconData: Icons.memory,
+      baseName: '古代チップ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.96 ビルドハンマー
+    // -------------------------------------------------------
+    GachaItem(
+      id: '96',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.construction,
+      baseName: 'ビルドハンマー',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.97 色彩のパレット
+    // -------------------------------------------------------
+    GachaItem(
+      id: '97',
+      rarity: 2,
+      weight: 20,
+      iconData: Icons.palette,
+      baseName: '色彩のパレット',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.98 精霊のピアノ
+    // -------------------------------------------------------
+    GachaItem(
+      id: '98',
+      rarity: 3,
+      weight: 20,
+      iconData: Icons.piano,
+      baseName: '精霊のピアノ',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.99 希望の光
+    // -------------------------------------------------------
+    GachaItem(
+      id: '99',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.auto_awesome,
+      baseName: '希望の光',
+      descriptions: [
+        // Lv1
+        "あ",
+        // Lv2
+        "あ",
+        // Lv3
+        "あ",
+        // Lv4
+        "あ",
+        // Lv5
+        "あ",
+        // Lv6
+        "あ",
+        // Lv7
+        "あ",
+        // Lv8
+        "あ",
+        // Lv9
+        "あ",
+        // Lv10
+        "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.100 家計簿
+    // -------------------------------------------------------
+    GachaItem(
+      id: '100',
+      rarity: 5,
+      weight: 20, // 最後なのでレアに
+      iconData: Icons.book,
+      baseName: '家計簿',
       descriptions: [
         // Lv1
         "あ",
