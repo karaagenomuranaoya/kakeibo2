@@ -5,9 +5,9 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart';
 import '../widgets/transaction_tile.dart';
-// ▼▼ ここに黄色い波線が出る場合、上の「transaction_edit_dialog.dart」が作成されていません ▼▼
 import '../widgets/transaction_edit_dialog.dart';
 import 'summary_detail_screen.dart';
+import 'history_screen.dart'; // ▼▼ 履歴画面への遷移用にインポートを追加 ▼▼
 
 class MonthlyHistoryScreen extends StatefulWidget {
   const MonthlyHistoryScreen({super.key});
@@ -169,7 +169,25 @@ class _MonthPageState extends State<MonthPage> {
                     history: _history,
                     onDateTap: _scrollToDate,
                   )
-                : GraphView(history: _history, expenseTags: _expenseTags),
+                : GraphView(
+                    history: _history,
+                    expenseTags: _expenseTags,
+                    // ▼▼ 追加: 凡例タップ時の処理 ▼▼
+                    onLegendTap: (expense, color) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => HistoryScreen(
+                            filterValue: expense,
+                            filterKey: 'expense',
+                            color: color,
+                            year: widget.year,
+                            month: widget.month,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
           const Divider(height: 1),
           _buildDailyList(),
@@ -312,7 +330,6 @@ class _MonthPageState extends State<MonthPage> {
                       context: context,
                       builder: (context) => TransactionEditDialog(
                         item: item,
-                        // ▼▼▼ 型エラー対策として { _load(); } で囲みました ▼▼▼
                         onSuccess: () {
                           _load();
                         },

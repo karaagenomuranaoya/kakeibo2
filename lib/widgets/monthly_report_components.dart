@@ -22,10 +22,6 @@ class CalendarView extends StatelessWidget {
   Widget build(BuildContext context) {
     final daysInMonth = DateTime(year, month + 1, 0).day;
     final firstWeekday = DateTime(year, month, 1).weekday;
-    // DateTime.weekdayは 月=1 ... 日=7。カレンダーは日曜始まりとするなら調整が必要。
-    // ここでは単純に 月曜始まり(0)〜日曜(6) ではなく、標準的なカレンダー(日曜左)に合わせる計算。
-    // weekday: 1(Mon)..7(Sun). Sunday start: Sun=0, Mon=1...
-    // empty slots = (weekday % 7). If 1st is Sun(7), 7%7=0 slots. If Mon(1), 1 slot.
     final int emptyCount = firstWeekday % 7;
 
     final hasDataDays = history.map((e) => e.date.day).toSet();
@@ -113,11 +109,14 @@ class CalendarView extends StatelessWidget {
 class GraphView extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
+  // ▼▼ 追加: 凡例タップ時のコールバック ▼▼
+  final Function(String expense, Color color)? onLegendTap;
 
   const GraphView({
     super.key,
     required this.history,
     required this.expenseTags,
+    this.onLegendTap,
   });
 
   @override
@@ -139,7 +138,6 @@ class GraphView extends StatelessWidget {
       sections = sortedEntries.map((e) {
         final percentage = (e.value / total) * 100;
 
-        // 色を検索
         Color color = Colors.grey;
         try {
           color = expenseTags.firstWhere((t) => t.label == e.key).color;
@@ -148,7 +146,6 @@ class GraphView extends StatelessWidget {
         return PieChartSectionData(
           color: color,
           value: e.value.toDouble(),
-          // グラフ内にはパーセントのみ表示（スペースの都合）
           title: '${percentage.toStringAsFixed(0)}%',
           radius: 60,
           titleStyle: const TextStyle(
@@ -159,7 +156,6 @@ class GraphView extends StatelessWidget {
         );
       }).toList();
     } else {
-      // データがない場合のグレー円
       sections = [
         PieChartSectionData(
           color: Colors.grey.shade200,
@@ -188,7 +184,7 @@ class GraphView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          // ▼▼ 凡例エリア ▼▼
+          // 凡例エリア
           if (total > 0)
             Column(
               children: sortedEntries.map((e) {
@@ -200,48 +196,62 @@ class GraphView extends StatelessWidget {
                   color = expenseTags.firstWhere((t) => t.label == e.key).color;
                 } catch (_) {}
 
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      // 色ラベル
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
+                // ▼▼ 修正: タップ可能なリストに変更 ▼▼
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onLegendTap?.call(e.key, color),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 4,
                       ),
-                      const SizedBox(width: 8),
-                      // 費目名
-                      Text(
-                        e.key,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const Spacer(),
-                      // 金額
-                      Text(
-                        '¥$amount',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 10),
-                      // パーセンテージ
-                      SizedBox(
-                        width: 40,
-                        child: Text(
-                          '$percentage%',
-                          style: const TextStyle(
-                            fontSize: 12,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            e.key,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '¥$amount',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 40,
+                            child: Text(
+                              '$percentage%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                          // 遷移できることを示す小さなアイコン
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right,
+                            size: 16,
                             color: Colors.grey,
                           ),
-                          textAlign: TextAlign.right,
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 );
               }).toList(),
