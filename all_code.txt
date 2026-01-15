@@ -50,6 +50,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
   flutter_lints: ^5.0.0
 
 flutter:
@@ -61,6 +62,15 @@ flutter:
     - assets/images/gacha/
     # ▼▼ マスタデータ用のJSONフォルダを追加 ▼▼
     - assets/json/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  # Androidのアダプティブアイコン用背景色（必要なら）
+  # adaptive_icon_background: "#FFFFFF" 
+  # Androidのアダプティブアイコン用前面画像（必要なら指定。なければimage_pathが使われる）
+  # adaptive_icon_foreground: "assets/icon/app_icon.png"
 ```
 
 
@@ -3207,7 +3217,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Quick Kakeibo',
+          '次へ家計簿',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         elevation: 0,
@@ -4206,9 +4216,16 @@ class DeveloperTipsScreen extends StatelessWidget {
       icon: Icons.money_off,
       color: Colors.green,
     ),
+    // ▼▼ 追加: カテゴリ選択からジャンプ ▼▼
     _TipItem(
-      title: '支払い明細にジャンプ',
-      content: '入力欄のカード項目をオンにするとカードの選択が出てきますが、これを長押しするとそのカードの明細に飛びます。地味に便利。',
+      title: 'カテゴリ選択からジャンプ',
+      content: '入力欄にはカテゴリが並んでいますが、これを長押しするとそのカテゴリの履歴に飛びます。地味に便利。',
+      icon: Icons.touch_app,
+      color: Colors.pink,
+    ),
+    _TipItem(
+      title: '支払い履歴にジャンプ',
+      content: '入力欄では支払い方法が選べますが、これを長押しするとそのカードの詳細ページに飛びます。地味に便利。',
       icon: Icons.credit_card,
       color: Colors.purple,
     ),
@@ -4221,7 +4238,7 @@ class DeveloperTipsScreen extends StatelessWidget {
     _TipItem(
       title: '気づいていますか？取り消し機能',
       content:
-          '費目を入力したあと、あ、間違えたと思ったら取り消し機能の出番です。入力画面の下の方にある取り消しボタンで、直前の入力をなかったことにできます。地味に便利。',
+          '費目を入力したあと、あ、間違えたと思ったら取り消し機能の出番です。入力画面の下の方にある取り消しボタンで、前回の入力をなかったことにできます。地味に便利。',
       icon: Icons.undo,
       color: Colors.redAccent,
     ),
@@ -4427,8 +4444,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // カテゴリ管理
           ListTile(
             leading: const Icon(Icons.category),
-            title: const Text('カテゴリ・カード管理'),
-            subtitle: const Text('費目やカードの追加・編集・並び替え'),
+            title: const Text('カテゴリ・支払い方法管理'),
+            subtitle: const Text('カテゴリや支払い方法の追加・編集・並び替え'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               Navigator.push(
@@ -4455,7 +4472,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // ▼▼ 追加: カード表示設定 ▼▼
           SwitchListTile(
             secondary: const Icon(Icons.credit_card, color: Colors.purple),
-            title: const Text('入力画面にカード選択を表示'),
+            title: const Text('入力画面に支払い方法選択を表示'),
             subtitle: const Text('オフにしても履歴データは消えません。\n入力画面から隠してシンプルにする機能です。'),
             isThreeLine: true,
             value: _showCardOnInput,
@@ -4529,7 +4546,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   bool _isLoading = true;
 
-  // 標準アイコンリスト (拡充版)
+  // 標準アイコンリスト
   final List<IconData> _standardIcons = [
     // 基本・デフォルト系
     Icons.restaurant, // 食費
@@ -4688,9 +4705,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     Color selectedColor =
         item?.color ?? (isExpense ? Colors.orange : Colors.blue);
 
-    // ▼▼ 変更: 初期アイコンの設定 ▼▼
-    // 既存アイテムがあればその「表示アイコン（displayIcon）」を初期値にする。
-    // 新規作成ならデフォルトアイコン（積み木 or カード）にする。
+    // 初期アイコンの設定
     IconData selectedIcon =
         item?.displayIcon ?? (isExpense ? Icons.category : Icons.credit_card);
 
@@ -4755,48 +4770,49 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       ),
                       const SizedBox(height: 20),
 
-                      // --- 2. プレビュー ---
+                      // --- 2. プレビュー (修正箇所) ---
                       Row(
                         children: [
                           const Text("プレビュー: "),
                           const SizedBox(width: 10),
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: selectedColor.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: selectedColor),
+                          // ▼▼▼ プレビューも「選択時」のデザインに合わせる ▼▼▼
+                          // 背景: 固有色, 文字・アイコン: 白, 形状: 角丸10, 枠線なし
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selectedColor,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  selectedIcon,
+                                  color: Colors.white,
+                                  size: 18,
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      // ▼▼ 変更: 常に selectedIcon を表示 ▼▼
-                                      selectedIcon,
-                                      color: selectedColor,
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    nameController.text.isEmpty
+                                        ? "名称"
+                                        : nameController.text,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        nameController.text.isEmpty
-                                            ? "名称"
-                                            : nameController.text,
-                                        style: TextStyle(
-                                          color: selectedColor,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ),
-                                  ],
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
+                          // ▲▲▲ 修正ここまで ▲▲▲
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -4881,7 +4897,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       ),
                       const SizedBox(height: 30),
 
-                      // --- 5. 大きな仕切り (獲得済みキャラを使用) ---
+                      // --- 5. 獲得済みキャラを使用 ---
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -5271,9 +5287,10 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
         padding: const EdgeInsets.only(bottom: 30),
         children: [
           _buildSectionHeader('費目ショートカット'),
-          // const を削除
           _buildCheckTile(
-              CategoryTag(label: 'デフォルト', color: Colors.blueGrey), 'expense'),
+            CategoryTag(label: 'デフォルト', color: Colors.blueGrey),
+            'expense',
+          ),
           // 動的リストを展開
           ..._expenseList.map((tag) => _buildCheckTile(tag, 'expense')),
 
@@ -5281,9 +5298,10 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
 
           _buildSectionHeader('支払い方法ショートカット'),
           _buildCheckTile(
-              CategoryTag(label: 'デフォルト', color: Colors.grey), 'payment'),
-          _buildCheckTile(
-              CategoryTag(label: '現金', color: Colors.grey), 'payment'),
+            CategoryTag(label: 'デフォルト', color: Colors.grey),
+            'payment',
+          ),
+          // ▼▼ 変更: 「現金」項目を削除しました ▼▼
           ..._cardList.map((tag) => _buildCheckTile(tag, 'payment')),
         ],
       ),
@@ -5295,8 +5313,10 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 5),
       child: Text(
         title,
-        style:
-            TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          color: Colors.blue.shade800,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
@@ -5597,22 +5617,21 @@ class CategorySelector extends StatelessWidget {
     VoidCallback onTap,
     VoidCallback? onLongPress,
   ) {
-    // ▼▼ 変更: プレビュー(0.2)に合わせて全体的に濃く調整 ▼▼
+    // --- 指示に基づいたUI仕様 ---
+    // 非選択時: 背景は白, 文字は黒, アイコンは固有の色, 枠線は薄い固有の色で細い
+    // 選択時: 枠線なし, 背景は固有の色, 文字色は白 (アイコンも白)
 
-    // 背景: 非選択時をプレビューと同じ0.2に引き上げ。選択時はさらに濃く0.35に。
-    final backgroundColor = tag.color.withOpacity(isSelected ? 0.35 : 0.2);
+    final backgroundColor = isSelected ? tag.color : Colors.white;
+    final iconColor = isSelected ? Colors.white : tag.color;
+    final textColor = isSelected ? Colors.white : Colors.black;
 
-    final foregroundColor = tag.color;
-
-    // 枠線: 非選択時も少し濃いめに調整
-    final borderSide = BorderSide(
-      color: isSelected ? tag.color : tag.color.withOpacity(0.5),
-      width: isSelected ? 2.5 : 1.0,
-    );
+    final borderSide = isSelected
+        ? BorderSide.none
+        : BorderSide(color: tag.color.withOpacity(0.5), width: 1.0);
 
     return Material(
       color: backgroundColor,
-      elevation: isSelected ? 2 : 0,
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: borderSide,
@@ -5626,7 +5645,7 @@ class CategorySelector extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(tag.displayIcon, color: foregroundColor, size: 20),
+              Icon(tag.displayIcon, color: iconColor, size: 20),
               const SizedBox(width: 6),
               Flexible(
                 child: FittedBox(
@@ -5634,7 +5653,7 @@ class CategorySelector extends StatelessWidget {
                   child: Text(
                     tag.label,
                     style: TextStyle(
-                      color: foregroundColor,
+                      color: textColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),
@@ -6110,11 +6129,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                _buildFilterTile(
-                  context,
-                  CategoryTag(label: '現金', color: Colors.grey),
-                  'payment',
-                ),
+                // ▼▼ 変更: 「現金」項目を削除しました ▼▼
                 ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
@@ -6156,7 +6171,6 @@ class _AppDrawerState extends State<AppDrawer> {
     CategoryTag tag,
     String filterKey,
   ) {
-    // ▼▼ 変更: displayIcon を使用して統一 ▼▼
     final icon = tag.displayIcon;
 
     return ListTile(
@@ -6901,7 +6915,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     }
 
     // 無限スクロールに見せるため、十分に大きな数字を初期位置にする
-    // (itemCount * 1000) + initialOffset とすることで、前にも戻れるようにする
     final int initialPage = (_itemCount * 1000) + initialOffset;
 
     _pageController = PageController(initialPage: initialPage);
@@ -6924,7 +6937,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
   }
 
   void _onPageChanged(int index) {
-    // 無限スクロールのインデックスを実際のアイテムインデックス(0 ~ itemCount-1)に変換
     final int actualIndex = index % _itemCount;
 
     if (actualIndex == 0) {
@@ -6934,7 +6946,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
       }
     } else {
       // 1番目以降は「カード」
-      // カードリストのインデックスは actualIndex - 1
       final int cardIndex = actualIndex - 1;
       if (!widget.isCardPayment || widget.selectedCardIndex != cardIndex) {
         widget.onToggle(true);
@@ -6986,7 +6997,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
             child: PageView.builder(
               controller: _pageController,
               onPageChanged: _onPageChanged,
-              // itemCountを指定しないことで無限スクロールにする
               itemBuilder: (context, index) {
                 final int actualIndex = index % _itemCount;
                 return Center(child: _buildContent(actualIndex));
@@ -7013,20 +7023,20 @@ class _PaymentSelectorState extends State<PaymentSelector> {
         icon: Icons.wallet,
         color: Colors.grey,
         isCard: false,
+        onLongPress: null, // 現金は長押しなし
       );
     } else {
       // カード
       final card = widget.cardList[index - 1];
-      return GestureDetector(
+      return _buildChip(
+        label: card.label,
+        icon: card.displayIcon,
+        color: card.color,
+        isCard: true,
+        // 長押し処理を渡す
         onLongPress: widget.onCardLongPress != null
             ? () => widget.onCardLongPress!(card)
             : null,
-        child: _buildChip(
-          label: card.label,
-          icon: card.displayIcon,
-          color: card.color,
-          isCard: true,
-        ),
       );
     }
   }
@@ -7036,9 +7046,12 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     required IconData icon,
     required Color color,
     required bool isCard,
+    VoidCallback? onLongPress,
   }) {
+    // デザイン構造: Container(影/枠) > Material > InkWell > Padding > Row
+    // InkWellを使うことで、スワイプ操作との競合に強くなり、長押し判定が安定します。
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
@@ -7051,20 +7064,35 @@ class _PaymentSelectorState extends State<PaymentSelector> {
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(25),
+        clipBehavior: Clip.antiAlias, // インクウェルがはみ出ないようにクリップ
+        child: InkWell(
+          onTap: () {}, // 空のonTapを入れることでタッチ判定を有効化
+          onLongPress: onLongPress,
+          splashColor: color.withOpacity(0.1),
+          highlightColor: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(25),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

@@ -35,12 +35,17 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            
+            // ▼▼▼ リリース版の名前設定 (KTS版) ▼▼▼
+            manifestPlaceholders["appName"] = "次へ家計簿"
         }
-        // ▼▼▼ ここを追加しました ▼▼▼
         debug {
+            // ▼▼▼ デバッグ版の設定 (KTS版) ▼▼▼
+            // IDを変えて、本番アプリと共存できるようにする
             applicationIdSuffix = ".dev"
+            // 名前を変えて、画面上で見分けられるようにする
+            manifestPlaceholders["appName"] = "次へ家計簿(Dev)"
         }
-        // ▲▲▲ ここまで ▲▲▲
     }
 }
 
