@@ -26,9 +26,16 @@ class DeveloperTipsScreen extends StatelessWidget {
       icon: Icons.money_off,
       color: Colors.green,
     ),
+    // ▼▼ 追加: カテゴリ選択からジャンプ ▼▼
     _TipItem(
-      title: '支払い明細にジャンプ',
-      content: '入力欄のカード項目をオンにするとカードの選択が出てきますが、これを長押しするとそのカードの明細に飛びます。地味に便利。',
+      title: 'カテゴリ選択からジャンプ',
+      content: '入力欄にはカテゴリが並んでいますが、これを長押しするとそのカテゴリの履歴に飛びます。地味に便利。',
+      icon: Icons.touch_app,
+      color: Colors.pink,
+    ),
+    _TipItem(
+      title: '支払い履歴にジャンプ',
+      content: '入力欄では支払い方法が選べますが、これを長押しするとそのカードの詳細ページに飛びます。地味に便利。',
       icon: Icons.credit_card,
       color: Colors.purple,
     ),
@@ -41,7 +48,7 @@ class DeveloperTipsScreen extends StatelessWidget {
     _TipItem(
       title: '気づいていますか？取り消し機能',
       content:
-          '費目を入力したあと、あ、間違えたと思ったら取り消し機能の出番です。入力画面の下の方にある取り消しボタンで、直前の入力をなかったことにできます。地味に便利。',
+          '費目を入力したあと、あ、間違えたと思ったら取り消し機能の出番です。入力画面の下の方にある取り消しボタンで、前回の入力をなかったことにできます。地味に便利。',
       icon: Icons.undo,
       color: Colors.redAccent,
     ),

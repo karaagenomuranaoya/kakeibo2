@@ -26,7 +26,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   bool _isLoading = true;
 
-  // 標準アイコンリスト (拡充版)
+  // 標準アイコンリスト
   final List<IconData> _standardIcons = [
     // 基本・デフォルト系
     Icons.restaurant, // 食費
@@ -185,9 +185,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     Color selectedColor =
         item?.color ?? (isExpense ? Colors.orange : Colors.blue);
 
-    // ▼▼ 変更: 初期アイコンの設定 ▼▼
-    // 既存アイテムがあればその「表示アイコン（displayIcon）」を初期値にする。
-    // 新規作成ならデフォルトアイコン（積み木 or カード）にする。
+    // 初期アイコンの設定
     IconData selectedIcon =
         item?.displayIcon ?? (isExpense ? Icons.category : Icons.credit_card);
 
@@ -252,48 +250,49 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       ),
                       const SizedBox(height: 20),
 
-                      // --- 2. プレビュー ---
+                      // --- 2. プレビュー (修正箇所) ---
                       Row(
                         children: [
                           const Text("プレビュー: "),
                           const SizedBox(width: 10),
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: selectedColor.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: selectedColor),
+                          // ▼▼▼ プレビューも「選択時」のデザインに合わせる ▼▼▼
+                          // 背景: 固有色, 文字・アイコン: 白, 形状: 角丸10, 枠線なし
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selectedColor,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  selectedIcon,
+                                  color: Colors.white,
+                                  size: 18,
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      // ▼▼ 変更: 常に selectedIcon を表示 ▼▼
-                                      selectedIcon,
-                                      color: selectedColor,
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    nameController.text.isEmpty
+                                        ? "名称"
+                                        : nameController.text,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        nameController.text.isEmpty
-                                            ? "名称"
-                                            : nameController.text,
-                                        style: TextStyle(
-                                          color: selectedColor,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ),
-                                  ],
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
+                          // ▲▲▲ 修正ここまで ▲▲▲
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -378,7 +377,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       ),
                       const SizedBox(height: 30),
 
-                      // --- 5. 大きな仕切り (獲得済みキャラを使用) ---
+                      // --- 5. 獲得済みキャラを使用 ---
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 10),

@@ -54,9 +54,10 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
         padding: const EdgeInsets.only(bottom: 30),
         children: [
           _buildSectionHeader('費目ショートカット'),
-          // const を削除
           _buildCheckTile(
-              CategoryTag(label: 'デフォルト', color: Colors.blueGrey), 'expense'),
+            CategoryTag(label: 'デフォルト', color: Colors.blueGrey),
+            'expense',
+          ),
           // 動的リストを展開
           ..._expenseList.map((tag) => _buildCheckTile(tag, 'expense')),
 
@@ -64,9 +65,10 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
 
           _buildSectionHeader('支払い方法ショートカット'),
           _buildCheckTile(
-              CategoryTag(label: 'デフォルト', color: Colors.grey), 'payment'),
-          _buildCheckTile(
-              CategoryTag(label: '現金', color: Colors.grey), 'payment'),
+            CategoryTag(label: 'デフォルト', color: Colors.grey),
+            'payment',
+          ),
+          // ▼▼ 変更: 「現金」項目を削除しました ▼▼
           ..._cardList.map((tag) => _buildCheckTile(tag, 'payment')),
         ],
       ),
@@ -78,8 +80,10 @@ class _FavoriteSettingsScreenState extends State<FavoriteSettingsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 5),
       child: Text(
         title,
-        style:
-            TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          color: Colors.blue.shade800,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

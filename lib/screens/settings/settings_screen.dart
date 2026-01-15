@@ -65,8 +65,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // カテゴリ管理
           ListTile(
             leading: const Icon(Icons.category),
-            title: const Text('カテゴリ・カード管理'),
-            subtitle: const Text('費目やカードの追加・編集・並び替え'),
+            title: const Text('カテゴリ・支払い方法管理'),
+            subtitle: const Text('カテゴリや支払い方法の追加・編集・並び替え'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               Navigator.push(
@@ -93,7 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // ▼▼ 追加: カード表示設定 ▼▼
           SwitchListTile(
             secondary: const Icon(Icons.credit_card, color: Colors.purple),
-            title: const Text('入力画面にカード選択を表示'),
+            title: const Text('入力画面に支払い方法選択を表示'),
             subtitle: const Text('オフにしても履歴データは消えません。\n入力画面から隠してシンプルにする機能です。'),
             isThreeLine: true,
             value: _showCardOnInput,

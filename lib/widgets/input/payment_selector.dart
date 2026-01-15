@@ -46,7 +46,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     }
 
     // 無限スクロールに見せるため、十分に大きな数字を初期位置にする
-    // (itemCount * 1000) + initialOffset とすることで、前にも戻れるようにする
     final int initialPage = (_itemCount * 1000) + initialOffset;
 
     _pageController = PageController(initialPage: initialPage);
@@ -69,7 +68,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
   }
 
   void _onPageChanged(int index) {
-    // 無限スクロールのインデックスを実際のアイテムインデックス(0 ~ itemCount-1)に変換
     final int actualIndex = index % _itemCount;
 
     if (actualIndex == 0) {
@@ -79,7 +77,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
       }
     } else {
       // 1番目以降は「カード」
-      // カードリストのインデックスは actualIndex - 1
       final int cardIndex = actualIndex - 1;
       if (!widget.isCardPayment || widget.selectedCardIndex != cardIndex) {
         widget.onToggle(true);
@@ -131,7 +128,6 @@ class _PaymentSelectorState extends State<PaymentSelector> {
             child: PageView.builder(
               controller: _pageController,
               onPageChanged: _onPageChanged,
-              // itemCountを指定しないことで無限スクロールにする
               itemBuilder: (context, index) {
                 final int actualIndex = index % _itemCount;
                 return Center(child: _buildContent(actualIndex));
@@ -158,20 +154,20 @@ class _PaymentSelectorState extends State<PaymentSelector> {
         icon: Icons.wallet,
         color: Colors.grey,
         isCard: false,
+        onLongPress: null, // 現金は長押しなし
       );
     } else {
       // カード
       final card = widget.cardList[index - 1];
-      return GestureDetector(
+      return _buildChip(
+        label: card.label,
+        icon: card.displayIcon,
+        color: card.color,
+        isCard: true,
+        // 長押し処理を渡す
         onLongPress: widget.onCardLongPress != null
             ? () => widget.onCardLongPress!(card)
             : null,
-        child: _buildChip(
-          label: card.label,
-          icon: card.displayIcon,
-          color: card.color,
-          isCard: true,
-        ),
       );
     }
   }
@@ -181,9 +177,12 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     required IconData icon,
     required Color color,
     required bool isCard,
+    VoidCallback? onLongPress,
   }) {
+    // デザイン構造: Container(影/枠) > Material > InkWell > Padding > Row
+    // InkWellを使うことで、スワイプ操作との競合に強くなり、長押し判定が安定します。
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
@@ -196,20 +195,35 @@ class _PaymentSelectorState extends State<PaymentSelector> {
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(25),
+        clipBehavior: Clip.antiAlias, // インクウェルがはみ出ないようにクリップ
+        child: InkWell(
+          onTap: () {}, // 空のonTapを入れることでタッチ判定を有効化
+          onLongPress: onLongPress,
+          splashColor: color.withOpacity(0.1),
+          highlightColor: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(25),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

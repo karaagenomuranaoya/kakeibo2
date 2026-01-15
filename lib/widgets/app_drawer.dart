@@ -57,11 +57,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                _buildFilterTile(
-                  context,
-                  CategoryTag(label: '現金', color: Colors.grey),
-                  'payment',
-                ),
+                // ▼▼ 変更: 「現金」項目を削除しました ▼▼
                 ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
@@ -103,7 +99,6 @@ class _AppDrawerState extends State<AppDrawer> {
     CategoryTag tag,
     String filterKey,
   ) {
-    // ▼▼ 変更: displayIcon を使用して統一 ▼▼
     final icon = tag.displayIcon;
 
     return ListTile(

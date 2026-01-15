@@ -87,22 +87,21 @@ class CategorySelector extends StatelessWidget {
     VoidCallback onTap,
     VoidCallback? onLongPress,
   ) {
-    // ▼▼ 変更: プレビュー(0.2)に合わせて全体的に濃く調整 ▼▼
+    // --- 指示に基づいたUI仕様 ---
+    // 非選択時: 背景は白, 文字は黒, アイコンは固有の色, 枠線は薄い固有の色で細い
+    // 選択時: 枠線なし, 背景は固有の色, 文字色は白 (アイコンも白)
 
-    // 背景: 非選択時をプレビューと同じ0.2に引き上げ。選択時はさらに濃く0.35に。
-    final backgroundColor = tag.color.withOpacity(isSelected ? 0.35 : 0.2);
+    final backgroundColor = isSelected ? tag.color : Colors.white;
+    final iconColor = isSelected ? Colors.white : tag.color;
+    final textColor = isSelected ? Colors.white : Colors.black;
 
-    final foregroundColor = tag.color;
-
-    // 枠線: 非選択時も少し濃いめに調整
-    final borderSide = BorderSide(
-      color: isSelected ? tag.color : tag.color.withOpacity(0.5),
-      width: isSelected ? 2.5 : 1.0,
-    );
+    final borderSide = isSelected
+        ? BorderSide.none
+        : BorderSide(color: tag.color.withOpacity(0.5), width: 1.0);
 
     return Material(
       color: backgroundColor,
-      elevation: isSelected ? 2 : 0,
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: borderSide,
@@ -116,7 +115,7 @@ class CategorySelector extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(tag.displayIcon, color: foregroundColor, size: 20),
+              Icon(tag.displayIcon, color: iconColor, size: 20),
               const SizedBox(width: 6),
               Flexible(
                 child: FittedBox(
@@ -124,7 +123,7 @@ class CategorySelector extends StatelessWidget {
                   child: Text(
                     tag.label,
                     style: TextStyle(
-                      color: foregroundColor,
+                      color: textColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),

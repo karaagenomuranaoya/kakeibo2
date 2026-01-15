@@ -1458,8 +1458,9 @@ class SettingsRepository {
   static const String _expenseTagsKey = 'expense_tags_list';
   static const String _cardTagsKey = 'card_tags_list';
   static const String _gachaEnabledKey = 'gacha_enabled';
-  // ▼▼ 追加: カテゴリ長押し機能の有効無効設定キー ▼▼
   static const String _categoryLongPressKey = 'category_long_press_enabled';
+  // ▼▼ 追加: 入力画面でのカード表示設定キー ▼▼
+  static const String _showCardOnInputKey = 'show_card_on_input';
 
   // --- お気に入り機能 (既存) ---
   static const List<String> _defaultFavorites = ['expense:食費', 'payment:楽天カード'];
@@ -1519,16 +1520,27 @@ class SettingsRepository {
     await prefs.setBool(_gachaEnabledKey, enabled);
   }
 
-  // --- ▼▼ 追加: カテゴリ長押し設定の管理 ▼▼ ---
+  // --- カテゴリ長押し設定の管理 ---
   Future<bool> loadCategoryLongPressEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    // デフォルトは true (オン)
     return prefs.getBool(_categoryLongPressKey) ?? true;
   }
 
   Future<void> saveCategoryLongPressEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_categoryLongPressKey, enabled);
+  }
+
+  // --- ▼▼ 追加: 入力画面でのカード表示設定 ▼▼ ---
+  Future<bool> loadShowCardOnInput() async {
+    final prefs = await SharedPreferences.getInstance();
+    // デフォルトは true (表示する)
+    return prefs.getBool(_showCardOnInputKey) ?? true;
+  }
+
+  Future<void> saveShowCardOnInput(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showCardOnInputKey, enabled);
   }
 }
 
@@ -3310,6 +3322,7 @@ class _InputTabState extends State<InputTab>
   List<CategoryTag> _cardList = [];
   bool _isGachaEnabled = true;
   bool _isCategoryLongPressEnabled = true;
+  bool _showCardOnInput = true;
   bool _isLoading = true;
 
   int _selectedExpenseIndex = 0;
@@ -3401,6 +3414,7 @@ class _InputTabState extends State<InputTab>
     final gachaEnabled = await _settingsRepository.loadGachaEnabled();
     final catLongPressEnabled = await _settingsRepository
         .loadCategoryLongPressEnabled();
+    final showCard = await _settingsRepository.loadShowCardOnInput();
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -3416,6 +3430,7 @@ class _InputTabState extends State<InputTab>
         _cardList = cards;
         _isGachaEnabled = gachaEnabled;
         _isCategoryLongPressEnabled = catLongPressEnabled;
+        _showCardOnInput = showCard;
         _selectedExpenseIndex = savedExpenseIndex;
         _selectedCardIndex = savedCardIndex;
         _isCardPayment = savedIsCard;
@@ -3463,16 +3478,12 @@ class _InputTabState extends State<InputTab>
   Future<void> _toggleCardPayment(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _isCardPayment = value);
-    // ▼▼ 修正: キーボードを閉じる処理を削除 ▼▼
-    // _closeKeyboard();
     await prefs.setBool('last_is_card', value);
   }
 
   Future<void> _changeCardIndex(int index) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _selectedCardIndex = index);
-    // ▼▼ 修正: キーボードを閉じる処理を削除 ▼▼
-    // _closeKeyboard();
     await prefs.setInt('last_card_index', index);
   }
 
@@ -3535,7 +3546,10 @@ class _InputTabState extends State<InputTab>
     String paymentMethod = '';
     DateTime? paymentDate;
 
-    if (_isCardPayment && _cardList.isNotEmpty) {
+    // 設定でカードが隠されている場合は、強制的に現金扱いにする
+    final bool shouldUseCard = _showCardOnInput && _isCardPayment;
+
+    if (shouldUseCard && _cardList.isNotEmpty) {
       final card = _cardList[_selectedCardIndex];
       paymentMethod = card.label;
 
@@ -3552,7 +3566,7 @@ class _InputTabState extends State<InputTab>
             ? DateTime(targetYear, targetMonth + 1, 0)
             : DateTime(targetYear, targetMonth, targetDay);
       }
-    } else if (_isCardPayment) {
+    } else if (shouldUseCard) {
       paymentMethod = 'カード';
     }
 
@@ -3581,7 +3595,7 @@ class _InputTabState extends State<InputTab>
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
-      if (_isCardPayment) {
+      if (shouldUseCard) {
         await prefs.setInt('last_card_index', _selectedCardIndex);
       }
       await prefs.setBool('last_is_card', _isCardPayment);
@@ -3704,14 +3718,26 @@ class _InputTabState extends State<InputTab>
                     onDateTap: _pickDate,
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
-                  PaymentSelector(
-                    isCardPayment: _isCardPayment,
-                    onToggle: _toggleCardPayment,
-                    cardList: _cardList,
-                    selectedCardIndex: _selectedCardIndex,
-                    onCardSelected: _changeCardIndex,
-                    onCardLongPress: _onCardLongPress,
-                  ),
+
+                  // ▼▼ 変更: カード欄を表示する場合としない場合で処理を分ける ▼▼
+                  if (_showCardOnInput)
+                    // GestureDetectorで囲むことで、このエリア内のタップが
+                    // 背景の _closeKeyboard に伝播しないようにする（キーボード閉じ防止）
+                    GestureDetector(
+                      onTap: () {},
+                      child: PaymentSelector(
+                        isCardPayment: _isCardPayment,
+                        onToggle: _toggleCardPayment,
+                        cardList: _cardList,
+                        selectedCardIndex: _selectedCardIndex,
+                        onCardSelected: _changeCardIndex,
+                        onCardLongPress: _onCardLongPress,
+                      ),
+                    )
+                  else
+                    // カード欄がない場合は余白を確保してカテゴリとくっつかないようにする
+                    const SizedBox(height: 24),
+
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
@@ -4349,7 +4375,9 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsRepository _repository = SettingsRepository();
   bool _isGachaEnabled = true;
-  bool _isCategoryLongPressEnabled = true; // 追加
+  bool _isCategoryLongPressEnabled = true;
+  // ▼▼ 追加: 入力画面でのカード表示設定 ▼▼
+  bool _showCardOnInput = true;
 
   @override
   void initState() {
@@ -4359,10 +4387,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final gacha = await _repository.loadGachaEnabled();
-    final catLongPress = await _repository.loadCategoryLongPressEnabled(); // 追加
+    final catLongPress = await _repository.loadCategoryLongPressEnabled();
+    final showCard = await _repository.loadShowCardOnInput(); // 追加
     setState(() {
       _isGachaEnabled = gacha;
-      _isCategoryLongPressEnabled = catLongPress; // 追加
+      _isCategoryLongPressEnabled = catLongPress;
+      _showCardOnInput = showCard;
     });
   }
 
@@ -4373,12 +4403,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _repository.saveGachaEnabled(value);
   }
 
-  // 追加
   Future<void> _toggleCategoryLongPress(bool value) async {
     setState(() {
       _isCategoryLongPressEnabled = value;
     });
     await _repository.saveCategoryLongPressEnabled(value);
+  }
+
+  // ▼▼ 追加: 設定切り替え処理 ▼▼
+  Future<void> _toggleShowCardOnInput(bool value) async {
+    setState(() {
+      _showCardOnInput = value;
+    });
+    await _repository.saveShowCardOnInput(value);
   }
 
   @override
@@ -4404,7 +4441,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // ▼▼ 追加: カテゴリ長押し設定 ▼▼
+          // カテゴリ長押し設定
           SwitchListTile(
             secondary: const Icon(Icons.touch_app, color: Colors.blueGrey),
             title: const Text('カテゴリ長押しで履歴へ'),
@@ -4412,6 +4449,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _isCategoryLongPressEnabled,
             activeColor: Colors.blue,
             onChanged: _toggleCategoryLongPress,
+          ),
+          const Divider(),
+
+          // ▼▼ 追加: カード表示設定 ▼▼
+          SwitchListTile(
+            secondary: const Icon(Icons.credit_card, color: Colors.purple),
+            title: const Text('入力画面にカード選択を表示'),
+            subtitle: const Text('オフにしても履歴データは消えません。\n入力画面から隠してシンプルにする機能です。'),
+            isThreeLine: true,
+            value: _showCardOnInput,
+            activeColor: Colors.purple,
+            onChanged: _toggleShowCardOnInput,
           ),
           const Divider(),
 
