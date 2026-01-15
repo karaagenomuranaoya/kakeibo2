@@ -154,7 +154,7 @@ class InputControlPanel extends StatelessWidget {
                   onPressed: onUndo,
                   icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
                   label: const Text(
-                    '直前の入力を取り消す',
+                    '前回の入力を取り消す',
                     style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                   style: TextButton.styleFrom(

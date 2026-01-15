@@ -5,6 +5,7 @@ class CustomNumberKeyboard extends StatelessWidget {
   final VoidCallback onSubmitted;
   final VoidCallback onClose;
   final ValueChanged<String> onChanged;
+  final int maxLength; // 追加: 文字数制限
 
   const CustomNumberKeyboard({
     super.key,
@@ -12,10 +13,28 @@ class CustomNumberKeyboard extends StatelessWidget {
     required this.onSubmitted,
     required this.onClose,
     required this.onChanged,
+    this.maxLength = 15, // デフォルト15文字
   });
 
-  void _handleTap(String value) {
+  void _handleTap(BuildContext context, String value) {
     final text = controller.text;
+
+    // ▼▼ 追加: 文字数制限チェック ▼▼
+    // 演算子が入力される場合は許可するが、数字が増えすぎるのを防ぐ
+    bool isOperator = ["+", "-", "x", "÷"].contains(value);
+
+    if (!isOperator && text.length >= maxLength) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('これ以上入力できません'),
+          duration: Duration(milliseconds: 1000),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final selection = controller.selection;
     int start = selection.start;
     int end = selection.end;
@@ -94,7 +113,8 @@ class CustomNumberKeyboard extends StatelessWidget {
             shadowColor: shadowColor,
             borderRadius: BorderRadius.circular(8),
             child: InkWell(
-              onTap: onTap ?? () => _handleTap(label),
+              // contextを渡すように変更
+              onTap: onTap ?? () => _handleTap(context, label),
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 alignment: Alignment.center,
@@ -126,7 +146,6 @@ class CustomNumberKeyboard extends StatelessWidget {
       width: double.infinity,
       child: Column(
         children: [
-          // ▼▼ 右上の閉じるボタンエリア ▼▼
           SizedBox(
             height: 40,
             child: Row(
@@ -141,7 +160,6 @@ class CustomNumberKeyboard extends StatelessWidget {
               ],
             ),
           ),
-          // ▼▼ キーボードエリア ▼▼
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),

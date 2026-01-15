@@ -65,43 +65,54 @@ class AmountInputArea extends StatelessWidget {
         // 金額入力フィールド
         GestureDetector(
           onTap: onAmountTap,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              const Text(
-                "¥",
-                style: TextStyle(
-                  fontSize: 56,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(width: 10),
-              IntrinsicWidth(
-                child: TextField(
-                  controller: amountController,
-                  focusNode: amountFocusNode,
-                  readOnly: true, // カスタムキーボードを使用するためreadOnly
-                  showCursor: true,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 56,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                    height: 1.0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            width: double.infinity,
+            height: 80,
+            alignment: Alignment.center, // コンテナ内を常に上下左右中央に
+            child: FittedBox(
+              fit: BoxFit.scaleDown, // 枠を超えたら縮小
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center, // 上下中央揃え
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    "¥",
+                    style: TextStyle(
+                      fontSize: 56, // 数字と同じ大きさ
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87, // 色も数字と統一
+                      height: 1.0,
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    hintText: '0',
-                    hintStyle: TextStyle(color: Colors.black12),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
+                  const SizedBox(width: 8),
+                  IntrinsicWidth(
+                    child: TextField(
+                      controller: amountController,
+                      focusNode: amountFocusNode,
+                      readOnly: true,
+                      showCursor: true,
+                      textAlign: TextAlign.center, // カーソルも中央から
+                      style: const TextStyle(
+                        fontSize: 56,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                        height: 1.0,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: '0',
+                        hintStyle: TextStyle(color: Colors.black12),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 10),

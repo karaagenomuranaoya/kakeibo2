@@ -45,7 +45,7 @@ class _InputTabState extends State<InputTab>
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
   bool _isGachaEnabled = true;
-  bool _isCategoryLongPressEnabled = true; // 追加: カテゴリ長押し有効フラグ
+  bool _isCategoryLongPressEnabled = true;
   bool _isLoading = true;
 
   int _selectedExpenseIndex = 0;
@@ -135,7 +135,6 @@ class _InputTabState extends State<InputTab>
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
     final gachaEnabled = await _settingsRepository.loadGachaEnabled();
-    // ▼▼ 追加: カテゴリ長押し設定の読み込み ▼▼
     final catLongPressEnabled = await _settingsRepository
         .loadCategoryLongPressEnabled();
 
@@ -152,7 +151,7 @@ class _InputTabState extends State<InputTab>
         _expenseList = expenses;
         _cardList = cards;
         _isGachaEnabled = gachaEnabled;
-        _isCategoryLongPressEnabled = catLongPressEnabled; // 反映
+        _isCategoryLongPressEnabled = catLongPressEnabled;
         _selectedExpenseIndex = savedExpenseIndex;
         _selectedCardIndex = savedCardIndex;
         _isCardPayment = savedIsCard;
@@ -179,7 +178,6 @@ class _InputTabState extends State<InputTab>
     await prefs.setInt('last_expense_index', index);
   }
 
-  // ▼▼ 追加: カテゴリ長押し時の処理 ▼▼
   void _onCategoryLongPress(int index) {
     if (!_isCategoryLongPressEnabled) return;
     if (index >= _expenseList.length) return;
@@ -243,19 +241,24 @@ class _InputTabState extends State<InputTab>
     if (_isLoading) return;
 
     final rawText = _amountController.text;
+    // 計算実行
     final calculatedText = SimpleCalculator.calculate(rawText);
 
-    if (calculatedText.isEmpty || calculatedText == "0") {
+    if (calculatedText.isEmpty) {
       _showFlashMessage('金額を入力してください', Colors.redAccent);
       return;
     }
 
+    // 計算結果をフォームに反映
     _amountController.text = calculatedText;
     final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
-    if (amount == 0) {
-      _showFlashMessage('金額を入力してください', Colors.redAccent);
+
+    // ▼▼ 修正: 0以下（0および負の数）は保存しない ▼▼
+    if (amount <= 0) {
+      _showFlashMessage('1円以上の金額を入力してください', Colors.redAccent);
       return;
     }
+
     if (_expenseList.isEmpty) {
       _showFlashMessage('カテゴリがありません', Colors.redAccent);
       return;
@@ -443,7 +446,6 @@ class _InputTabState extends State<InputTab>
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: _changeExpenseIndex,
-                    // ▼▼ 修正: 設定に応じてコールバックを渡す ▼▼
                     onLongPress: _isCategoryLongPressEnabled
                         ? _onCategoryLongPress
                         : null,
