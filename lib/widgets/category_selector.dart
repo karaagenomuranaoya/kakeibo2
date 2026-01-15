@@ -87,23 +87,21 @@ class CategorySelector extends StatelessWidget {
     VoidCallback onTap,
     VoidCallback? onLongPress,
   ) {
-    // ▼▼ 変更: プレビュー風のスタイル（背景薄め・文字濃いめ） ▼▼
+    // ▼▼ 変更: プレビュー(0.2)に合わせて全体的に濃く調整 ▼▼
 
-    // 背景: 選択時は少し濃く、非選択時は薄く
-    final backgroundColor = tag.color.withOpacity(isSelected ? 0.25 : 0.1);
+    // 背景: 非選択時をプレビューと同じ0.2に引き上げ。選択時はさらに濃く0.35に。
+    final backgroundColor = tag.color.withOpacity(isSelected ? 0.35 : 0.2);
 
-    // 文字・アイコン: タグの色そのものを使用（白文字にしない）
     final foregroundColor = tag.color;
 
-    // 枠線: 選択時は太くハッキリ、非選択時は薄く
+    // 枠線: 非選択時も少し濃いめに調整
     final borderSide = BorderSide(
-      color: isSelected ? tag.color : tag.color.withOpacity(0.3),
+      color: isSelected ? tag.color : tag.color.withOpacity(0.5),
       width: isSelected ? 2.5 : 1.0,
     );
 
     return Material(
       color: backgroundColor,
-      // 選択時のみ少し浮かせる
       elevation: isSelected ? 2 : 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
