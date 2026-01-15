@@ -1,3 +1,4 @@
+import 'dart:async'; // Timerのために追加
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -43,7 +44,7 @@ class _InputTabState extends State<InputTab>
   // --- State ---
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
-  bool _isGachaEnabled = true; // ガチャ機能が有効かどうか
+  bool _isGachaEnabled = true;
   bool _isLoading = true;
 
   int _selectedExpenseIndex = 0;
@@ -54,6 +55,12 @@ class _InputTabState extends State<InputTab>
 
   bool _showCustomKeyboard = false;
   String? _lastInputId;
+
+  // --- フラッシュメッセージ用 State ---
+  bool _isFlashVisible = false;
+  String _flashMsg = '';
+  Color _flashColor = Colors.blue;
+  Timer? _flashTimer;
 
   // キーボード高さ (キーエリア 272 + 閉じるバー 40)
   static const double _keyboardHeight = 312.0;
@@ -76,6 +83,7 @@ class _InputTabState extends State<InputTab>
     WidgetsBinding.instance.removeObserver(this);
     _amountFocusNode.removeListener(_onAmountFocusChange);
     _memoFocusNode.removeListener(_onMemoFocusChange);
+    _flashTimer?.cancel(); // Timerの破棄
 
     _amountController.dispose();
     _memoController.dispose();
@@ -127,7 +135,6 @@ class _InputTabState extends State<InputTab>
   Future<void> _loadAllData() async {
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
-    // ▼▼ ガチャ設定の読み込みを追加 ▼▼
     final gachaEnabled = await _settingsRepository.loadGachaEnabled();
     final prefs = await SharedPreferences.getInstance();
 
@@ -141,7 +148,7 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _expenseList = expenses;
         _cardList = cards;
-        _isGachaEnabled = gachaEnabled; // 設定を反映
+        _isGachaEnabled = gachaEnabled;
         _selectedExpenseIndex = savedExpenseIndex;
         _selectedCardIndex = savedCardIndex;
         _isCardPayment = savedIsCard;
@@ -216,18 +223,18 @@ class _InputTabState extends State<InputTab>
     final calculatedText = SimpleCalculator.calculate(rawText);
 
     if (calculatedText.isEmpty || calculatedText == "0") {
-      _showSnackBar('金額を入力してください', Colors.redAccent);
+      _showFlashMessage('金額を入力してください', Colors.redAccent);
       return;
     }
 
     _amountController.text = calculatedText;
     final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
     if (amount == 0) {
-      _showSnackBar('金額を入力してください', Colors.redAccent);
+      _showFlashMessage('金額を入力してください', Colors.redAccent);
       return;
     }
     if (_expenseList.isEmpty) {
-      _showSnackBar('カテゴリがありません', Colors.redAccent);
+      _showFlashMessage('カテゴリがありません', Colors.redAccent);
       return;
     }
     if (_selectedExpenseIndex >= _expenseList.length) {
@@ -278,7 +285,6 @@ class _InputTabState extends State<InputTab>
 
       await _repository.addTransaction(newItem);
 
-      // ▼▼ ガチャが有効な場合のみクレジットを加算 ▼▼
       int newCredits = 0;
       if (_isGachaEnabled) {
         newCredits = await _gachaRepository.addCredit();
@@ -303,17 +309,16 @@ class _InputTabState extends State<InputTab>
         String msg = '保存しました';
         Color color = Colors.blue;
 
-        // ▼▼ ガチャが有効かつ3の倍数のときだけ特別メッセージ ▼▼
         if (_isGachaEnabled && newCredits > 0 && newCredits % 3 == 0) {
           msg = 'ガチャが回せます！';
           color = Colors.orange;
         } else if (paymentDate != null) {
           msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
         }
-        _showSnackBar(msg, color);
+        _showFlashMessage(msg, color);
       }
     } catch (e) {
-      _showSnackBar('保存エラー: $e', Colors.red);
+      _showFlashMessage('保存エラー: $e', Colors.red);
     }
   }
 
@@ -351,7 +356,7 @@ class _InputTabState extends State<InputTab>
               await _repository.deleteTransaction(_lastInputId!);
               if (mounted) {
                 setState(() => _lastInputId = null);
-                _showSnackBar('入力を取り消しました', Colors.grey);
+                _showFlashMessage('入力を取り消しました', Colors.grey);
               }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -362,16 +367,23 @@ class _InputTabState extends State<InputTab>
     );
   }
 
-  void _showSnackBar(String msg, Color color) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: color,
-        duration: const Duration(milliseconds: 1500),
-      ),
-    );
+  // ▼▼ SnackBarの代わりにフラッシュメッセージを表示するメソッド ▼▼
+  void _showFlashMessage(String msg, Color color) {
+    _flashTimer?.cancel(); // 既存のタイマーがあればキャンセル
+    setState(() {
+      _flashMsg = msg;
+      _flashColor = color;
+      _isFlashVisible = true;
+    });
+
+    // 1.5秒後に非表示にする
+    _flashTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        setState(() {
+          _isFlashVisible = false;
+        });
+      }
+    });
   }
 
   @override
@@ -441,6 +453,47 @@ class _InputTabState extends State<InputTab>
                 onChanged: (_) {},
               ),
             ),
+
+          // ▼▼ 追加: 中央に表示されるフラッシュメッセージ ▼▼
+          Positioned.fill(
+            // IgnorePointer: true にすることで、このレイヤーがあっても背後のボタンをタップ可能にする
+            child: IgnorePointer(
+              ignoring: true,
+              child: AnimatedOpacity(
+                opacity: _isFlashVisible ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      // 少し透過させて奥が見えるようにする
+                      color: _flashColor.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      _flashMsg,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
