@@ -5,6 +5,8 @@ class CategorySelector extends StatelessWidget {
   final List<CategoryTag> tags;
   final int? selectedIndex;
   final Function(int) onSelected;
+  // ▼▼ 追加: 長押しコールバック ▼▼
+  final Function(int)? onLongPress;
   final VoidCallback? onAddPressed;
 
   const CategorySelector({
@@ -12,10 +14,10 @@ class CategorySelector extends StatelessWidget {
     required this.tags,
     required this.selectedIndex,
     required this.onSelected,
+    this.onLongPress, // 追加
     this.onAddPressed,
   });
 
-  // ラベルに応じたアイコンを返すヘルパー
   IconData _getIconForLabel(String label) {
     if (label.contains('食')) return Icons.restaurant;
     if (label.contains('日用')) return Icons.shopping_bag;
@@ -38,13 +40,11 @@ class CategorySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 追加ボタンがある場合は要素数を+1
     final int itemCount = onAddPressed != null ? tags.length + 1 : tags.length;
 
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      // パディング調整
       padding: const EdgeInsets.symmetric(horizontal: 2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
@@ -54,14 +54,19 @@ class CategorySelector extends StatelessWidget {
       ),
       itemCount: itemCount,
       itemBuilder: (context, index) {
-        // 末尾に追加ボタンを表示する場合
         if (onAddPressed != null && index == tags.length) {
           return _buildAddButton();
         }
 
         final tag = tags[index];
         final isSelected = selectedIndex == index;
-        return _buildCategoryChip(tag, isSelected, () => onSelected(index));
+        return _buildCategoryChip(
+          tag,
+          isSelected,
+          () => onSelected(index),
+          // ▼▼ 長押し処理を渡す ▼▼
+          onLongPress != null ? () => onLongPress!(index) : null,
+        );
       },
     );
   }
@@ -102,6 +107,7 @@ class CategorySelector extends StatelessWidget {
     CategoryTag tag,
     bool isSelected,
     VoidCallback onTap,
+    VoidCallback? onLongPress, // 追加
   ) {
     return Material(
       color: isSelected ? tag.color : Colors.white,
@@ -116,6 +122,7 @@ class CategorySelector extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress, // 追加
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(

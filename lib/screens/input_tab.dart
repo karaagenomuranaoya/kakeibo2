@@ -1,4 +1,4 @@
-import 'dart:async'; // Timerのために追加
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
@@ -45,6 +45,7 @@ class _InputTabState extends State<InputTab>
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
   bool _isGachaEnabled = true;
+  bool _isCategoryLongPressEnabled = true; // 追加: カテゴリ長押し有効フラグ
   bool _isLoading = true;
 
   int _selectedExpenseIndex = 0;
@@ -62,7 +63,6 @@ class _InputTabState extends State<InputTab>
   Color _flashColor = Colors.blue;
   Timer? _flashTimer;
 
-  // キーボード高さ (キーエリア 272 + 閉じるバー 40)
   static const double _keyboardHeight = 312.0;
 
   @override
@@ -83,7 +83,7 @@ class _InputTabState extends State<InputTab>
     WidgetsBinding.instance.removeObserver(this);
     _amountFocusNode.removeListener(_onAmountFocusChange);
     _memoFocusNode.removeListener(_onMemoFocusChange);
-    _flashTimer?.cancel(); // Timerの破棄
+    _flashTimer?.cancel();
 
     _amountController.dispose();
     _memoController.dispose();
@@ -96,7 +96,6 @@ class _InputTabState extends State<InputTab>
   void didChangeMetrics() {
     super.didChangeMetrics();
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
-    // OSキーボードが出たらカスタムキーボードを隠す
     if (bottomInset > 0 && _showCustomKeyboard && !_amountFocusNode.hasFocus) {
       setState(() => _showCustomKeyboard = false);
     }
@@ -136,6 +135,10 @@ class _InputTabState extends State<InputTab>
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
     final gachaEnabled = await _settingsRepository.loadGachaEnabled();
+    // ▼▼ 追加: カテゴリ長押し設定の読み込み ▼▼
+    final catLongPressEnabled = await _settingsRepository
+        .loadCategoryLongPressEnabled();
+
     final prefs = await SharedPreferences.getInstance();
 
     int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
@@ -149,6 +152,7 @@ class _InputTabState extends State<InputTab>
         _expenseList = expenses;
         _cardList = cards;
         _isGachaEnabled = gachaEnabled;
+        _isCategoryLongPressEnabled = catLongPressEnabled; // 反映
         _selectedExpenseIndex = savedExpenseIndex;
         _selectedCardIndex = savedCardIndex;
         _isCardPayment = savedIsCard;
@@ -173,6 +177,25 @@ class _InputTabState extends State<InputTab>
     final prefs = await SharedPreferences.getInstance();
     setState(() => _selectedExpenseIndex = index);
     await prefs.setInt('last_expense_index', index);
+  }
+
+  // ▼▼ 追加: カテゴリ長押し時の処理 ▼▼
+  void _onCategoryLongPress(int index) {
+    if (!_isCategoryLongPressEnabled) return;
+    if (index >= _expenseList.length) return;
+
+    _closeKeyboard();
+    final tag = _expenseList[index];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HistoryScreen(
+          filterValue: tag.label,
+          filterKey: 'expense',
+          color: tag.color,
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleCardPayment(bool value) async {
@@ -367,16 +390,14 @@ class _InputTabState extends State<InputTab>
     );
   }
 
-  // ▼▼ SnackBarの代わりにフラッシュメッセージを表示するメソッド ▼▼
   void _showFlashMessage(String msg, Color color) {
-    _flashTimer?.cancel(); // 既存のタイマーがあればキャンセル
+    _flashTimer?.cancel();
     setState(() {
       _flashMsg = msg;
       _flashColor = color;
       _isFlashVisible = true;
     });
 
-    // 1.5秒後に非表示にする
     _flashTimer = Timer(const Duration(milliseconds: 1500), () {
       if (mounted) {
         setState(() {
@@ -422,6 +443,10 @@ class _InputTabState extends State<InputTab>
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: _changeExpenseIndex,
+                    // ▼▼ 修正: 設定に応じてコールバックを渡す ▼▼
+                    onLongPress: _isCategoryLongPressEnabled
+                        ? _onCategoryLongPress
+                        : null,
                     onAddPressed: _openCategorySettings,
                   ),
                   const SizedBox(height: 20),
@@ -453,10 +478,7 @@ class _InputTabState extends State<InputTab>
                 onChanged: (_) {},
               ),
             ),
-
-          // ▼▼ 追加: 中央に表示されるフラッシュメッセージ ▼▼
           Positioned.fill(
-            // IgnorePointer: true にすることで、このレイヤーがあっても背後のボタンをタップ可能にする
             child: IgnorePointer(
               ignoring: true,
               child: AnimatedOpacity(
@@ -469,7 +491,6 @@ class _InputTabState extends State<InputTab>
                       vertical: 16,
                     ),
                     decoration: BoxDecoration(
-                      // 少し透過させて奥が見えるようにする
                       color: _flashColor.withOpacity(0.85),
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [

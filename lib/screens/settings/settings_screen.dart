@@ -13,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsRepository _repository = SettingsRepository();
   bool _isGachaEnabled = true;
+  bool _isCategoryLongPressEnabled = true; // 追加
 
   @override
   void initState() {
@@ -21,9 +22,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final enabled = await _repository.loadGachaEnabled();
+    final gacha = await _repository.loadGachaEnabled();
+    final catLongPress = await _repository.loadCategoryLongPressEnabled(); // 追加
     setState(() {
-      _isGachaEnabled = enabled;
+      _isGachaEnabled = gacha;
+      _isCategoryLongPressEnabled = catLongPress; // 追加
     });
   }
 
@@ -32,6 +35,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isGachaEnabled = value;
     });
     await _repository.saveGachaEnabled(value);
+  }
+
+  // 追加
+  Future<void> _toggleCategoryLongPress(bool value) async {
+    setState(() {
+      _isCategoryLongPressEnabled = value;
+    });
+    await _repository.saveCategoryLongPressEnabled(value);
   }
 
   @override
@@ -57,7 +68,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // ▼▼ 追加: ガチャ機能のオンオフ ▼▼
+          // ▼▼ 追加: カテゴリ長押し設定 ▼▼
+          SwitchListTile(
+            secondary: const Icon(Icons.touch_app, color: Colors.blueGrey),
+            title: const Text('カテゴリ長押しで履歴へ'),
+            subtitle: const Text('入力画面のカテゴリを長押しして詳細へ移動'),
+            value: _isCategoryLongPressEnabled,
+            activeColor: Colors.blue,
+            onChanged: _toggleCategoryLongPress,
+          ),
+          const Divider(),
+
+          // ガチャ機能のオンオフ
           SwitchListTile(
             secondary: const Icon(Icons.star, color: Colors.orange),
             title: const Text('おまけガチャ機能'),
