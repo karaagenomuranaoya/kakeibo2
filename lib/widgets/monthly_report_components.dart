@@ -148,8 +148,9 @@ class GraphView extends StatelessWidget {
         return PieChartSectionData(
           color: color,
           value: e.value.toDouble(),
+          // グラフ内にはパーセントのみ表示（スペースの都合）
           title: '${percentage.toStringAsFixed(0)}%',
-          radius: 50,
+          radius: 60,
           titleStyle: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
@@ -164,7 +165,7 @@ class GraphView extends StatelessWidget {
           color: Colors.grey.shade200,
           value: 1,
           title: '',
-          radius: 50,
+          radius: 60,
         ),
       ];
     }
@@ -172,12 +173,11 @@ class GraphView extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      constraints: const BoxConstraints(minHeight: 300),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       child: Column(
         children: [
           SizedBox(
-            height: 200,
+            height: 220,
             child: PieChart(
               PieChartData(
                 sections: sections,
@@ -187,11 +187,67 @@ class GraphView extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            "※費目ごとの詳細は合計金額をタップ",
-            style: TextStyle(fontSize: 11, color: Colors.grey),
-          ),
+          const SizedBox(height: 20),
+          // ▼▼ 凡例エリア ▼▼
+          if (total > 0)
+            Column(
+              children: sortedEntries.map((e) {
+                final amount = e.value;
+                final percentage = (amount / total * 100).toStringAsFixed(1);
+
+                Color color = Colors.grey;
+                try {
+                  color = expenseTags.firstWhere((t) => t.label == e.key).color;
+                } catch (_) {}
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      // 色ラベル
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // 費目名
+                      Text(
+                        e.key,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      // 金額
+                      Text(
+                        '¥$amount',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 10),
+                      // パーセンテージ
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          '$percentage%',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            )
+          else
+            const Text('データがありません', style: TextStyle(color: Colors.grey)),
         ],
       ),
     );
