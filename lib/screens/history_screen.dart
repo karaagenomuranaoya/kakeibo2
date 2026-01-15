@@ -5,7 +5,6 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/transaction_tile.dart';
 import '../widgets/card_settings_dialog.dart';
-// ▼▼ ここに黄色い波線が出る場合、上の「transaction_edit_dialog.dart」が作成されていません ▼▼
 import '../widgets/transaction_edit_dialog.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -231,6 +230,9 @@ class _HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<_HistoryPage> {
   List<TransactionItem> _history = [];
   final TransactionRepository _repository = TransactionRepository();
+  // ▼▼ 追加: タグ情報を取得するため設定リポジトリを使う ▼▼
+  final SettingsRepository _settingsRepository = SettingsRepository();
+  List<CategoryTag> _expenseTags = [];
   bool _isLoading = true;
 
   @override
@@ -251,9 +253,13 @@ class _HistoryPageState extends State<_HistoryPage> {
 
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
+    // ▼▼ 追加: タグ情報も読み込む ▼▼
+    final expenses = await _settingsRepository.loadExpenseTags();
+
     if (!mounted) return;
 
     setState(() {
+      _expenseTags = expenses; // 保存
       _history = allItems.where((i) {
         if (widget.filterKey == 'expense') {
           if (i.expense != widget.filterValue) return false;
@@ -353,16 +359,27 @@ class _HistoryPageState extends State<_HistoryPage> {
                   separatorBuilder: (c, i) => const Divider(height: 1),
                   itemBuilder: (c, i) {
                     final item = _history[i];
+
+                    // ▼▼ 追加: アイコン取得ロジック ▼▼
+                    IconData? icon;
+                    try {
+                      // 費目リストからタグを探し、displayIconを取得
+                      final tag = _expenseTags.firstWhere(
+                        (t) => t.label == item.expense,
+                      );
+                      icon = tag.displayIcon;
+                    } catch (_) {}
+
                     return TransactionTile(
                       item: item,
                       categoryColor: widget.color,
+                      categoryIcon: icon, // アイコンを渡す
                       showDate: true,
                       onTap: () {
                         showDialog(
                           context: context,
                           builder: (context) => TransactionEditDialog(
                             item: item,
-                            // ▼▼▼ 型エラー対策として { _load(); } で囲みました ▼▼▼
                             onSuccess: () {
                               _load();
                             },

@@ -17,41 +17,6 @@ class CategorySelector extends StatelessWidget {
     this.onAddPressed,
   });
 
-  IconData _getIconForLabel(CategoryTag tag) {
-    // ▼▼ 設定されたアイコンがあればそれを使用 ▼▼
-    if (tag.icon != null) {
-      return tag.icon!;
-    }
-
-    // なければラベルから推測（デフォルトロジック）
-    final label = tag.label;
-    if (label.contains('食')) return Icons.restaurant;
-    if (label.contains('日用')) return Icons.shopping_bag;
-    if (label.contains('交際')) return Icons.wine_bar;
-    if (label.contains('交通') || label.contains('電')) return Icons.train;
-    if (label.contains('趣味') || label.contains('推'))
-      return Icons.sports_esports;
-    if (label.contains('美容') || label.contains('服')) return Icons.checkroom;
-    if (label.contains('医療') || label.contains('薬'))
-      return Icons.medical_services;
-    if (label.contains('教育') || label.contains('本')) return Icons.menu_book;
-    if (label.contains('光熱') || label.contains('家賃') || label.contains('住'))
-      return Icons.home;
-    if (label.contains('通信') || label.contains('スマホ')) return Icons.wifi;
-    if (label.contains('車') || label.contains('ガソリン'))
-      return Icons.directions_car;
-    if (label.contains('給料')) return Icons.attach_money;
-
-    // カード系のデフォルト
-    if (tag.closingDay != null ||
-        label.contains('カード') ||
-        label.contains('Pay')) {
-      return Icons.credit_card;
-    }
-
-    return Icons.category;
-  }
-
   @override
   Widget build(BuildContext context) {
     final int itemCount = onAddPressed != null ? tags.length + 1 : tags.length;
@@ -86,7 +51,7 @@ class CategorySelector extends StatelessWidget {
 
   Widget _buildAddButton() {
     return Material(
-      color: Colors.grey.shade200,
+      color: Colors.grey.shade100,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(color: Colors.grey.shade300, width: 1.5),
@@ -122,15 +87,27 @@ class CategorySelector extends StatelessWidget {
     VoidCallback onTap,
     VoidCallback? onLongPress,
   ) {
+    // ▼▼ 変更: プレビュー風のスタイル（背景薄め・文字濃いめ） ▼▼
+
+    // 背景: 選択時は少し濃く、非選択時は薄く
+    final backgroundColor = tag.color.withOpacity(isSelected ? 0.25 : 0.1);
+
+    // 文字・アイコン: タグの色そのものを使用（白文字にしない）
+    final foregroundColor = tag.color;
+
+    // 枠線: 選択時は太くハッキリ、非選択時は薄く
+    final borderSide = BorderSide(
+      color: isSelected ? tag.color : tag.color.withOpacity(0.3),
+      width: isSelected ? 2.5 : 1.0,
+    );
+
     return Material(
-      color: isSelected ? tag.color : Colors.white,
-      elevation: isSelected ? 2 : 1,
+      color: backgroundColor,
+      // 選択時のみ少し浮かせる
+      elevation: isSelected ? 2 : 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: isSelected ? Colors.transparent : tag.color.withOpacity(0.3),
-          width: 1.5,
-        ),
+        side: borderSide,
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -141,11 +118,7 @@ class CategorySelector extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                _getIconForLabel(tag), // 修正: tagを渡す
-                color: isSelected ? Colors.white : tag.color,
-                size: 20,
-              ),
+              Icon(tag.displayIcon, color: foregroundColor, size: 20),
               const SizedBox(width: 6),
               Flexible(
                 child: FittedBox(
@@ -153,7 +126,7 @@ class CategorySelector extends StatelessWidget {
                   child: Text(
                     tag.label,
                     style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black87,
+                      color: foregroundColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),

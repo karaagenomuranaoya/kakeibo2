@@ -26,17 +26,28 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   bool _isLoading = true;
 
-  // 標準アイコンリスト
+  // 標準アイコンリスト (拡充版)
   final List<IconData> _standardIcons = [
-    Icons.restaurant,
+    // 基本・デフォルト系
+    Icons.restaurant, // 食費
+    Icons.shopping_bag, // 日用品
+    Icons.train, // 交通費
+    Icons.wine_bar, // 交際費
+    Icons.sports_esports, // 趣味
+    Icons.checkroom, // 美容・衣服
+    Icons.medical_services, // 医療
+    Icons.menu_book, // 教育・本
+    Icons.home, // 住居・光熱
+    Icons.wifi, // 通信
+    Icons.directions_car, // 車
+    Icons.movie, // 映画
+    Icons.attach_money, // 給料
+    Icons.credit_card, // カード
+    Icons.payment, // 決済
+    // その他便利系
     Icons.shopping_cart,
-    Icons.train,
-    Icons.movie,
-    Icons.medical_services,
     Icons.school,
     Icons.phone_iphone,
-    Icons.home,
-    Icons.checkroom,
     Icons.sports_soccer,
     Icons.savings,
     Icons.card_giftcard,
@@ -44,7 +55,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     Icons.flight,
     Icons.local_cafe,
     Icons.local_bar,
-    Icons.directions_car,
     Icons.work,
     Icons.category,
     Icons.star,
@@ -52,8 +62,11 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     Icons.account_balance_wallet,
     Icons.coffee,
     Icons.fastfood,
-    Icons.shopping_bag,
     Icons.receipt_long,
+    Icons.local_grocery_store,
+    Icons.fitness_center,
+    Icons.music_note,
+    Icons.child_care,
   ];
 
   @override
@@ -86,6 +99,80 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     await _settingsRepository.saveCardTags(_cardList);
   }
 
+  // スタイル（色/レベル）選択ダイアログを表示するメソッド
+  Future<void> _showStyleSelectionDialog({
+    required BuildContext context,
+    required GachaItem item,
+    required int currentCount,
+    required Function(Color) onColorSelected,
+  }) async {
+    final int maxStage = item.getStage(currentCount);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text('${item.baseName}のスタイル選択'),
+          content: SingleChildScrollView(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: List.generate(maxStage, (index) {
+                final level = index + 1;
+                final color = item.getColor(level);
+
+                return GestureDetector(
+                  onTap: () {
+                    onColorSelected(color);
+                    Navigator.pop(ctx);
+                  },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: color, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: color.withOpacity(0.2),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Icon(item.iconData, color: color, size: 28),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Lv.$level",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('キャンセル'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showEditDialog({
     required bool isExpense,
     CategoryTag? item,
@@ -97,7 +184,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
     Color selectedColor =
         item?.color ?? (isExpense ? Colors.orange : Colors.blue);
-    IconData? selectedIcon = item?.icon;
+
+    // ▼▼ 変更: 初期アイコンの設定 ▼▼
+    // 既存アイテムがあればその「表示アイコン（displayIcon）」を初期値にする。
+    // 新規作成ならデフォルトアイコン（積み木 or カード）にする。
+    IconData selectedIcon =
+        item?.displayIcon ?? (isExpense ? Icons.category : Icons.credit_card);
 
     // --- カード設定用の変数 ---
     bool isClosingMode = (item?.closingDay != null);
@@ -155,13 +247,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       TextField(
                         controller: nameController,
                         decoration: const InputDecoration(labelText: '名称'),
-                        // ▼▼ 修正: 自動でキーボードを出さないように変更 ▼▼
                         autofocus: false,
                         onChanged: (_) => setStateDialog(() {}),
                       ),
                       const SizedBox(height: 20),
 
-                      // --- 2. プレビュー (オーバーフロー対策済み) ---
+                      // --- 2. プレビュー ---
                       Row(
                         children: [
                           const Text("プレビュー: "),
@@ -180,7 +271,8 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      selectedIcon ?? Icons.category,
+                                      // ▼▼ 変更: 常に selectedIcon を表示 ▼▼
+                                      selectedIcon,
                                       color: selectedColor,
                                     ),
                                     const SizedBox(width: 8),
@@ -318,7 +410,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        "※キャラを選択すると、そのキャラの色が自動で適用されます。",
+                        "※キャラをタップして、使用するレベル（色）を選択できます。",
                         style: TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                       const SizedBox(height: 15),
@@ -354,15 +446,22 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                 .toList();
                             final item = unlockedItems[idx];
                             final count = _gachaCounts[item.id] ?? 0;
-                            final charColor = item.getColor(count);
+                            final currentColor = item.getColor(count);
                             final isSelected = selectedIcon == item.iconData;
 
                             return InkWell(
-                              onTap: () {
-                                setStateDialog(() {
-                                  selectedIcon = item.iconData;
-                                  selectedColor = charColor; // 色を強制適用
-                                });
+                              onTap: () async {
+                                await _showStyleSelectionDialog(
+                                  context: context,
+                                  item: item,
+                                  currentCount: count,
+                                  onColorSelected: (color) {
+                                    setStateDialog(() {
+                                      selectedIcon = item.iconData;
+                                      selectedColor = color;
+                                    });
+                                  },
+                                );
                               },
                               child: Container(
                                 decoration: BoxDecoration(
@@ -375,7 +474,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                     width: isSelected ? 3 : 1,
                                   ),
                                 ),
-                                child: Icon(item.iconData, color: charColor),
+                                child: Icon(item.iconData, color: currentColor),
                               ),
                             );
                           },
@@ -458,9 +557,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       label: nameController.text,
                       color: selectedColor,
                       isCircle: isExpense,
-                      iconCodePoint: selectedIcon?.codePoint,
-                      iconFontFamily: selectedIcon?.fontFamily,
-                      iconFontPackage: selectedIcon?.fontPackage,
+                      iconCodePoint: selectedIcon.codePoint,
+                      iconFontFamily: selectedIcon.fontFamily,
+                      iconFontPackage: selectedIcon.fontPackage,
                       closingDay: (!isExpense && isClosingMode)
                           ? closingDay
                           : null,
@@ -578,11 +677,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
               borderRadius: item.isCircle ? null : BorderRadius.circular(8),
               border: Border.all(color: item.color, width: 1.5),
             ),
-            child: Icon(
-              item.icon ?? (isExpense ? Icons.category : Icons.credit_card),
-              color: item.color,
-              size: 20,
-            ),
+            child: Icon(item.displayIcon, color: item.color, size: 20),
           ),
           title: Text(item.label, overflow: TextOverflow.ellipsis, maxLines: 1),
           subtitle: subtitle.isNotEmpty

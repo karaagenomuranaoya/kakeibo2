@@ -56,14 +56,12 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
 
     final int total = _history.fold(0, (s, i) => s + i.amount);
 
-    // 費目ごとの集計
     final expenseSums = <String, int>{};
     for (var item in _history) {
       expenseSums[item.expense] =
           (expenseSums[item.expense] ?? 0) + item.amount;
     }
 
-    // 金額が大きい順にソート
     final sortedEntries = expenseSums.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -71,7 +69,6 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
       appBar: AppBar(title: Text('${widget.year}年${widget.month}月 内訳詳細')),
       body: Column(
         children: [
-          // 合計カード
           Container(
             width: double.infinity,
             color: Colors.blue.shade50,
@@ -94,7 +91,6 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
             ),
           ),
           const Divider(height: 1),
-          // 内訳リスト
           Expanded(
             child: sortedEntries.isEmpty
                 ? Center(
@@ -112,10 +108,15 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                       final amount = entry.value;
 
                       Color color = Colors.grey;
+                      IconData icon = Icons.label;
+
                       try {
-                        color = _expenseList
-                            .firstWhere((t) => t.label == label)
-                            .color;
+                        final tag = _expenseList.firstWhere(
+                          (t) => t.label == label,
+                        );
+                        color = tag.color;
+                        // ▼▼ アイコン取得 ▼▼
+                        icon = tag.displayIcon;
                       } catch (_) {}
 
                       final percentage = (total > 0)
@@ -123,14 +124,8 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                           : "0.0";
 
                       return ListTile(
-                        leading: Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
+                        // ▼▼ アイコン表示 ▼▼
+                        leading: Icon(icon, color: color),
                         title: Row(
                           children: [
                             Expanded(child: Text(label)),
@@ -168,7 +163,6 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                           ],
                         ),
                         onTap: () {
-                          // その月のその費目の履歴へ遷移
                           Navigator.push(
                             context,
                             MaterialPageRoute(

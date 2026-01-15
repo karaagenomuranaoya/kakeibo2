@@ -4,31 +4,30 @@ import '../utils/app_date_utils.dart';
 
 class TransactionTile extends StatelessWidget {
   final TransactionItem item;
-  final Color categoryColor; // 呼び出し元で色を解決して渡す
+  final Color categoryColor;
+  // ▼▼ 追加: カテゴリアイコンを受け取る ▼▼
+  final IconData? categoryIcon;
   final VoidCallback? onTap;
-  final bool showDate; // 日付を表示するかどうか
+  final bool showDate;
 
   const TransactionTile({
     super.key,
     required this.item,
     required this.categoryColor,
+    this.categoryIcon, // 追加
     this.onTap,
     this.showDate = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    // 支払方法やメモの表示用テキストを作成
     final List<String> details = [];
 
-    // 現金以外の支払い方法があれば表示
     if (item.payment.isNotEmpty &&
         item.payment != '現金' &&
         item.payment != 'デフォルト') {
       details.add(item.payment);
     }
-
-    // メモがあれば表示
     if (item.memo.isNotEmpty) {
       details.add(item.memo);
     }
@@ -43,12 +42,14 @@ class TransactionTile extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
       leading: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [Icon(Icons.label, color: categoryColor)],
+        children: [
+          // ▼▼ 変更: アイコンを表示（なければラベルアイコン） ▼▼
+          Icon(categoryIcon ?? Icons.label, color: categoryColor),
+        ],
       ),
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 費目名
           Expanded(
             child: Text(
               item.expense,
@@ -56,7 +57,6 @@ class TransactionTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          // 金額
           Text(
             '¥${item.amount}',
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),

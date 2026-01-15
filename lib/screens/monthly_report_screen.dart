@@ -7,7 +7,7 @@ import '../widgets/monthly_report_components.dart';
 import '../widgets/transaction_tile.dart';
 import '../widgets/transaction_edit_dialog.dart';
 import 'summary_detail_screen.dart';
-import 'history_screen.dart'; // ▼▼ 履歴画面への遷移用にインポートを追加 ▼▼
+import 'history_screen.dart';
 
 class MonthlyHistoryScreen extends StatefulWidget {
   const MonthlyHistoryScreen({super.key});
@@ -172,7 +172,7 @@ class _MonthPageState extends State<MonthPage> {
                 : GraphView(
                     history: _history,
                     expenseTags: _expenseTags,
-                    // ▼▼ 追加: 凡例タップ時の処理 ▼▼
+                    // 凡例タップ時の処理
                     onLegendTap: (expense, color) {
                       Navigator.push(
                         context,
@@ -315,15 +315,21 @@ class _MonthPageState extends State<MonthPage> {
               ),
               ...items.map((item) {
                 Color color = Colors.grey;
+                IconData? icon;
+
                 try {
-                  color = _expenseTags
-                      .firstWhere((t) => t.label == item.expense)
-                      .color;
+                  final tag = _expenseTags.firstWhere(
+                    (t) => t.label == item.expense,
+                  );
+                  color = tag.color;
+                  // ▼▼ アイコンを取得 ▼▼
+                  icon = tag.displayIcon;
                 } catch (_) {}
 
                 return TransactionTile(
                   item: item,
                   categoryColor: color,
+                  categoryIcon: icon, // アイコンを渡す
                   showDate: false,
                   onTap: () {
                     showDialog(

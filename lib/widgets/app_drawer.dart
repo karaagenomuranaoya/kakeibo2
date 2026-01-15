@@ -103,13 +103,8 @@ class _AppDrawerState extends State<AppDrawer> {
     CategoryTag tag,
     String filterKey,
   ) {
-    // ▼▼ アイコン表示ロジック ▼▼
-    IconData icon;
-    if (tag.icon != null) {
-      icon = tag.icon!;
-    } else {
-      icon = filterKey == 'payment' ? Icons.payment : Icons.label;
-    }
+    // ▼▼ 変更: displayIcon を使用して統一 ▼▼
+    final icon = tag.displayIcon;
 
     return ListTile(
       leading: Icon(icon, color: tag.color),

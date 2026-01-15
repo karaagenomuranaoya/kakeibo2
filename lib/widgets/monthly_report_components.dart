@@ -109,7 +109,6 @@ class CalendarView extends StatelessWidget {
 class GraphView extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
-  // ▼▼ 追加: 凡例タップ時のコールバック ▼▼
   final Function(String expense, Color color)? onLegendTap;
 
   const GraphView({
@@ -123,13 +122,11 @@ class GraphView extends StatelessWidget {
   Widget build(BuildContext context) {
     int total = history.fold(0, (s, i) => s + i.amount);
 
-    // 費目ごとの集計
     final expenseSums = <String, int>{};
     for (var item in history) {
       expenseSums[item.expense] =
           (expenseSums[item.expense] ?? 0) + item.amount;
     }
-    // 金額順にソート
     final sortedEntries = expenseSums.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -192,11 +189,15 @@ class GraphView extends StatelessWidget {
                 final percentage = (amount / total * 100).toStringAsFixed(1);
 
                 Color color = Colors.grey;
+                IconData icon = Icons.label; // デフォルト
+
                 try {
-                  color = expenseTags.firstWhere((t) => t.label == e.key).color;
+                  final tag = expenseTags.firstWhere((t) => t.label == e.key);
+                  color = tag.color;
+                  // ▼▼ 変更: アイコンを取得 ▼▼
+                  icon = tag.displayIcon;
                 } catch (_) {}
 
-                // ▼▼ 修正: タップ可能なリストに変更 ▼▼
                 return Material(
                   color: Colors.transparent,
                   child: InkWell(
@@ -209,14 +210,8 @@ class GraphView extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
+                          // ▼▼ 変更: アイコン表示 ▼▼
+                          Icon(icon, color: color, size: 20),
                           const SizedBox(width: 8),
                           Text(
                             e.key,
@@ -242,7 +237,6 @@ class GraphView extends StatelessWidget {
                               textAlign: TextAlign.right,
                             ),
                           ),
-                          // 遷移できることを示す小さなアイコン
                           const SizedBox(width: 4),
                           const Icon(
                             Icons.chevron_right,
