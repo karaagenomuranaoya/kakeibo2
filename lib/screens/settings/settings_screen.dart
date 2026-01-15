@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'favorite_settings_screen.dart';
-import 'category_manage_screen.dart'; // 追加
+import 'category_manage_screen.dart';
+import 'developer_tips_screen.dart'; // 新規追加
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -27,19 +27,17 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           const Divider(),
-          // お気に入り設定 (既存のまま)
+          // 管理人の独り言 (旧: お気に入り設定の場所)
           ListTile(
-            leading: const Icon(Icons.star_border),
-            title: const Text('お気に入り設定 (廃止済み機能)'),
-            subtitle: const Text('※現在はタブバー固定のため使用されません'),
-            // もし完全廃止ならこのListTileごと消してもOKですが、
-            // サイドバーで使うかもしれないので残しておきます
+            leading: const Icon(Icons.tips_and_updates, color: Colors.orange),
+            title: const Text('管理人の独り言 & Tips'),
+            subtitle: const Text('使い方や開発の裏話など'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const FavoriteSettingsScreen(),
+                  builder: (context) => const DeveloperTipsScreen(),
                 ),
               );
             },
