@@ -21,6 +21,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
   flutter_lints: ^5.0.0
 
 flutter:
@@ -32,3 +33,12 @@ flutter:
     - assets/images/gacha/
     # ▼▼ マスタデータ用のJSONフォルダを追加 ▼▼
     - assets/json/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  # Androidのアダプティブアイコン用背景色（必要なら）
+  # adaptive_icon_background: "#FFFFFF" 
+  # Androidのアダプティブアイコン用前面画像（必要なら指定。なければimage_pathが使われる）
+  # adaptive_icon_foreground: "assets/icon/app_icon.png"

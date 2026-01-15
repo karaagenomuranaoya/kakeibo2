@@ -110,7 +110,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Quick Kakeibo',
+          '次へ家計簿',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         elevation: 0,
