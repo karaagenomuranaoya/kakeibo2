@@ -67,7 +67,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
 
-    // ガチャデータの読み込み
     final gachaItems = await _gachaRepository.getItems();
     final gachaCounts = await _gachaRepository.getItemCounts();
 
@@ -96,10 +95,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       text: item?.label ?? '',
     );
 
-    // 初期値設定
     Color selectedColor =
         item?.color ?? (isExpense ? Colors.orange : Colors.blue);
-    IconData? selectedIcon = item?.icon; // 保存されたアイコンがあれば復元
+    IconData? selectedIcon = item?.icon;
 
     // --- カード設定用の変数 ---
     bool isClosingMode = (item?.closingDay != null);
@@ -107,7 +105,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     int paymentDay = item?.paymentDay ?? 27;
     int paymentOffset = item?.paymentMonthOffset ?? 1;
 
-    // 簡易カラーパレット
     final List<Color> colors = [
       Colors.red,
       Colors.pink,
@@ -148,58 +145,68 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
             return AlertDialog(
               title: Text(item == null ? '新規追加' : '編集'),
               content: SizedBox(
-                // ダイアログの幅を確保
                 width: double.maxFinite,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // --- 名前入力 ---
+                      // --- 1. 名称入力 ---
                       TextField(
                         controller: nameController,
                         decoration: const InputDecoration(labelText: '名称'),
-                        autofocus: true,
+                        // ▼▼ 修正: 自動でキーボードを出さないように変更 ▼▼
+                        autofocus: false,
+                        onChanged: (_) => setStateDialog(() {}),
                       ),
                       const SizedBox(height: 20),
 
-                      // --- 現在のアイコン・色プレビュー ---
+                      // --- 2. プレビュー (オーバーフロー対策済み) ---
                       Row(
                         children: [
                           const Text("プレビュー: "),
                           const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: selectedColor.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: selectedColor),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  selectedIcon ?? Icons.category,
-                                  color: selectedColor,
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: selectedColor.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: selectedColor),
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  nameController.text.isEmpty
-                                      ? "名称"
-                                      : nameController.text,
-                                  style: TextStyle(
-                                    color: selectedColor,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      selectedIcon ?? Icons.category,
+                                      color: selectedColor,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        nameController.text.isEmpty
+                                            ? "名称"
+                                            : nameController.text,
+                                        style: TextStyle(
+                                          color: selectedColor,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 20),
 
-                      // --- アイコン選択 (標準) ---
+                      // --- 3. 標準アイコン選択 ---
                       const Text(
                         'アイコンを選択',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -241,104 +248,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           );
                         },
                       ),
-
                       const SizedBox(height: 20),
 
-                      // --- 極めてみやすい大きな仕切り ---
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          border: Border.symmetric(
-                            horizontal: BorderSide(
-                              color: Colors.orange.shade200,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.star, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text(
-                              "獲得済みキャラを使用",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            Icon(Icons.star, color: Colors.orange),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // --- ガチャキャラ選択 ---
-                      if (_gachaCounts.values.every((c) => c == 0))
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(10),
-                            child: Text(
-                              "まだキャラクターがいません\nガチャを回してゲットしよう！",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                        )
-                      else
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 5,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                              ),
-                          // 所持しているキャラのみフィルタリング
-                          itemCount: _gachaItems
-                              .where((i) => (_gachaCounts[i.id] ?? 0) > 0)
-                              .length,
-                          itemBuilder: (context, idx) {
-                            final unlockedItems = _gachaItems
-                                .where((i) => (_gachaCounts[i.id] ?? 0) > 0)
-                                .toList();
-                            final item = unlockedItems[idx];
-                            final count = _gachaCounts[item.id] ?? 0;
-                            final charColor = item.getColor(count);
-                            final isSelected = selectedIcon == item.iconData;
-
-                            return InkWell(
-                              onTap: () {
-                                setStateDialog(() {
-                                  selectedIcon = item.iconData;
-                                  // キャラ選択時は色も強制的に同期
-                                  selectedColor = charColor;
-                                });
-                              },
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? Colors.redAccent
-                                        : Colors.grey.shade300,
-                                    width: isSelected ? 3 : 1,
-                                  ),
-                                ),
-                                child: Icon(item.iconData, color: charColor),
-                              ),
-                            );
-                          },
-                        ),
-
-                      const SizedBox(height: 30),
-
-                      // --- 色選択 (手動変更用) ---
+                      // --- 4. 色の調整 ---
                       const Text(
                         '色を調整',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -372,8 +284,104 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           );
                         }).toList(),
                       ),
+                      const SizedBox(height: 30),
 
-                      // --- カードの場合のみ、締め日設定を表示 ---
+                      // --- 5. 大きな仕切り (獲得済みキャラを使用) ---
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          border: Border.symmetric(
+                            horizontal: BorderSide(
+                              color: Colors.orange.shade200,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.auto_awesome, color: Colors.orange),
+                            SizedBox(width: 8),
+                            Text(
+                              "獲得済みキャラを使用",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepOrange,
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Icon(Icons.auto_awesome, color: Colors.orange),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        "※キャラを選択すると、そのキャラの色が自動で適用されます。",
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 15),
+
+                      // --- 6. 獲得済みキャラ選択 ---
+                      if (_gachaCounts.values.every((c) => c == 0))
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(10),
+                            child: Text(
+                              "まだキャラクターがいません\nガチャを回してゲットしよう！",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      else
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 5,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                              ),
+                          itemCount: _gachaItems
+                              .where((i) => (_gachaCounts[i.id] ?? 0) > 0)
+                              .length,
+                          itemBuilder: (context, idx) {
+                            final unlockedItems = _gachaItems
+                                .where((i) => (_gachaCounts[i.id] ?? 0) > 0)
+                                .toList();
+                            final item = unlockedItems[idx];
+                            final count = _gachaCounts[item.id] ?? 0;
+                            final charColor = item.getColor(count);
+                            final isSelected = selectedIcon == item.iconData;
+
+                            return InkWell(
+                              onTap: () {
+                                setStateDialog(() {
+                                  selectedIcon = item.iconData;
+                                  selectedColor = charColor; // 色を強制適用
+                                });
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? Colors.redAccent
+                                        : Colors.grey.shade300,
+                                    width: isSelected ? 3 : 1,
+                                  ),
+                                ),
+                                child: Icon(item.iconData, color: charColor),
+                              ),
+                            );
+                          },
+                        ),
+
+                      // --- カード設定 ---
                       if (!isExpense) ...[
                         const Divider(height: 30),
                         Row(
@@ -450,11 +458,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                       label: nameController.text,
                       color: selectedColor,
                       isCircle: isExpense,
-                      // アイコン情報を保存
                       iconCodePoint: selectedIcon?.codePoint,
                       iconFontFamily: selectedIcon?.fontFamily,
                       iconFontPackage: selectedIcon?.fontPackage,
-
                       closingDay: (!isExpense && isClosingMode)
                           ? closingDay
                           : null,
@@ -552,7 +558,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       },
       itemBuilder: (context, index) {
         final item = list[index];
-        // 設定情報の要約を表示
         String subtitle = "";
         if (!isExpense && item.closingDay != null) {
           final closeStr = item.closingDay == 99 ? "末" : "${item.closingDay}日";
@@ -573,14 +578,13 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
               borderRadius: item.isCircle ? null : BorderRadius.circular(8),
               border: Border.all(color: item.color, width: 1.5),
             ),
-            // 保存されたアイコンがあれば表示、なければデフォルト
             child: Icon(
               item.icon ?? (isExpense ? Icons.category : Icons.credit_card),
               color: item.color,
               size: 20,
             ),
           ),
-          title: Text(item.label),
+          title: Text(item.label, overflow: TextOverflow.ellipsis, maxLines: 1),
           subtitle: subtitle.isNotEmpty
               ? Text(subtitle, style: const TextStyle(fontSize: 11))
               : null,
