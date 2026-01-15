@@ -11,7 +11,7 @@ import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
 import '../utils/simple_calculator.dart';
 import 'settings/category_manage_screen.dart';
-import 'history_screen.dart'; // ▼▼ 履歴画面への遷移のためにインポート ▼▼
+import 'history_screen.dart';
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -43,6 +43,7 @@ class _InputTabState extends State<InputTab>
   // --- State ---
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
+  bool _isGachaEnabled = true; // ガチャ機能が有効かどうか
   bool _isLoading = true;
 
   int _selectedExpenseIndex = 0;
@@ -126,6 +127,8 @@ class _InputTabState extends State<InputTab>
   Future<void> _loadAllData() async {
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
+    // ▼▼ ガチャ設定の読み込みを追加 ▼▼
+    final gachaEnabled = await _settingsRepository.loadGachaEnabled();
     final prefs = await SharedPreferences.getInstance();
 
     int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
@@ -138,6 +141,7 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _expenseList = expenses;
         _cardList = cards;
+        _isGachaEnabled = gachaEnabled; // 設定を反映
         _selectedExpenseIndex = savedExpenseIndex;
         _selectedCardIndex = savedCardIndex;
         _isCardPayment = savedIsCard;
@@ -190,7 +194,6 @@ class _InputTabState extends State<InputTab>
     await _loadAllData();
   }
 
-  // --- ▼▼ 追加: カード長押し時の処理 ▼▼ ---
   void _onCardLongPress(CategoryTag tag) {
     _closeKeyboard();
     Navigator.push(
@@ -233,7 +236,6 @@ class _InputTabState extends State<InputTab>
 
     if (!keepKeyboard) _closeKeyboard();
 
-    // 支払い方法と日付の決定
     String paymentMethod = '';
     DateTime? paymentDate;
 
@@ -275,7 +277,12 @@ class _InputTabState extends State<InputTab>
       );
 
       await _repository.addTransaction(newItem);
-      final newCredits = await _gachaRepository.addCredit();
+
+      // ▼▼ ガチャが有効な場合のみクレジットを加算 ▼▼
+      int newCredits = 0;
+      if (_isGachaEnabled) {
+        newCredits = await _gachaRepository.addCredit();
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
@@ -294,12 +301,16 @@ class _InputTabState extends State<InputTab>
 
       if (mounted) {
         String msg = '保存しました';
-        if (newCredits % 3 == 0) {
+        Color color = Colors.blue;
+
+        // ▼▼ ガチャが有効かつ3の倍数のときだけ特別メッセージ ▼▼
+        if (_isGachaEnabled && newCredits > 0 && newCredits % 3 == 0) {
           msg = 'ガチャが回せます！';
+          color = Colors.orange;
         } else if (paymentDate != null) {
           msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
         }
-        _showSnackBar(msg, newCredits % 3 == 0 ? Colors.orange : Colors.blue);
+        _showSnackBar(msg, color);
       }
     } catch (e) {
       _showSnackBar('保存エラー: $e', Colors.red);
@@ -385,7 +396,6 @@ class _InputTabState extends State<InputTab>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 金額・日付・メモ入力エリア (Widget切り出し)
                   AmountInputArea(
                     selectedDate: _selectedDate,
                     amountController: _amountController,
@@ -396,8 +406,6 @@ class _InputTabState extends State<InputTab>
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
                   const SizedBox(height: 20),
-
-                  // カテゴリ選択
                   CategorySelector(
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
@@ -405,15 +413,12 @@ class _InputTabState extends State<InputTab>
                     onAddPressed: _openCategorySettings,
                   ),
                   const SizedBox(height: 20),
-
-                  // 下部コントロールパネル (Widget切り出し)
                   InputControlPanel(
                     isCardPayment: _isCardPayment,
                     onToggleCard: _toggleCardPayment,
                     cardList: _cardList,
                     selectedCardIndex: _selectedCardIndex,
                     onCardSelected: _changeCardIndex,
-                    // ▼▼ 追加: コールバックを渡す ▼▼
                     onCardLongPress: _onCardLongPress,
                     onSave: () => _saveData(keepKeyboard: false),
                     onUndo: _undoLastInput,
@@ -423,7 +428,6 @@ class _InputTabState extends State<InputTab>
               ),
             ),
           ),
-          // カスタムキーボード
           if (_showCustomKeyboard)
             Positioned(
               left: 0,
