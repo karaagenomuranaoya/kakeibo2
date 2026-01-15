@@ -7,6 +7,8 @@ class InputControlPanel extends StatelessWidget {
   final List<CategoryTag> cardList;
   final int selectedCardIndex;
   final ValueChanged<int> onCardSelected;
+  // カード長押し時のコールバック
+  final ValueChanged<CategoryTag>? onCardLongPress;
   final VoidCallback onSave;
   final VoidCallback? onUndo;
   final bool showUndo;
@@ -18,6 +20,7 @@ class InputControlPanel extends StatelessWidget {
     required this.cardList,
     required this.selectedCardIndex,
     required this.onCardSelected,
+    this.onCardLongPress,
     required this.onSave,
     this.onUndo,
     this.showUndo = false,
@@ -25,6 +28,9 @@ class InputControlPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nullチェック用のローカル変数
+    final callback = onCardLongPress;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -72,25 +78,40 @@ class InputControlPanel extends StatelessWidget {
                             final index = entry.key;
                             final tag = entry.value;
                             final isSelected = selectedCardIndex == index;
+
                             return Padding(
                               padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(tag.label),
-                                labelStyle: TextStyle(
-                                  fontSize: 11,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
+                              child: GestureDetector(
+                                // 【解決策】RawChipの外側をGestureDetectorで囲む
+                                onLongPress: callback != null
+                                    ? () => callback(tag)
+                                    : null,
+                                child: RawChip(
+                                  label: Text(tag.label),
+                                  labelStyle: TextStyle(
+                                    fontSize: 11,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                  selected: isSelected,
+                                  showCheckmark: false,
+                                  selectedColor: tag.color,
+                                  backgroundColor: Colors.grey.shade100,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: const BorderSide(
+                                      color: Colors.transparent,
+                                      width: 0,
+                                    ),
+                                  ),
+                                  onSelected: (_) => onCardSelected(index),
+                                  // ここにあった onLongPress は削除（存在しない引数のため）
+                                  visualDensity: VisualDensity.compact,
                                 ),
-                                selected: isSelected,
-                                showCheckmark: false,
-                                selectedColor: tag.color,
-                                backgroundColor: Colors.grey.shade100,
-                                onSelected: (_) => onCardSelected(index),
-                                visualDensity: VisualDensity.compact,
                               ),
                             );
                           }).toList(),

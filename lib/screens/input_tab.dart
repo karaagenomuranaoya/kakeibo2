@@ -11,6 +11,7 @@ import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
 import '../utils/simple_calculator.dart';
 import 'settings/category_manage_screen.dart';
+import 'history_screen.dart'; // ▼▼ 履歴画面への遷移のためにインポート ▼▼
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -187,6 +188,21 @@ class _InputTabState extends State<InputTab>
       MaterialPageRoute(builder: (context) => const CategoryManageScreen()),
     );
     await _loadAllData();
+  }
+
+  // --- ▼▼ 追加: カード長押し時の処理 ▼▼ ---
+  void _onCardLongPress(CategoryTag tag) {
+    _closeKeyboard();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HistoryScreen(
+          filterValue: tag.label,
+          filterKey: 'payment',
+          color: tag.color,
+        ),
+      ),
+    );
   }
 
   // --- Save Logic ---
@@ -397,6 +413,8 @@ class _InputTabState extends State<InputTab>
                     cardList: _cardList,
                     selectedCardIndex: _selectedCardIndex,
                     onCardSelected: _changeCardIndex,
+                    // ▼▼ 追加: コールバックを渡す ▼▼
+                    onCardLongPress: _onCardLongPress,
                     onSave: () => _saveData(keepKeyboard: false),
                     onUndo: _undoLastInput,
                     showUndo: _lastInputId != null,

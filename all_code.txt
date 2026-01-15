@@ -39,18 +39,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # ▼▼ これが抜けていました。日本語化に必須です ▼▼
   flutter_localizations:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.4
-  
-  # 日付操作
   intl: ^0.20.2
-
-  # グラフ描画
   fl_chart: ^0.69.0
 
 dev_dependencies:
@@ -63,6 +57,10 @@ flutter:
 
   assets:
     - assets/images/
+    # ▼▼ ガチャ用の画像フォルダを追加 ▼▼
+    - assets/images/gacha/
+    # ▼▼ マスタデータ用のJSONフォルダを追加 ▼▼
+    - assets/json/
 ```
 
 
@@ -1347,55 +1345,107 @@ class AppDateUtils {
 
 --- FILE: lib/repositories/gacha_repository.dart ---
 ```dart
+import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
-
-class GachaItem {
-  final String id;
-  final String imagePath;
-  final String name;
-  final String description;
-
-  const GachaItem({
-    required this.id,
-    required this.imagePath,
-    required this.name,
-    required this.description,
-  });
-}
+import '../models/gacha_item.dart';
 
 class GachaRepository {
   static const String _creditKey = 'gacha_credits';
-  static const String _collectionKey = 'gacha_collection';
+  static const String _countsKey = 'gacha_counts_v2';
+  static const String _masterDataPath = 'assets/json/gacha_master.json';
 
-  // アイテムデータ（説明は適当に生成）
-  final List<GachaItem> items = [
-    const GachaItem(
-      id: '1',
-      imagePath: 'assets/images/image1.png',
-      name: '伝説の家計簿',
-      description: 'これを持っているだけで、なぜか無駄遣いが減るという伝説の書物。',
-    ),
-    const GachaItem(
-      id: '2',
-      imagePath: 'assets/images/image2.png',
-      name: '黄金の貯金箱',
-      description: '500円玉を入れると、中で増えている気がする不思議な貯金箱。',
-    ),
-    const GachaItem(
-      id: '3',
-      imagePath: 'assets/images/image3.png',
-      name: '古代のレシート',
-      description: '紀元前のスーパーマーケットのレシート。卵が意外と高い。',
-    ),
-  ];
+  List<GachaItem> _items = [];
+  bool _isLoaded = false;
+  Map<String, int> _counts = {};
 
-  // クレジットを取得
+  Future<List<GachaItem>> getItems() async {
+    if (!_isLoaded) await _loadMasterData();
+    return _items;
+  }
+
+  Future<Map<String, int>> getItemCounts() async {
+    if (_counts.isEmpty) await _loadCounts();
+    return _counts;
+  }
+
+  Future<void> _loadMasterData() async {
+    try {
+      final String jsonString = await rootBundle.loadString(_masterDataPath);
+      final List<dynamic> jsonList = json.decode(jsonString);
+      _items = jsonList.map((e) => GachaItem.fromJson(e)).toList();
+      _items.sort((a, b) => int.parse(a.id).compareTo(int.parse(b.id)));
+      _isLoaded = true;
+    } catch (e) {
+      // ▼▼ 修正箇所: name3, description3 を追加しました ▼▼
+      _items = [
+        const GachaItem(
+          id: '1',
+          rarity: 1,
+          weight: 1,
+          name1: 'データ読込エラー',
+          description1: 'JSONデータを確認してください',
+          name2: 'データ読込エラー',
+          description2: 'JSONデータを確認してください',
+          name3: 'データ読込エラー',
+          description3: 'JSONデータを確認してください',
+        ),
+      ];
+      _isLoaded = true;
+    }
+  }
+
+  Future<void> _loadCounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonString = prefs.getString(_countsKey);
+    if (jsonString != null) {
+      final Map<String, dynamic> decoded = json.decode(jsonString);
+      _counts = decoded.map((key, value) => MapEntry(key, value as int));
+    } else {
+      const oldKey = 'gacha_collection';
+      final List<String>? oldList = prefs.getStringList(oldKey);
+      if (oldList != null) {
+        for (var id in oldList) {
+          _counts[id] = 1;
+        }
+        await _saveCounts();
+      }
+    }
+  }
+
+  Future<void> _saveCounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String jsonString = json.encode(_counts);
+    await prefs.setString(_countsKey, jsonString);
+  }
+
+  Future<int> unlockItem(String id) async {
+    await getItemCounts();
+    int current = _counts[id] ?? 0;
+    current++;
+    _counts[id] = current;
+    await _saveCounts();
+    return current;
+  }
+
+  Future<GachaItem> drawItem() async {
+    if (!_isLoaded) await _loadMasterData();
+    int totalWeight = _items.fold(0, (sum, item) => sum + item.weight);
+    int randomValue = Random().nextInt(totalWeight);
+    for (final item in _items) {
+      randomValue -= item.weight;
+      if (randomValue < 0) return item;
+    }
+    return _items.last;
+  }
+
+  // --- クレジット管理 ---
   Future<int> getCredits() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_creditKey) ?? 0;
   }
 
-  // クレジットを加算 (1回入力で1ポイント)
   Future<int> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;
@@ -1404,7 +1454,6 @@ class GachaRepository {
     return current;
   }
 
-  // クレジットを消費 (ガチャ1回で3ポイント)
   Future<bool> consumeCredits(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;
@@ -1413,22 +1462,6 @@ class GachaRepository {
       return true;
     }
     return false;
-  }
-
-  // 獲得済みアイテムIDリストを取得
-  Future<List<String>> getCollection() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_collectionKey) ?? [];
-  }
-
-  // アイテムを獲得済みに追加
-  Future<void> unlockItem(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> current = prefs.getStringList(_collectionKey) ?? [];
-    if (!current.contains(id)) {
-      current.add(id);
-      await prefs.setStringList(_collectionKey, current);
-    }
   }
 }
 
@@ -1745,6 +1778,87 @@ class CategoryTag {
         CategoryTag(label: '趣味', color: Colors.purple, isCircle: true),
         CategoryTag(label: '美容・衣服', color: Colors.teal, isCircle: true),
       ];
+}
+
+```
+
+
+--- FILE: lib/models/gacha_item.dart ---
+```dart
+class GachaItem {
+  final String id;
+  final int rarity;
+  final int weight;
+
+  // 第1形態
+  final String name1;
+  final String description1;
+  // 第2形態
+  final String name2;
+  final String description2;
+  // 第3形態 (最終)
+  final String name3;
+  final String description3;
+
+  const GachaItem({
+    required this.id,
+    required this.rarity,
+    required this.weight,
+    required this.name1,
+    required this.description1,
+    required this.name2,
+    required this.description2,
+    required this.name3,
+    required this.description3,
+  });
+
+  // 現在のステージを判定 (1, 2, 3)
+  int getStage(int count) {
+    if (count >= 10) return 3; // 10枚以上で最終形態
+    if (count >= 5) return 2; // 5枚以上で第2形態
+    return 1; // それ以外は初期
+  }
+
+  // 画像パス
+  String getImagePath(int count) {
+    final stage = getStage(count);
+    return 'assets/images/gacha/$id-$stage.png';
+  }
+
+  // 名前
+  String getName(int count) {
+    final stage = getStage(count);
+    if (stage == 3) return name3;
+    if (stage == 2) return name2;
+    return name1;
+  }
+
+  // 説明文
+  String getDescription(int count) {
+    final stage = getStage(count);
+    if (stage == 3) return description3;
+    if (stage == 2) return description2;
+    return description1;
+  }
+
+  factory GachaItem.fromJson(Map<String, dynamic> json) {
+    return GachaItem(
+      id: json['id'] as String,
+      rarity: json['rarity'] as int? ?? 1,
+      weight: json['weight'] as int? ?? 10,
+      name1: json['name_1'] as String? ?? '名前未設定',
+      description1: json['description_1'] as String? ?? '',
+      name2: json['name_2'] as String? ?? '名前未設定(進化)',
+      description2: json['description_2'] as String? ?? '',
+      // ▼▼ 追加: 第3形態の読み込み（なければ第2形態と同じにする） ▼▼
+      name3:
+          json['name_3'] as String? ?? json['name_2'] as String? ?? '名前未設定(最終)',
+      description3:
+          json['description_3'] as String? ??
+          json['description_2'] as String? ??
+          '',
+    );
+  }
 }
 
 ```
@@ -2336,9 +2450,9 @@ class _HistoryPageState extends State<_HistoryPage> {
 
 --- FILE: lib/screens/gacha_screen.dart ---
 ```dart
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../repositories/gacha_repository.dart';
+import '../models/gacha_item.dart';
 
 class GachaScreen extends StatefulWidget {
   const GachaScreen({super.key});
@@ -2350,8 +2464,13 @@ class GachaScreen extends StatefulWidget {
 class _GachaScreenState extends State<GachaScreen> {
   final GachaRepository _repository = GachaRepository();
   int _credits = 0;
-  List<String> _unlockedIds = [];
+  Map<String, int> _itemCounts = {};
+  List<GachaItem> _allItems = [];
   bool _isLoading = true;
+
+  // 進化に必要な枚数定義
+  static const int _evo2Count = 5; // 第2形態へ
+  static const int _evo3Count = 10; // 第3形態へ
 
   @override
   void initState() {
@@ -2361,222 +2480,512 @@ class _GachaScreenState extends State<GachaScreen> {
 
   Future<void> _loadData() async {
     final credits = await _repository.getCredits();
-    final unlocked = await _repository.getCollection();
+    final counts = await _repository.getItemCounts();
+    final items = await _repository.getItems();
+
     if (mounted) {
       setState(() {
         _credits = credits;
-        _unlockedIds = unlocked;
+        _itemCounts = Map.from(counts);
+        _allItems = items;
         _isLoading = false;
       });
     }
   }
 
-  // ガチャを回す処理
   Future<void> _spinGacha() async {
     if (_credits < 3) return;
 
-    // クレジット消費
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+    Navigator.pop(context);
+
     final success = await _repository.consumeCredits(3);
     if (!success) return;
 
-    // ランダム抽選
-    final random = Random();
-    final item = _repository.items[random.nextInt(_repository.items.length)];
+    final item = await _repository.drawItem();
+    final newCount = await _repository.unlockItem(item.id);
 
-    // 保存
-    await _repository.unlockItem(item.id);
-
-    // データ再読み込み
     await _loadData();
 
-    // 結果表示ダイアログ
     if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => Dialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("GET!!",
-                    style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange)),
-                const SizedBox(height: 20),
-                Image.asset(item.imagePath, height: 150, fit: BoxFit.contain),
-                const SizedBox(height: 20),
-                Text(item.name,
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold)),
+      _showResultDialog(item, newCount);
+    }
+  }
+
+  void _showResultDialog(GachaItem item, int count) {
+    final bool isNew = count == 1;
+    final bool isEvo2 = count == _evo2Count;
+    final bool isEvo3 = count == _evo3Count;
+    final bool isMax = count > _evo3Count;
+
+    String title = "GET!!";
+    Color titleColor = Colors.orange;
+
+    if (isNew) {
+      title = "NEW GET!!";
+      titleColor = Colors.redAccent;
+    } else if (isEvo3) {
+      title = "FINAL EVOLUTION!!"; // 最終進化
+      titleColor = Colors.purpleAccent;
+    } else if (isEvo2) {
+      title = "EVOLUTION!!";
+      titleColor = Colors.deepPurpleAccent;
+    } else if (isMax) {
+      title = "DUPLICATE";
+      titleColor = Colors.grey;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: titleColor,
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 150,
+                width: 150,
+                child: Image.asset(
+                  item.getImagePath(count),
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      Icons.broken_image,
+                      size: 80,
+                      color: Colors.grey,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              _buildRarityBadge(item.rarity),
+              const SizedBox(height: 10),
+              Text(
+                item.getName(count),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                item.getDescription(count),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 10),
+
+              // --- ゲージ表示ロジック ---
+              if (count < _evo2Count) ...[
+                // Lv1 -> Lv2
+                _buildProgressSection(count, _evo2Count, "進化"),
+              ] else if (count < _evo3Count) ...[
+                // Lv2 -> Lv3
+                _buildProgressSection(
+                  count - _evo2Count,
+                  _evo3Count - _evo2Count,
+                  "最終進化",
+                  baseCount: _evo2Count,
+                ),
+              ] else if (isEvo3) ...[
                 const SizedBox(height: 10),
-                Text(item.description,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey)),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('閉じる'),
-                )
+                const Text(
+                  "究極覚醒しました！",
+                  style: TextStyle(
+                    color: Colors.purple,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ] else ...[
+                // Max後
+                const SizedBox(height: 10),
+                const Text("限界突破中！", style: TextStyle(color: Colors.grey)),
               ],
-            ),
+
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('閉じる'),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _buildProgressSection(
+    int current,
+    int max,
+    String label, {
+    int baseCount = 0,
+  }) {
+    return Column(
+      children: [
+        const SizedBox(height: 10),
+        Text(
+          "$labelまで",
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 5),
+        SizedBox(
+          width: 150,
+          child: LinearProgressIndicator(
+            value: current / max,
+            backgroundColor: Colors.grey.shade200,
+            color: Colors.blue,
+            minHeight: 10,
+          ),
+        ),
+        Text(
+          "${baseCount + current} / ${baseCount + max}",
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRarityBadge(int rarity) {
+    Color color;
+    String label;
+    switch (rarity) {
+      case 5:
+        color = Colors.purple;
+        label = "UR";
+        break;
+      case 4:
+        color = Colors.orange;
+        label = "SSR";
+        break;
+      case 3:
+        color = Colors.blue;
+        label = "SR";
+        break;
+      case 2:
+        color = Colors.green;
+        label = "R";
+        break;
+      default:
+        color = Colors.grey;
+        label = "N";
+        break;
     }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  // --- 一覧画面のバッジ ---
+  Widget _buildMiniBadge(int rarity) {
+    Color color;
+    String text;
+    if (rarity == 5) {
+      color = Colors.purple;
+      text = "UR";
+    } else if (rarity == 4) {
+      color = Colors.orange;
+      text = "SSR";
+    } else {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 8,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // クレジットの進捗 (0~3)
-    final double progress = (_credits % 3) / 3.0;
-    // ガチャが回せる回数
     final int spins = _credits ~/ 3;
+    final double progress = (_credits % 3) / 3.0;
+    final int unlockedCount = _itemCounts.keys.length;
+    final int totalItems = _allItems.length;
+    final double completeRate = totalItems > 0 ? unlockedCount / totalItems : 0;
 
     return Scaffold(
       backgroundColor: Colors.yellow.shade50,
       body: Column(
         children: [
-          // 上部：ステータスエリア
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius:
-                  const BorderRadius.vertical(bottom: Radius.circular(30)),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(30),
+              ),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5))
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
               ],
             ),
             child: Column(
               children: [
-                const Text("クレジット",
-                    style: TextStyle(fontSize: 14, color: Colors.grey)),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("$_credits",
-                        style: const TextStyle(
-                            fontSize: 48, fontWeight: FontWeight.bold)),
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(" pt",
-                          style: TextStyle(fontSize: 16, color: Colors.grey)),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "クレジット",
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              "$_credits",
+                              style: const TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Text(
+                              " pt",
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text(
+                          "収集率",
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        Text(
+                          "$unlockedCount / $totalItems (${(completeRate * 100).toStringAsFixed(0)}%)",
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 15),
                 LinearProgressIndicator(
                   value: spins > 0 ? 1.0 : progress,
                   backgroundColor: Colors.grey.shade200,
                   color: Colors.orange,
-                  minHeight: 10,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  spins > 0 ? "ガチャが回せます！" : "あと ${3 - (_credits % 3)} 回入力でガチャ！",
-                  style: TextStyle(
-                      color: spins > 0 ? Colors.orange : Colors.grey,
-                      fontWeight: FontWeight.bold),
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: spins > 0 ? _spinGacha : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.shade300,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 50, vertical: 15),
-                    elevation: spins > 0 ? 5 : 0,
-                  ),
-                  child: const Text(
-                    "ガチャを回す (3pt)",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: spins > 0 ? _spinGacha : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade300,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: Text(
+                      spins > 0
+                          ? "ガチャを回す (3pt)"
+                          : "あと ${3 - (_credits % 3)} 回入力でガチャ",
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-
-          // 下部：コレクションエリア
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("コレクション",
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        childAspectRatio: 0.8,
-                      ),
-                      itemCount: _repository.items.length,
-                      itemBuilder: (context, index) {
-                        final item = _repository.items[index];
-                        final isUnlocked = _unlockedIds.contains(item.id);
+              padding: const EdgeInsets.all(10),
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: 0.75,
+                ),
+                itemCount: _allItems.length,
+                itemBuilder: (context, index) {
+                  final item = _allItems[index];
+                  final int count = _itemCounts[item.id] ?? 0;
+                  final bool isUnlocked = count > 0;
+                  final int stage = item.getStage(count); // 現在のステージ
 
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: isUnlocked
-                                    ? Colors.orange.shade200
-                                    : Colors.grey.shade300),
-                          ),
-                          child: Column(
+                  return GestureDetector(
+                    onTap: isUnlocked
+                        ? () => _showResultDialog(item, count)
+                        : null,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          // ステージによって枠の色を変える
+                          color: stage == 3
+                              ? Colors.purple.shade200
+                              : stage == 2
+                              ? Colors.blue.shade200
+                              : isUnlocked
+                              ? Colors.orange.shade100
+                              : Colors.grey.shade200,
+                          width: stage >= 2 ? 3 : 2,
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              isUnlocked
-                                  ? Image.asset(item.imagePath,
-                                      height: 60, fit: BoxFit.contain)
-                                  : const Icon(Icons.help_outline,
-                                      size: 40, color: Colors.grey),
-                              const SizedBox(height: 5),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 4),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: isUnlocked
+                                      ? Image.asset(
+                                          item.getImagePath(count),
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (c, e, s) => const Icon(
+                                            Icons.broken_image,
+                                            color: Colors.grey,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.help_outline,
+                                          size: 40,
+                                          color: Colors.grey.shade300,
+                                        ),
+                                ),
+                              ),
+                              // ゲージ (進化途中のみ表示)
+                              if (isUnlocked && count < _evo3Count)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 2,
+                                  ),
+                                  child: LinearProgressIndicator(
+                                    // Lv1なら /5, Lv2なら (c-5)/5
+                                    value: count < _evo2Count
+                                        ? count / _evo2Count
+                                        : (count - _evo2Count) /
+                                              (_evo3Count - _evo2Count),
+                                    minHeight: 4,
+                                    backgroundColor: Colors.grey.shade200,
+                                    color: Colors.blueAccent,
+                                  ),
+                                ),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                  horizontal: 2,
+                                ),
+                                color: isUnlocked
+                                    ? Colors.orange.shade50
+                                    : Colors.grey.shade100,
                                 child: Text(
-                                  isUnlocked ? item.name : "???",
+                                  isUnlocked ? item.getName(count) : "???",
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
-                                    color:
-                                        isUnlocked ? Colors.black : Colors.grey,
+                                    color: isUnlocked
+                                        ? Colors.black
+                                        : Colors.grey,
                                   ),
                                   textAlign: TextAlign.center,
-                                  maxLines: 2,
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      },
+                          if (isUnlocked)
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: _buildMiniBadge(item.rarity),
+                            ),
+                          // 最終進化マーク
+                          if (stage == 3)
+                            const Positioned(
+                              top: 4,
+                              left: 4,
+                              child: Icon(
+                                Icons.auto_awesome,
+                                color: Colors.purple,
+                                size: 16,
+                              ),
+                            ),
+                          // 第2形態マーク
+                          if (stage == 2)
+                            const Positioned(
+                              top: 4,
+                              left: 4,
+                              child: Icon(
+                                Icons.arrow_upward,
+                                color: Colors.blue,
+                                size: 16,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ),
@@ -2745,6 +3154,7 @@ import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
 import '../utils/simple_calculator.dart';
 import 'settings/category_manage_screen.dart';
+import 'history_screen.dart'; // ▼▼ 履歴画面への遷移のためにインポート ▼▼
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -2921,6 +3331,21 @@ class _InputTabState extends State<InputTab>
       MaterialPageRoute(builder: (context) => const CategoryManageScreen()),
     );
     await _loadAllData();
+  }
+
+  // --- ▼▼ 追加: カード長押し時の処理 ▼▼ ---
+  void _onCardLongPress(CategoryTag tag) {
+    _closeKeyboard();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HistoryScreen(
+          filterValue: tag.label,
+          filterKey: 'payment',
+          color: tag.color,
+        ),
+      ),
+    );
   }
 
   // --- Save Logic ---
@@ -3131,6 +3556,8 @@ class _InputTabState extends State<InputTab>
                     cardList: _cardList,
                     selectedCardIndex: _selectedCardIndex,
                     onCardSelected: _changeCardIndex,
+                    // ▼▼ 追加: コールバックを渡す ▼▼
+                    onCardLongPress: _onCardLongPress,
                     onSave: () => _saveData(keepKeyboard: false),
                     onUndo: _undoLastInput,
                     showUndo: _lastInputId != null,
@@ -5323,6 +5750,9 @@ class InputControlPanel extends StatelessWidget {
   final List<CategoryTag> cardList;
   final int selectedCardIndex;
   final ValueChanged<int> onCardSelected;
+  // ▼▼ 追加: カード長押し時のコールバック定義 ▼▼
+  final ValueChanged<CategoryTag>? onCardLongPress;
+
   final VoidCallback onSave;
   final VoidCallback? onUndo;
   final bool showUndo;
@@ -5334,6 +5764,8 @@ class InputControlPanel extends StatelessWidget {
     required this.cardList,
     required this.selectedCardIndex,
     required this.onCardSelected,
+    // ▼▼ 追加: コンストラクタ引数 ▼▼
+    this.onCardLongPress,
     required this.onSave,
     this.onUndo,
     this.showUndo = false,
@@ -5341,6 +5773,9 @@ class InputControlPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ▼▼ ここが重要: エラー回避のためローカル変数に入れます ▼▼
+    final onLongPressCallback = onCardLongPress;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -5388,9 +5823,13 @@ class InputControlPanel extends StatelessWidget {
                             final index = entry.key;
                             final tag = entry.value;
                             final isSelected = selectedCardIndex == index;
+
+                            // ▼▼▼▼ 重要修正ポイント ▼▼▼▼
+                            // ChoiceChip には onLongPress が無いため、
+                            // 必ず 'RawChip' を使用してください。
                             return Padding(
                               padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
+                              child: RawChip(
                                 label: Text(tag.label),
                                 labelStyle: TextStyle(
                                   fontSize: 11,
@@ -5402,13 +5841,25 @@ class InputControlPanel extends StatelessWidget {
                                       : FontWeight.normal,
                                 ),
                                 selected: isSelected,
-                                showCheckmark: false,
+                                showCheckmark: false, // ChoiceChip風に見せるため
                                 selectedColor: tag.color,
                                 backgroundColor: Colors.grey.shade100,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: const BorderSide(
+                                    color: Colors.transparent,
+                                    width: 0,
+                                  ),
+                                ),
                                 onSelected: (_) => onCardSelected(index),
+                                // ▼▼ ここでローカル変数を使用することでエラーを完全に防ぎます ▼▼
+                                onLongPress: onLongPressCallback != null
+                                    ? () => onLongPressCallback(tag)
+                                    : null,
                                 visualDensity: VisualDensity.compact,
                               ),
                             );
+                            // ▲▲▲▲ 修正ここまで ▲▲▲▲
                           }).toList(),
                         ),
                       )
@@ -5465,4 +5916,33 @@ class InputControlPanel extends StatelessWidget {
   }
 }
 
+```
+
+
+--- FILE: assets/json/gacha_master.json ---
+```
+[
+  {
+    "id": "1",
+    "rarity": 5,
+    "weight": 10,
+    "name_1": "ボロボロのノート",
+    "description_1": "どこにでもありそうな古いノート。",
+    "name_2": "伝説の家計簿",
+    "description_2": "持っているだけで無駄遣いが減る伝説の書。",
+    "name_3": "アカシックレコード",
+    "description_3": "全宇宙の収支が記録されている神の書物。もはや家計簿ではない。"
+  },
+  {
+    "id": "2",
+    "rarity": 4,
+    "weight": 30,
+    "name_1": "陶器のブタ",
+    "description_1": "かわいいブタの置物。",
+    "name_2": "黄金の貯金箱",
+    "description_2": "500円玉を入れると増えている気がする。",
+    "name_3": "無限貯金豚・金剛",
+    "description_3": "ブラックホールのように小銭を吸い込み、無限の富を生み出す。"
+  }
+]
 ```
