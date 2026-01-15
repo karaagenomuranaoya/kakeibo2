@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/category_tag.dart';
 import '../repositories/settings_repository.dart';
-import '../screens/monthly_report_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
 
@@ -53,28 +52,19 @@ class _AppDrawerState extends State<AppDrawer> {
                     style: TextStyle(color: Colors.white, fontSize: 24),
                   ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_month),
-                  title: const Text('月別レポート (全画面)'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MonthlyHistoryScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(),
+
+                // ▼▼ 月別レポートへのリンクを削除しました ▼▼
                 _buildSectionHeader("費目別 履歴"),
                 ..._expenseList.map(
                   (tag) => _buildFilterTile(context, tag, 'expense'),
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                _buildFilterTile(context,
-                    CategoryTag(label: '現金', color: Colors.grey), 'payment'),
+                _buildFilterTile(
+                  context,
+                  CategoryTag(label: '現金', color: Colors.grey),
+                  'payment',
+                ),
                 ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
@@ -89,9 +79,7 @@ class _AppDrawerState extends State<AppDrawer> {
               Navigator.pop(context);
               await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const SettingsScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
               // 設定から戻ってきたらタグ情報を再読み込み
               _loadTags();
