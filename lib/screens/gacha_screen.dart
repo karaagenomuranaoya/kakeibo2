@@ -51,12 +51,20 @@ class _GachaScreenState extends State<GachaScreen> {
     if (!mounted) return;
     Navigator.pop(context);
 
+    // 消費
     final success = await _repository.consumeCredits(3);
     if (!success) return;
 
+    // 抽選
     final item = await _repository.drawItem();
     final newCount = await _repository.unlockItem(item.id);
 
+    // ▼▼ 追加: レベルMAXを超えていたら 2pt 還元 ▼▼
+    if (newCount > _maxLevel) {
+      await _repository.addCredits(2);
+    }
+
+    // クレジット情報を更新するために再ロード
     await _loadData();
 
     if (mounted) {
@@ -64,7 +72,6 @@ class _GachaScreenState extends State<GachaScreen> {
     }
   }
 
-  // --- 進化の軌跡（履歴）表示用ダイアログ ---
   void _showHistoryDialog(GachaItem item, int maxLevel) {
     showDialog(
       context: context,
@@ -94,7 +101,6 @@ class _GachaScreenState extends State<GachaScreen> {
                     shrinkWrap: true,
                     itemCount: maxLevel > _maxLevel ? _maxLevel : maxLevel,
                     itemBuilder: (context, index) {
-                      // index は 0 始まりなので level は index + 1
                       final level = index + 1;
                       return ListTile(
                         leading: Container(
@@ -150,6 +156,8 @@ class _GachaScreenState extends State<GachaScreen> {
     final int level = item.getStage(count);
     final bool isNew = count == 1;
     final bool isMax = level == _maxLevel;
+    // ▼▼ 追加: カンスト被り判定 ▼▼
+    final bool isDuplicate = count > _maxLevel;
 
     String title = "LEVEL UP!!";
     Color titleColor = Colors.orange;
@@ -160,7 +168,7 @@ class _GachaScreenState extends State<GachaScreen> {
     } else if (isMax && count == _maxLevel) {
       title = "MAX EVOLUTION!!";
       titleColor = Colors.purpleAccent;
-    } else if (count > _maxLevel) {
+    } else if (isDuplicate) {
       title = "DUPLICATE";
       titleColor = Colors.grey;
     }
@@ -185,10 +193,7 @@ class _GachaScreenState extends State<GachaScreen> {
               ),
               const SizedBox(height: 30),
               GestureDetector(
-                onTap: () {
-                  // アイコンタップでも履歴が見れるようにする
-                  _showHistoryDialog(item, level);
-                },
+                onTap: () => _showHistoryDialog(item, level),
                 child: Container(
                   width: 120,
                   height: 120,
@@ -232,7 +237,36 @@ class _GachaScreenState extends State<GachaScreen> {
                 style: const TextStyle(color: Colors.grey, fontSize: 14),
               ),
               const SizedBox(height: 20),
-              if (!isMax) ...[
+
+              // ▼▼ ゲージ表示 or 還元メッセージ ▼▼
+              if (isDuplicate) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.auto_awesome, color: Colors.orange, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        "2pt 還元されました",
+                        style: TextStyle(
+                          color: Colors.deepOrange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ] else if (!isMax) ...[
                 LinearProgressIndicator(
                   value: level / _maxLevel,
                   minHeight: 10,
@@ -248,14 +282,12 @@ class _GachaScreenState extends State<GachaScreen> {
                 const SizedBox(height: 20),
               ],
 
-              // ▼▼ 履歴を見るボタンを追加 ▼▼
               OutlinedButton.icon(
                 onPressed: () => _showHistoryDialog(item, level),
                 icon: const Icon(Icons.history_edu),
                 label: const Text("進化の記録を見る"),
               ),
               const SizedBox(height: 10),
-
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('閉じる'),
@@ -405,7 +437,6 @@ class _GachaScreenState extends State<GachaScreen> {
                   final Color itemColor = item.getColor(count);
 
                   return GestureDetector(
-                    // ロックされていても未取得としてタップは無効のまま
                     onTap: isUnlocked
                         ? () => _showResultDialog(item, count)
                         : null,

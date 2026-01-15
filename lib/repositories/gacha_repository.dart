@@ -62,17 +62,26 @@ class GachaRepository {
     return prefs.getInt(_creditKey) ?? 0;
   }
 
+  // 入力時の加算（デバッグモードなら+10000）
   Future<int> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;
 
-    // ▼▼ 修正: デバッグモードなら一気に10000ポイント追加 ▼▼
     if (kDebugMode) {
       current += 10000;
     } else {
       current++;
     }
 
+    await prefs.setInt(_creditKey, current);
+    return current;
+  }
+
+  // ▼▼ 追加: 任意のポイントを加算する（被り救済用など） ▼▼
+  Future<int> addCredits(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    int current = prefs.getInt(_creditKey) ?? 0;
+    current += amount;
     await prefs.setInt(_creditKey, current);
     return current;
   }
