@@ -38,6 +38,29 @@ class SimpleCalculator {
     for (int i = 0; i < expr.length; i++) {
       final char = expr[i];
       if (_isOperator(char)) {
+        // ▼▼ 修正: 先頭のマイナス、または演算子直後のマイナスは「負の数」の一部とみなす ▼▼
+        // 例: "-100", "50x-2" などの対応
+        if (char == '-' && currentNumber.isEmpty) {
+          // トークンがまだ空（先頭）か、直前が演算子（currentNumberが空かつtokensの末尾が演算子）の場合
+          // ただし、家計簿アプリのキーボード仕様上、"50x-2"は入力できないようになっているため、
+          // 「先頭のマイナス」だけケアすればOKです。
+          bool isNegativeSign = false;
+          if (tokens.isEmpty) {
+            isNegativeSign = true;
+          } else {
+            // 念のため、前のトークンが演算子ならマイナス符号扱いにするロジック
+            final lastToken = tokens.last;
+            if (lastToken is String && _isOperator(lastToken)) {
+              isNegativeSign = true;
+            }
+          }
+
+          if (isNegativeSign) {
+            currentNumber += char;
+            continue;
+          }
+        }
+        // ▲▲ 修正ここまで ▲▲
         if (currentNumber.isNotEmpty) {
           tokens.add(double.parse(currentNumber));
           currentNumber = "";

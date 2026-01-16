@@ -199,6 +199,29 @@ class SimpleCalculator {
     for (int i = 0; i < expr.length; i++) {
       final char = expr[i];
       if (_isOperator(char)) {
+        // ▼▼ 修正: 先頭のマイナス、または演算子直後のマイナスは「負の数」の一部とみなす ▼▼
+        // 例: "-100", "50x-2" などの対応
+        if (char == '-' && currentNumber.isEmpty) {
+          // トークンがまだ空（先頭）か、直前が演算子（currentNumberが空かつtokensの末尾が演算子）の場合
+          // ただし、家計簿アプリのキーボード仕様上、"50x-2"は入力できないようになっているため、
+          // 「先頭のマイナス」だけケアすればOKです。
+          bool isNegativeSign = false;
+          if (tokens.isEmpty) {
+            isNegativeSign = true;
+          } else {
+            // 念のため、前のトークンが演算子ならマイナス符号扱いにするロジック
+            final lastToken = tokens.last;
+            if (lastToken is String && _isOperator(lastToken)) {
+              isNegativeSign = true;
+            }
+          }
+
+          if (isNegativeSign) {
+            currentNumber += char;
+            continue;
+          }
+        }
+        // ▲▲ 修正ここまで ▲▲
         if (currentNumber.isNotEmpty) {
           tokens.add(double.parse(currentNumber));
           currentNumber = "";
@@ -271,8 +294,6 @@ class SimpleCalculator {
 
 --- FILE: lib/utils/app_date_utils.dart ---
 ```dart
-import 'package:intl/intl.dart';
-
 class AppDateUtils {
   static const List<String> _weekDays = ["月", "火", "水", "木", "金", "土", "日"];
 
@@ -284,16 +305,6 @@ class AppDateUtils {
   /// 例: 1/15 14:30
   static String formatDateTime(DateTime date) {
     return "${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
-  }
-
-  /// 例: 2023年 10月
-  static String formatYearMonth(int year, int month) {
-    return "$year年 $month月";
-  }
-
-  /// 指定した年月の日数を取得
-  static int getDaysInMonth(int year, int month) {
-    return DateTime(year, month + 1, 0).day;
   }
 }
 
@@ -313,7 +324,7 @@ class GachaRepository {
   static const String _creditKey = 'gacha_credits';
   static const String _countsKey = 'gacha_counts_v2';
 
-  // ▼▼ 追加: 日次制限用のキー ▼▼
+  // 日次制限用のキー
   static const String _dailyCountKey = 'gacha_daily_count';
   static const String _lastDateKey = 'gacha_last_input_date';
   static const int _dailyLimit = 15; // 1日15回（ガチャ5回分）
@@ -383,7 +394,7 @@ class GachaRepository {
     return prefs.getInt(_creditKey) ?? 0;
   }
 
-  // ▼▼ 変更: 入力時の加算（戻り値を (現在の合計, 加算されたか) に変更） ▼▼
+  // 入力時の加算（戻り値を (現在の合計, 加算されたか) に変更）
   Future<(int total, bool added)> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
     int currentTotal = prefs.getInt(_creditKey) ?? 0;
@@ -423,15 +434,6 @@ class GachaRepository {
     return (currentTotal, true);
   }
 
-  // 任意のポイントを加算する
-  Future<int> addCredits(int amount) async {
-    final prefs = await SharedPreferences.getInstance();
-    int current = prefs.getInt(_creditKey) ?? 0;
-    current += amount;
-    await prefs.setInt(_creditKey, current);
-    return current;
-  }
-
   Future<bool> consumeCredits(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;
@@ -453,26 +455,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
 
 class SettingsRepository {
-  static const String _favoritesKey = 'favorites_list';
   static const String _expenseTagsKey = 'expense_tags_list';
   static const String _cardTagsKey = 'card_tags_list';
   static const String _gachaEnabledKey = 'gacha_enabled';
   static const String _categoryLongPressKey = 'category_long_press_enabled';
-  // ▼▼ 追加: 入力画面でのカード表示設定キー ▼▼
   static const String _showCardOnInputKey = 'show_card_on_input';
-
-  // --- お気に入り機能 (既存) ---
-  static const List<String> _defaultFavorites = ['expense:食費', 'payment:楽天カード'];
-
-  Future<List<String>> loadFavorites() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_favoritesKey) ?? _defaultFavorites;
-  }
-
-  Future<void> saveFavorites(List<String> favorites) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_favoritesKey, favorites);
-  }
 
   // --- 費目リスト管理 ---
   Future<List<CategoryTag>> loadExpenseTags() async {
@@ -530,7 +517,7 @@ class SettingsRepository {
     await prefs.setBool(_categoryLongPressKey, enabled);
   }
 
-  // --- ▼▼ 追加: 入力画面でのカード表示設定 ▼▼ ---
+  // --- 入力画面でのカード表示設定 ---
   Future<bool> loadShowCardOnInput() async {
     final prefs = await SharedPreferences.getInstance();
     // デフォルトは true (表示する)
@@ -644,7 +631,7 @@ class TransactionItem {
   final String payment;
   final DateTime date;
   final DateTime? paymentDate;
-  final String memo; // 追加: メモ欄
+  final String memo;
 
   TransactionItem({
     String? id,
@@ -653,12 +640,8 @@ class TransactionItem {
     required this.payment,
     required this.date,
     this.paymentDate,
-    this.memo = '', // デフォルトは空文字
+    this.memo = '',
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
-
-  String get displayDate {
-    return "${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
-  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -668,13 +651,14 @@ class TransactionItem {
       'payment': payment,
       'date_iso': date.toIso8601String(),
       'payment_date_iso': paymentDate?.toIso8601String(),
-      'memo': memo, // 保存
+      'memo': memo,
     };
   }
 
   factory TransactionItem.fromJson(Map<String, dynamic> json) {
     return TransactionItem(
-      id: json['id'] as String? ??
+      id:
+          json['id'] as String? ??
           DateTime.now().microsecondsSinceEpoch.toString() +
               (json['date_iso'] as String),
       amount: json['amount'] as int,
@@ -684,7 +668,7 @@ class TransactionItem {
       paymentDate: json['payment_date_iso'] != null
           ? DateTime.parse(json['payment_date_iso'] as String)
           : null,
-      memo: json['memo'] as String? ?? '', // 読み込み（既存データ対策でnull許容）
+      memo: json['memo'] as String? ?? '',
     );
   }
 
@@ -862,7 +846,7 @@ class GachaItem {
   final int weight;
   final IconData iconData;
   final String baseName;
-  // 変更: 説明文を1つではなく、レベルごとのリストに変更
+  // 説明文をレベルごとのリストに変更
   final List<String> descriptions;
 
   const GachaItem({
@@ -912,8 +896,6 @@ class GachaItem {
   // ステージに応じた色を取得
   Color getColor(int count) {
     final stage = getStage(count);
-    // countがレベルとして渡される場合と、1~10のindexとして渡される場合の両方に対応
-    // ここでは count が 1以上前提のロジックで安全策をとる
     int safeIndex = stage - 1;
     if (safeIndex < 0) safeIndex = 0;
     if (safeIndex >= _stageColors.length) safeIndex = _stageColors.length - 1;
@@ -933,28 +915,16 @@ class GachaItem {
     return "${_stagePrefixes[safeIndex]}$baseName";
   }
 
-  // 変更: ステージに応じた説明文をリストから取得
+  // ステージに応じた説明文をリストから取得
   String getDescription(int count) {
     final stage = getStage(count);
     if (stage == 0) return "";
 
     int safeIndex = stage - 1;
-    // データ不足エラー回避
     if (safeIndex >= descriptions.length) {
       return "（説明文データがありません）";
     }
     return descriptions[safeIndex];
-  }
-
-  factory GachaItem.fromJson(Map<String, dynamic> json) {
-    return GachaItem(
-      id: json['id'] as String,
-      rarity: json['rarity'] as int? ?? 1,
-      weight: json['weight'] as int? ?? 10,
-      iconData: Icons.help_outline,
-      baseName: '不明なデータ',
-      descriptions: ['データ読み込みエラー'],
-    );
   }
 }
 
@@ -1161,8 +1131,7 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
 import 'package:flutter/material.dart';
 import '../models/transaction_item.dart';
 import '../models/category_tag.dart';
-import '../repositories/transaction_repository.dart';
-import '../repositories/settings_repository.dart';
+import '../services/history_service.dart'; // New!
 import '../widgets/transaction_tile.dart';
 import '../widgets/card_settings_dialog.dart';
 import '../widgets/transaction_edit_dialog.dart';
@@ -1171,10 +1140,8 @@ class HistoryScreen extends StatefulWidget {
   final String filterValue;
   final String filterKey; // 'expense' or 'payment'
   final Color? color;
-  // 固定表示用のパラメータは削除推奨だが、互換性のために残しつつ、基本は initialDate を使うように変更
-  final int? year;
+  final int? year; // 互換性のため残存
   final int? month;
-  // ▼▼ 追加: 初期表示する日付（指定があればそこからPageViewを開始） ▼▼
   final DateTime? initialDate;
 
   const HistoryScreen({
@@ -1197,13 +1164,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   CategoryTag? _currentCardTag;
 
   late PageController _pageController;
-  final SettingsRepository _settingsRepository = SettingsRepository();
+  final HistoryService _historyService = HistoryService(); // Serviceを使用
 
   @override
   void initState() {
     super.initState();
 
-    // ▼▼ 追加: PageViewの初期位置を計算 ▼▼
     int initialPage = 1000;
     if (widget.initialDate != null) {
       final now = DateTime.now();
@@ -1227,17 +1193,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _loadCardInfo() async {
-    final cards = await _settingsRepository.loadCardTags();
-    try {
-      final card = cards.firstWhere((c) => c.label == widget.filterValue);
-      if (mounted) {
-        setState(() {
-          _currentCardTag = card;
-          _showTab = card.closingDay != null;
-          if (!_showTab) _viewMode = 0;
-        });
-      }
-    } catch (_) {}
+    final card = await _historyService.getCardTagByLabel(widget.filterValue);
+    if (card != null && mounted) {
+      setState(() {
+        _currentCardTag = card;
+        _showTab = card.closingDay != null;
+        if (!_showTab) _viewMode = 0;
+      });
+    }
   }
 
   void _showSetupDialog() {
@@ -1258,12 +1221,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             paymentMonthOffset: offset,
           );
 
-          final cards = await _settingsRepository.loadCardTags();
-          final index = cards.indexWhere((c) => c.id == newTag.id);
-          if (index != -1) {
-            cards[index] = newTag;
-            await _settingsRepository.saveCardTags(cards);
-          }
+          await _historyService.updateCardTag(newTag);
 
           if (mounted) {
             setState(() {
@@ -1280,7 +1238,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // ▼▼ 追加: 年月ジャンプ処理 ▼▼
   void _jumpToDate(DateTime date) {
     final DateTime now = DateTime.now();
     final int diffMonths =
@@ -1291,8 +1248,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 固定月指定がある場合はタイトルに年月を入れる（以前の互換性）
-    // ただし、initialDateを使ってPageViewで開く場合はタイトルはフィルタ名のみでOK（各ページに年月が出るため）
     String title = widget.filterValue;
     if (widget.year != null && widget.month != null) {
       title = "${widget.year}/${widget.month} $title";
@@ -1345,8 +1300,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
           Expanded(
-            // year/monthが明示的に指定されている場合は単一ページ（以前の仕様）
-            // それ以外（initialDate使用含む）はPageViewで無限スクロール
             child: (widget.year != null && widget.month != null)
                 ? _HistoryPage(
                     year: widget.year!,
@@ -1356,6 +1309,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     color: widget.color ?? Colors.blue,
                     viewMode: _viewMode,
                     showNavButtons: false,
+                    service: _historyService, // Serviceを渡す
                   )
                 : PageView.builder(
                     controller: _pageController,
@@ -1380,7 +1334,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         ),
-                        // ▼▼ 追加: 年月タップ時の処理 ▼▼
                         onDateTap: () async {
                           final DateTime current = DateTime(
                             targetDate.year,
@@ -1398,6 +1351,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             _jumpToDate(picked);
                           }
                         },
+                        service: _historyService, // Serviceを渡す
                       );
                     },
                   ),
@@ -1418,8 +1372,8 @@ class _HistoryPage extends StatefulWidget {
   final VoidCallback? onPrev;
   final VoidCallback? onNext;
   final bool showNavButtons;
-  // ▼▼ 追加: 日付タップコールバック ▼▼
   final VoidCallback? onDateTap;
+  final HistoryService service; // 追加
 
   const _HistoryPage({
     required this.year,
@@ -1432,6 +1386,7 @@ class _HistoryPage extends StatefulWidget {
     this.onNext,
     this.showNavButtons = true,
     this.onDateTap,
+    required this.service,
   });
 
   @override
@@ -1440,8 +1395,6 @@ class _HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<_HistoryPage> {
   List<TransactionItem> _history = [];
-  final TransactionRepository _repository = TransactionRepository();
-  final SettingsRepository _settingsRepository = SettingsRepository();
   List<CategoryTag> _expenseTags = [];
   bool _isLoading = true;
 
@@ -1462,33 +1415,22 @@ class _HistoryPageState extends State<_HistoryPage> {
   }
 
   Future<void> _load() async {
-    final allItems = await _repository.getAllTransactions();
-    final expenses = await _settingsRepository.loadExpenseTags();
+    // Serviceを使ってデータを取得（スッキリ！）
+    final items = await widget.service.getFilteredTransactions(
+      filterKey: widget.filterKey,
+      filterValue: widget.filterValue,
+      year: widget.year,
+      month: widget.month,
+      viewMode: widget.viewMode,
+    );
+
+    final expenses = await widget.service.getExpenseTags();
 
     if (!mounted) return;
 
     setState(() {
+      _history = items;
       _expenseTags = expenses;
-      _history = allItems.where((i) {
-        if (widget.filterKey == 'expense') {
-          if (i.expense != widget.filterValue) return false;
-        } else if (widget.filterKey == 'payment') {
-          if (widget.filterValue == '現金' && i.payment.isEmpty) {
-            // OK
-          } else if (i.payment != widget.filterValue) {
-            return false;
-          }
-        }
-        if (widget.viewMode == 1) {
-          final targetDate = i.paymentDate ?? i.date;
-          return targetDate.year == widget.year &&
-              targetDate.month == widget.month;
-        } else {
-          return i.date.year == widget.year && i.date.month == widget.month;
-        }
-      }).toList();
-
-      _history.sort((a, b) => b.date.compareTo(a.date));
       _isLoading = false;
     });
   }
@@ -1519,11 +1461,11 @@ class _HistoryPageState extends State<_HistoryPage> {
                     )
                   else
                     const SizedBox(width: 48),
-                  // ▼▼ 変更: 年月表示をタップ可能に ▼▼
+
                   GestureDetector(
                     onTap: widget.onDateTap,
                     child: Container(
-                      color: Colors.transparent, // タップ領域確保
+                      color: Colors.transparent,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1536,7 +1478,6 @@ class _HistoryPageState extends State<_HistoryPage> {
                               color: widget.color,
                             ),
                           ),
-                          // 移動可能ならアイコンを出す
                           if (widget.onDateTap != null) ...[
                             const SizedBox(width: 4),
                             Icon(
@@ -2559,7 +2500,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          '次へ家計簿',
+          '家計簿とおまけガチャ',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         elevation: 0,
@@ -2629,16 +2570,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
-import '../models/transaction_item.dart';
-import '../repositories/transaction_repository.dart';
-import '../repositories/gacha_repository.dart';
+// ▼ 今回作成したサービスをインポート
+import '../services/input_service.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
 import '../widgets/custom_number_keyboard.dart';
+import '../widgets/flash_message.dart';
 import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
 import '../widgets/input/payment_selector.dart';
-import '../utils/simple_calculator.dart';
 import 'settings/category_manage_screen.dart';
 import 'history_screen.dart';
 
@@ -2664,9 +2604,8 @@ class _InputTabState extends State<InputTab>
   final FocusNode _amountFocusNode = FocusNode();
   final FocusNode _memoFocusNode = FocusNode();
 
-  // --- Repositories ---
-  final TransactionRepository _repository = TransactionRepository();
-  final GachaRepository _gachaRepository = GachaRepository();
+  // --- Services & Repositories ---
+  final InputService _inputService = InputService(); // New!
   final SettingsRepository _settingsRepository = SettingsRepository();
 
   // --- State ---
@@ -2865,95 +2804,50 @@ class _InputTabState extends State<InputTab>
     );
   }
 
-  // --- Save Logic ---
+  // --- Save Logic (大幅に簡略化！) ---
   Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
-
-    final rawText = _amountController.text;
-    final calculatedText = SimpleCalculator.calculate(rawText);
-
-    if (calculatedText.isEmpty) {
-      _showFlashMessage('金額を入力してください', Colors.redAccent);
-      return;
-    }
-
-    _amountController.text = calculatedText;
-    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
-
-    if (amount <= 0) {
-      _showFlashMessage('1円以上の金額を入力してください', Colors.redAccent);
-      return;
-    }
 
     if (_expenseList.isEmpty) {
       _showFlashMessage('カテゴリがありません', Colors.redAccent);
       return;
     }
+    // インデックス範囲外ガード
     if (_selectedExpenseIndex >= _expenseList.length) {
       _selectedExpenseIndex = 0;
     }
 
     if (!keepKeyboard) _closeKeyboard();
 
-    String paymentMethod = '';
-    DateTime? paymentDate;
-
-    // 設定でカードが隠されている場合は、強制的に現金扱いにする
-    final bool shouldUseCard = _showCardOnInput && _isCardPayment;
-
-    if (shouldUseCard && _cardList.isNotEmpty) {
-      final card = _cardList[_selectedCardIndex];
-      paymentMethod = card.label;
-
-      if (card.closingDay != null && card.paymentDay != null) {
-        int monthsToAdd = card.paymentMonthOffset;
-        if (card.closingDay != 99 && _selectedDate.day > card.closingDay!) {
-          monthsToAdd++;
-        }
-        int targetYear = _selectedDate.year;
-        int targetMonth = _selectedDate.month + monthsToAdd;
-        int targetDay = card.paymentDay!;
-
-        paymentDate = (targetDay == 99)
-            ? DateTime(targetYear, targetMonth + 1, 0)
-            : DateTime(targetYear, targetMonth, targetDay);
-      }
-    } else if (shouldUseCard) {
-      paymentMethod = 'カード';
+    // 選択されているカードタグの取得
+    CategoryTag? selectedCardTag;
+    if (_cardList.isNotEmpty && _selectedCardIndex < _cardList.length) {
+      selectedCardTag = _cardList[_selectedCardIndex];
     }
 
-    try {
-      final newItem = TransactionItem(
-        amount: amount,
-        expense: _expenseList[_selectedExpenseIndex].label,
-        payment: paymentMethod,
-        date: DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-          DateTime.now().hour,
-          DateTime.now().minute,
-        ),
-        paymentDate: paymentDate,
-        memo: _memoController.text.trim(),
-      );
+    // ★ サービスに処理を委譲
+    final result = await _inputService.registerTransaction(
+      rawAmount: _amountController.text,
+      memo: _memoController.text.trim(),
+      date: _selectedDate,
+      expenseTag: _expenseList[_selectedExpenseIndex],
+      isCardPayment: _isCardPayment,
+      cardTag: selectedCardTag,
+      showCardOnInput: _showCardOnInput,
+      isGachaEnabled: _isGachaEnabled,
+    );
 
-      await _repository.addTransaction(newItem);
-
-      // ▼▼ 変更: ポイント加算処理とメッセージ分岐 ▼▼
-      int currentCredits = 0;
-      bool isPointAdded = false;
-
-      if (_isGachaEnabled) {
-        // Record (int total, bool added) を受け取る
-        final result = await _gachaRepository.addCredit();
-        currentCredits = result.$1; // total
-        isPointAdded = result.$2; // added
+    // 結果に応じたUI更新
+    if (result.success) {
+      // 成功時
+      if (result.formattedAmount != null) {
+        _amountController.text = result.formattedAmount!;
       }
 
+      // UI状態の保存（これはUIの責任）
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
-      if (shouldUseCard) {
+      if (_showCardOnInput && _isCardPayment) {
         await prefs.setInt('last_card_index', _selectedCardIndex);
       }
       await prefs.setBool('last_is_card', _isCardPayment);
@@ -2961,62 +2855,42 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _amountController.clear();
         _memoController.clear();
-        _lastInputId = newItem.id;
+        _lastInputId = result.savedId;
       });
 
       if (keepKeyboard) _amountFocusNode.requestFocus();
 
       if (mounted) {
-        String msg = '保存しました';
-        Color color = Colors.blue;
-
-        if (_isGachaEnabled) {
-          if (isPointAdded) {
-            // ポイントが加算された場合
-            if (currentCredits % 3 == 0) {
-              msg = 'ガチャが回せます！';
-              color = Colors.orange;
-            } else {
-              // 通常の保存＋ポイント付与
-              // 必要なら '保存しました (あと${3 - (currentCredits % 3)}回)' なども可
-              msg = '保存しました';
-            }
-          } else {
-            // 上限に達していた場合
-            msg = '保存しました（本日のポイント上限）';
-            color = Colors.grey;
-          }
-        } else if (paymentDate != null) {
-          msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
-        }
-        _showFlashMessage(msg, color);
+        _showFlashMessage(result.message, result.messageColor);
       }
-    } catch (e) {
-      _showFlashMessage('保存エラー: $e', Colors.red);
+    } else {
+      // 失敗時（バリデーションエラーなど）
+      if (mounted) {
+        _showFlashMessage(result.message, result.messageColor);
+      }
     }
   }
 
   Future<void> _undoLastInput() async {
     if (_lastInputId == null) return;
-    final allItems = await _repository.getAllTransactions();
-    TransactionItem? targetItem;
-    try {
-      targetItem = allItems.firstWhere((e) => e.id == _lastInputId);
-    } catch (_) {
+
+    // 削除対象の情報を取得
+    final targetItem = await _inputService.getTransaction(_lastInputId!);
+    if (targetItem == null) {
       setState(() => _lastInputId = null);
       return;
     }
 
     if (!mounted) return;
     final weekDays = ["月", "火", "水", "木", "金", "土", "日"];
-    final weekStr = weekDays[targetItem!.date.weekday - 1];
+    final weekStr = weekDays[targetItem.date.weekday - 1];
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('直前の入力を取り消しますか？'),
         content: Text(
-          '¥${targetItem!.amount} (${targetItem.expense})\n'
+          '¥${targetItem.amount} (${targetItem.expense})\n'
           '日時: ${targetItem.date.month}/${targetItem.date.day} ($weekStr)',
         ),
         actions: [
@@ -3027,7 +2901,8 @@ class _InputTabState extends State<InputTab>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _repository.deleteTransaction(_lastInputId!);
+              // ★ 削除処理もサービスに委譲
+              await _inputService.deleteTransaction(_lastInputId!);
               if (mounted) {
                 setState(() => _lastInputId = null);
                 _showFlashMessage('入力を取り消しました', Colors.grey);
@@ -3090,7 +2965,6 @@ class _InputTabState extends State<InputTab>
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
 
-                  // カード欄を表示する場合
                   if (_showCardOnInput)
                     GestureDetector(
                       onTap: () {},
@@ -3135,49 +3009,16 @@ class _InputTabState extends State<InputTab>
                 controller: _amountController,
                 onSubmitted: () => _saveData(keepKeyboard: true),
                 onSaveAndClose: () => _saveData(keepKeyboard: false),
-                // ▼▼ 追加: Undo機能のバインド ▼▼
-                // _lastInputId がある場合のみ有効にする
                 onUndo: _lastInputId != null ? _undoLastInput : null,
                 onClose: _closeKeyboard,
                 onChanged: (_) {},
               ),
             ),
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: true,
-              child: AnimatedOpacity(
-                opacity: _isFlashVisible ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _flashColor.withOpacity(0.85),
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      _flashMsg,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+
+          FlashMessage(
+            isVisible: _isFlashVisible,
+            message: _flashMsg,
+            color: _flashColor,
           ),
         ],
       ),
@@ -5281,6 +5122,279 @@ class GachaData {
 ```
 
 
+--- FILE: lib/services/history_service.dart ---
+```dart
+import 'package:flutter/material.dart';
+import '../models/transaction_item.dart';
+import '../models/category_tag.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
+
+class HistoryService {
+  final TransactionRepository _transactionRepo = TransactionRepository();
+  final SettingsRepository _settingsRepo = SettingsRepository();
+
+  /// 指定された年月のデータを取得する
+  Future<List<TransactionItem>> getMonthlyTransactions({
+    required int year,
+    required int month,
+  }) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+
+    // 指定月でフィルタリング
+    final filtered = allItems.where((i) {
+      return i.date.year == year && i.date.month == month;
+    }).toList();
+
+    // 日付順（新しい順）に並び替え
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+
+    return filtered;
+  }
+
+  /// 条件（費目やカード）で絞り込んだデータを取得する
+  Future<List<TransactionItem>> getFilteredTransactions({
+    required String filterKey, // 'expense' or 'payment'
+    required String filterValue,
+    required int year,
+    required int month,
+    required int viewMode, // 0: 利用日基準, 1: 支払日基準（引き落とし予定）
+  }) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+
+    final filtered = allItems.where((i) {
+      // 1. キーによるフィルタリング
+      if (filterKey == 'expense') {
+        if (i.expense != filterValue) return false;
+      } else if (filterKey == 'payment') {
+        if (filterValue == '現金' && i.payment.isEmpty) {
+          // 現金扱い（空文字）OK
+        } else if (i.payment != filterValue) {
+          return false;
+        }
+      }
+
+      // 2. 年月によるフィルタリング
+      if (viewMode == 1) {
+        // 引き落とし予定モードなら、paymentDateを見る
+        final targetDate = i.paymentDate ?? i.date; // paymentDateがなければ利用日
+        return targetDate.year == year && targetDate.month == month;
+      } else {
+        // 通常モードなら利用日を見る
+        return i.date.year == year && i.date.month == month;
+      }
+    }).toList();
+
+    // 日付順に並び替え
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+
+    return filtered;
+  }
+
+  /// 費目タグのリストを取得（アイコン表示などに必要）
+  Future<List<CategoryTag>> getExpenseTags() async {
+    return await _settingsRepo.loadExpenseTags();
+  }
+
+  /// カードタグのリストを取得
+  Future<List<CategoryTag>> getCardTags() async {
+    return await _settingsRepo.loadCardTags();
+  }
+
+  /// 特定のカード情報を取得（設定変更用）
+  Future<CategoryTag?> getCardTagByLabel(String label) async {
+    final cards = await getCardTags();
+    try {
+      return cards.firstWhere((c) => c.label == label);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// カード設定を更新する
+  Future<void> updateCardTag(CategoryTag newTag) async {
+    final cards = await getCardTags();
+    final index = cards.indexWhere((c) => c.id == newTag.id);
+    if (index != -1) {
+      cards[index] = newTag;
+      await _settingsRepo.saveCardTags(cards);
+    }
+  }
+}
+
+```
+
+
+--- FILE: lib/services/input_service.dart ---
+```dart
+import 'package:flutter/material.dart';
+import '../models/category_tag.dart';
+import '../models/transaction_item.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/gacha_repository.dart';
+import '../utils/simple_calculator.dart';
+
+/// 保存処理の結果をまとめたクラス
+class InputServiceResult {
+  final bool success; // 成功したか
+  final String message; // 表示するメッセージ
+  final Color messageColor; // メッセージの色
+  final String? formattedAmount; // 計算後の金額文字列（UI更新用）
+  final String? savedId; // 保存されたデータのID（Undo用）
+
+  InputServiceResult({
+    required this.success,
+    required this.message,
+    this.messageColor = Colors.blue,
+    this.formattedAmount,
+    this.savedId,
+  });
+}
+
+class InputService {
+  final TransactionRepository _transactionRepo = TransactionRepository();
+  final GachaRepository _gachaRepo = GachaRepository();
+
+  /// データを保存するメインの処理
+  Future<InputServiceResult> registerTransaction({
+    required String rawAmount, // 入力された金額（数式の可能性あり）
+    required String memo, // メモ
+    required DateTime date, // 選ばれた日付
+    required CategoryTag expenseTag, // 選ばれた費目
+    required bool isCardPayment, // カード払いモードか
+    required CategoryTag? cardTag, // 選ばれたカード（あれば）
+    required bool showCardOnInput, // 設定：カード入力を表示しているか
+    required bool isGachaEnabled, // 設定：ガチャが有効か
+  }) async {
+    // 1. 計算とバリデーション
+    final calculatedText = SimpleCalculator.calculate(rawAmount);
+
+    if (calculatedText.isEmpty) {
+      return InputServiceResult(
+        success: false,
+        message: '金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
+    if (amount <= 0) {
+      return InputServiceResult(
+        success: false,
+        message: '1円以上の金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    // 2. 支払い情報の構築
+    String paymentMethod = '';
+    DateTime? paymentDate;
+
+    // 設定でカードが隠されている場合は、強制的に現金扱いにするかどうか
+    // ※元のロジックに従い、UIで隠していてもisCardPaymentがtrueならカード扱いにします
+    final bool shouldUseCard = showCardOnInput && isCardPayment;
+
+    if (shouldUseCard) {
+      if (cardTag != null) {
+        paymentMethod = cardTag.label;
+
+        // 締め日・支払日の計算
+        if (cardTag.closingDay != null && cardTag.paymentDay != null) {
+          int monthsToAdd = cardTag.paymentMonthOffset;
+          if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
+            monthsToAdd++;
+          }
+          int targetYear = date.year;
+          int targetMonth = date.month + monthsToAdd;
+          int targetDay = cardTag.paymentDay!;
+
+          paymentDate = (targetDay == 99)
+              ? DateTime(targetYear, targetMonth + 1, 0) // 末日
+              : DateTime(targetYear, targetMonth, targetDay);
+        }
+      } else {
+        paymentMethod = 'カード';
+      }
+    }
+
+    // 3. データの保存
+    try {
+      final newItem = TransactionItem(
+        amount: amount,
+        expense: expenseTag.label,
+        payment: paymentMethod,
+        date: DateTime(
+          date.year,
+          date.month,
+          date.day,
+          DateTime.now().hour,
+          DateTime.now().minute,
+        ),
+        paymentDate: paymentDate,
+        memo: memo,
+      );
+
+      await _transactionRepo.addTransaction(newItem);
+
+      // 4. ガチャポイント処理
+      String msg = '保存しました';
+      Color color = Colors.blue;
+
+      if (isGachaEnabled) {
+        final result = await _gachaRepo.addCredit();
+        final int currentCredits = result.$1;
+        final bool isAdded = result.$2;
+
+        if (isAdded) {
+          if (currentCredits % 3 == 0) {
+            msg = 'ガチャが回せます！';
+            color = Colors.orange;
+          } else {
+            msg = '保存しました';
+          }
+        } else {
+          msg = '保存しました（本日のポイント上限）';
+          color = Colors.grey;
+        }
+      } else if (paymentDate != null) {
+        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      return InputServiceResult(
+        success: true,
+        message: msg,
+        messageColor: color,
+        formattedAmount: calculatedText,
+        savedId: newItem.id,
+      );
+    } catch (e) {
+      return InputServiceResult(
+        success: false,
+        message: '保存エラー: $e',
+        messageColor: Colors.red,
+      );
+    }
+  }
+
+  /// 削除（取り消し）処理
+  Future<void> deleteTransaction(String id) async {
+    await _transactionRepo.deleteTransaction(id);
+  }
+
+  /// 取り消し対象のアイテムを取得
+  Future<TransactionItem?> getTransaction(String id) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+    try {
+      return allItems.firstWhere((e) => e.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+```
+
+
 --- FILE: lib/widgets/category_selector.dart ---
 ```dart
 import 'package:flutter/material.dart';
@@ -5951,6 +6065,64 @@ class _AppDrawerState extends State<AppDrawer> {
 ```
 
 
+--- FILE: lib/widgets/flash_message.dart ---
+```dart
+import 'package:flutter/material.dart';
+
+class FlashMessage extends StatelessWidget {
+  final bool isVisible;
+  final String message;
+  final Color color;
+
+  const FlashMessage({
+    super.key,
+    required this.isVisible,
+    required this.message,
+    this.color = Colors.blue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: true, // タッチ操作を透過させる（下のボタンなどを押せるように）
+        child: AnimatedOpacity(
+          opacity: isVisible ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.85),
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+```
+
+
 --- FILE: lib/widgets/transaction_edit_dialog.dart ---
 ```dart
 // ▼▼ このファイルが「lib/widgets/」の中に存在するか確認してください ▼▼
@@ -6081,7 +6253,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utils/simple_calculator.dart';
 
-// ▼▼ StatelessWidget から StatefulWidget に変更 ▼▼
 class CustomNumberKeyboard extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSubmitted; // 次へ
@@ -6113,6 +6284,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
   }
 
   // 文字列全体をフォーマット（カンマ区切り）し直す関数
+  // 修正：int.parse ではなく double.tryParse を使い、小数が来ても安全に処理するように変更
   String _formatExpression(String expression) {
     if (expression.isEmpty) return "";
 
@@ -6120,31 +6292,46 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     StringBuffer result = StringBuffer();
     String currentNum = "";
 
+    // バッファにある数値を処理して書き込むヘルパー関数
+    void flushCurrentNum() {
+      if (currentNum.isEmpty) return;
+
+      // カンマを除去して解析準備
+      String cleanNum = currentNum.replaceAll(',', '');
+
+      // doubleとして解析を試みる
+      double? val = double.tryParse(cleanNum);
+
+      // 数値として有効、かつ小数点が含まれていない場合のみカンマフォーマットする
+      // (入力中の "1." や小数の "1.08" などはフォーマットせずそのまま表示する)
+      if (val != null && !cleanNum.contains('.')) {
+        // 整数部としてフォーマットできるか確認
+        try {
+          // formatter.format(double) だと挙動により小数が丸められることがあるため
+          // 明示的に整数として扱う
+          result.write(formatter.format(val.toInt()));
+        } catch (_) {
+          result.write(currentNum);
+        }
+      } else {
+        // 小数やパース不能な文字列はそのまま書き込む
+        result.write(currentNum);
+      }
+      currentNum = "";
+    }
+
     for (int i = 0; i < expression.length; i++) {
       String char = expression[i];
       if (_isOperator(char)) {
-        if (currentNum.isNotEmpty) {
-          try {
-            final numVal = int.parse(currentNum.replaceAll(',', ''));
-            result.write(formatter.format(numVal));
-          } catch (_) {
-            result.write(currentNum);
-          }
-          currentNum = "";
-        }
+        // 演算子が来たら、溜まっていた数値を書き出す
+        flushCurrentNum();
         result.write(char);
       } else {
         currentNum += char;
       }
     }
-    if (currentNum.isNotEmpty) {
-      try {
-        final numVal = int.parse(currentNum.replaceAll(',', ''));
-        result.write(formatter.format(numVal));
-      } catch (_) {
-        result.write(currentNum);
-      }
-    }
+    // ループ終了後に残っている数値を書き出す
+    flushCurrentNum();
 
     return result.toString();
   }
@@ -6153,10 +6340,12 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     String text = widget.controller.text;
     final bool isInputOperator = _isOperator(value);
 
-    // ▼▼ 追加: 1桁目（テキストが空）の時に演算子が押されたら無視する ▼▼
+    // 1桁目（テキストが空）の時に演算子が押されたら無視する
     if (text.isEmpty && isInputOperator) {
       return;
     }
+
+    // 文字数制限チェック
     if (!isInputOperator && text.length >= widget.maxLength) {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -6168,17 +6357,12 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
       return;
     }
 
-    // 演算子の連続入力を防ぐ（置換する）
+    // 演算子の連続入力を防ぐ（末尾の演算子を置換する）
     if (isInputOperator && text.isNotEmpty) {
       final lastChar = text[text.length - 1];
       if (_isOperator(lastChar)) {
         text = text.substring(0, text.length - 1) + value;
-        widget.controller.value = TextEditingValue(
-          text: text,
-          selection: TextSelection.collapsed(offset: text.length),
-        );
-        widget.onChanged(text);
-        setState(() {}); // ▼▼ 再描画 ▼▼
+        _updateController(text);
         return;
       }
     }
@@ -6195,12 +6379,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     String newText = text.replaceRange(start, end, value);
     String formattedText = _formatExpression(newText);
 
-    widget.controller.value = TextEditingValue(
-      text: formattedText,
-      selection: TextSelection.collapsed(offset: formattedText.length),
-    );
-    widget.onChanged(formattedText);
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    _updateController(formattedText);
   }
 
   void _handleDelete() {
@@ -6223,31 +6402,29 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     }
 
     String formattedText = _formatExpression(rawText);
-
-    widget.controller.value = TextEditingValue(
-      text: formattedText,
-      selection: TextSelection.collapsed(offset: formattedText.length),
-    );
-    widget.onChanged(formattedText);
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    _updateController(formattedText);
   }
 
   void _handleClear() {
     widget.controller.clear();
     widget.onChanged("");
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    setState(() {});
   }
 
   void _handleCalculate() {
     final result = SimpleCalculator.calculate(widget.controller.text);
     final formattedResult = _formatExpression(result);
+    _updateController(formattedResult);
+  }
 
+  // コントローラー更新とState更新をまとめたメソッド
+  void _updateController(String newText) {
     widget.controller.value = TextEditingValue(
-      text: formattedResult,
-      selection: TextSelection.collapsed(offset: formattedResult.length),
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
     );
-    widget.onChanged(formattedResult);
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    widget.onChanged(newText);
+    setState(() {});
   }
 
   @override
@@ -6259,11 +6436,10 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     // 現在のテキストを取得
     String text = widget.controller.text;
 
-    // ▼▼ 判定：末尾が "x" で終わっているか？ ▼▼
-    // "100x" の状態なら true になり、ボタンが税率に変わります
+    // 判定：末尾が "x" で終わっているか？
     bool isMultiplyMode = text.isNotEmpty && text.endsWith("x");
 
-    // ▼▼ ここで状態を見てボタンを切り替える判定を行う ▼▼
+    // 計算記号が含まれているか判定
     final bool hasOperator = [
       "+",
       "-",
@@ -6316,11 +6492,9 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
       return buildKey(label, onTap: onTap, textColor: textColor, isBold: true);
     }
 
-    // ▼▼ GestureDetector でラップして、タップイベントをここで吸収する ▼▼
     return GestureDetector(
       onTap: () {
-        // 何もしない。
-        // これにより、キーボード内のタップが背後の「閉じる判定」に伝わるのを防ぐ。
+        // キーボード内のタップが背後の「閉じる判定」に伝わるのを防ぐ
       },
       behavior: HitTestBehavior.opaque,
       child: Container(
@@ -6354,7 +6528,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
 
                   Row(
                     children: [
-                      // ▼▼ 「保存して閉じる」ボタンの表示制御 ▼▼
+                      // 「保存して閉じる」ボタンの表示制御
                       if (widget.onSaveAndClose != null && !hasOperator) ...[
                         TextButton.icon(
                           onPressed: widget.onSaveAndClose,
@@ -6446,22 +6620,19 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
                                 Expanded(
                                   child: Row(
                                     children: [
-                                      // 左側のボタン (通常は0、xの後は 1.1)
+                                      // 左側のボタン
                                       buildKey(
                                         isMultiplyMode ? "1.1" : "0",
-                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
                                         color: isMultiplyMode ? null : null,
                                         textColor: isMultiplyMode
                                             ? Colors.orange
                                             : Colors.black,
                                       ),
 
-                                      // 中央のボタン (通常は00、xの後は 1.08)
-                                      // flex: 2 で横幅2倍
+                                      // 中央のボタン
                                       buildKey(
                                         isMultiplyMode ? "1.08" : "00",
                                         flex: 2,
-                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
                                         color: isMultiplyMode ? null : null,
                                         textColor: isMultiplyMode
                                             ? Colors.orange
@@ -6481,7 +6652,6 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
                             child: Padding(
                               padding: const EdgeInsets.all(4.0),
                               child: Material(
-                                // ▼▼ 計算記号の有無でボタンの色と機能を切り替え ▼▼
                                 color: hasOperator
                                     ? Colors.orange
                                     : Colors.blue,

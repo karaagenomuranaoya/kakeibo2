@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utils/simple_calculator.dart';
 
-// ▼▼ StatelessWidget から StatefulWidget に変更 ▼▼
 class CustomNumberKeyboard extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSubmitted; // 次へ
@@ -34,6 +33,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
   }
 
   // 文字列全体をフォーマット（カンマ区切り）し直す関数
+  // 修正：int.parse ではなく double.tryParse を使い、小数が来ても安全に処理するように変更
   String _formatExpression(String expression) {
     if (expression.isEmpty) return "";
 
@@ -41,31 +41,46 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     StringBuffer result = StringBuffer();
     String currentNum = "";
 
+    // バッファにある数値を処理して書き込むヘルパー関数
+    void flushCurrentNum() {
+      if (currentNum.isEmpty) return;
+
+      // カンマを除去して解析準備
+      String cleanNum = currentNum.replaceAll(',', '');
+
+      // doubleとして解析を試みる
+      double? val = double.tryParse(cleanNum);
+
+      // 数値として有効、かつ小数点が含まれていない場合のみカンマフォーマットする
+      // (入力中の "1." や小数の "1.08" などはフォーマットせずそのまま表示する)
+      if (val != null && !cleanNum.contains('.')) {
+        // 整数部としてフォーマットできるか確認
+        try {
+          // formatter.format(double) だと挙動により小数が丸められることがあるため
+          // 明示的に整数として扱う
+          result.write(formatter.format(val.toInt()));
+        } catch (_) {
+          result.write(currentNum);
+        }
+      } else {
+        // 小数やパース不能な文字列はそのまま書き込む
+        result.write(currentNum);
+      }
+      currentNum = "";
+    }
+
     for (int i = 0; i < expression.length; i++) {
       String char = expression[i];
       if (_isOperator(char)) {
-        if (currentNum.isNotEmpty) {
-          try {
-            final numVal = int.parse(currentNum.replaceAll(',', ''));
-            result.write(formatter.format(numVal));
-          } catch (_) {
-            result.write(currentNum);
-          }
-          currentNum = "";
-        }
+        // 演算子が来たら、溜まっていた数値を書き出す
+        flushCurrentNum();
         result.write(char);
       } else {
         currentNum += char;
       }
     }
-    if (currentNum.isNotEmpty) {
-      try {
-        final numVal = int.parse(currentNum.replaceAll(',', ''));
-        result.write(formatter.format(numVal));
-      } catch (_) {
-        result.write(currentNum);
-      }
-    }
+    // ループ終了後に残っている数値を書き出す
+    flushCurrentNum();
 
     return result.toString();
   }
@@ -74,10 +89,12 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     String text = widget.controller.text;
     final bool isInputOperator = _isOperator(value);
 
-    // ▼▼ 追加: 1桁目（テキストが空）の時に演算子が押されたら無視する ▼▼
+    // 1桁目（テキストが空）の時に演算子が押されたら無視する
     if (text.isEmpty && isInputOperator) {
       return;
     }
+
+    // 文字数制限チェック
     if (!isInputOperator && text.length >= widget.maxLength) {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -89,17 +106,12 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
       return;
     }
 
-    // 演算子の連続入力を防ぐ（置換する）
+    // 演算子の連続入力を防ぐ（末尾の演算子を置換する）
     if (isInputOperator && text.isNotEmpty) {
       final lastChar = text[text.length - 1];
       if (_isOperator(lastChar)) {
         text = text.substring(0, text.length - 1) + value;
-        widget.controller.value = TextEditingValue(
-          text: text,
-          selection: TextSelection.collapsed(offset: text.length),
-        );
-        widget.onChanged(text);
-        setState(() {}); // ▼▼ 再描画 ▼▼
+        _updateController(text);
         return;
       }
     }
@@ -116,12 +128,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     String newText = text.replaceRange(start, end, value);
     String formattedText = _formatExpression(newText);
 
-    widget.controller.value = TextEditingValue(
-      text: formattedText,
-      selection: TextSelection.collapsed(offset: formattedText.length),
-    );
-    widget.onChanged(formattedText);
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    _updateController(formattedText);
   }
 
   void _handleDelete() {
@@ -144,31 +151,29 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     }
 
     String formattedText = _formatExpression(rawText);
-
-    widget.controller.value = TextEditingValue(
-      text: formattedText,
-      selection: TextSelection.collapsed(offset: formattedText.length),
-    );
-    widget.onChanged(formattedText);
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    _updateController(formattedText);
   }
 
   void _handleClear() {
     widget.controller.clear();
     widget.onChanged("");
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    setState(() {});
   }
 
   void _handleCalculate() {
     final result = SimpleCalculator.calculate(widget.controller.text);
     final formattedResult = _formatExpression(result);
+    _updateController(formattedResult);
+  }
 
+  // コントローラー更新とState更新をまとめたメソッド
+  void _updateController(String newText) {
     widget.controller.value = TextEditingValue(
-      text: formattedResult,
-      selection: TextSelection.collapsed(offset: formattedResult.length),
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
     );
-    widget.onChanged(formattedResult);
-    setState(() {}); // ▼▼ 再描画 ▼▼
+    widget.onChanged(newText);
+    setState(() {});
   }
 
   @override
@@ -180,11 +185,10 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     // 現在のテキストを取得
     String text = widget.controller.text;
 
-    // ▼▼ 判定：末尾が "x" で終わっているか？ ▼▼
-    // "100x" の状態なら true になり、ボタンが税率に変わります
+    // 判定：末尾が "x" で終わっているか？
     bool isMultiplyMode = text.isNotEmpty && text.endsWith("x");
 
-    // ▼▼ ここで状態を見てボタンを切り替える判定を行う ▼▼
+    // 計算記号が含まれているか判定
     final bool hasOperator = [
       "+",
       "-",
@@ -237,11 +241,9 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
       return buildKey(label, onTap: onTap, textColor: textColor, isBold: true);
     }
 
-    // ▼▼ GestureDetector でラップして、タップイベントをここで吸収する ▼▼
     return GestureDetector(
       onTap: () {
-        // 何もしない。
-        // これにより、キーボード内のタップが背後の「閉じる判定」に伝わるのを防ぐ。
+        // キーボード内のタップが背後の「閉じる判定」に伝わるのを防ぐ
       },
       behavior: HitTestBehavior.opaque,
       child: Container(
@@ -275,7 +277,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
 
                   Row(
                     children: [
-                      // ▼▼ 「保存して閉じる」ボタンの表示制御 ▼▼
+                      // 「保存して閉じる」ボタンの表示制御
                       if (widget.onSaveAndClose != null && !hasOperator) ...[
                         TextButton.icon(
                           onPressed: widget.onSaveAndClose,
@@ -367,22 +369,19 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
                                 Expanded(
                                   child: Row(
                                     children: [
-                                      // 左側のボタン (通常は0、xの後は 1.1)
+                                      // 左側のボタン
                                       buildKey(
                                         isMultiplyMode ? "1.1" : "0",
-                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
                                         color: isMultiplyMode ? null : null,
                                         textColor: isMultiplyMode
                                             ? Colors.orange
                                             : Colors.black,
                                       ),
 
-                                      // 中央のボタン (通常は00、xの後は 1.08)
-                                      // flex: 2 で横幅2倍
+                                      // 中央のボタン
                                       buildKey(
                                         isMultiplyMode ? "1.08" : "00",
                                         flex: 2,
-                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
                                         color: isMultiplyMode ? null : null,
                                         textColor: isMultiplyMode
                                             ? Colors.orange
@@ -402,7 +401,6 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
                             child: Padding(
                               padding: const EdgeInsets.all(4.0),
                               child: Material(
-                                // ▼▼ 計算記号の有無でボタンの色と機能を切り替え ▼▼
                                 color: hasOperator
                                     ? Colors.orange
                                     : Colors.blue,

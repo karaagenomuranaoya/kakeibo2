@@ -12,7 +12,7 @@ class QuickKakeiboApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Quick Kakeibo',
+      title: 'あつめる',
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
       // カレンダー等を日本語化するためにローカリゼーションを追加
       localizationsDelegates: const [
