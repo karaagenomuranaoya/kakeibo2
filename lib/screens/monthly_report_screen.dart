@@ -59,14 +59,54 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
     });
   }
 
+  // ▼▼ 追加: 年月選択ダイアログを表示してジャンプする処理 ▼▼
+  Future<void> _pickMonth() async {
+    final DateTime now = DateTime.now();
+    final DateTime current = DateTime(_currentYear, _currentMonth);
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDatePickerMode: DatePickerMode.year, // 年から選択しやすくする
+      helpText: '移動先の年月を選択',
+    );
+
+    if (picked != null) {
+      // 基準(index 1000) = now
+      // ターゲットのindexを計算
+      final int diffMonths =
+          (picked.year - now.year) * 12 + (picked.month - now.month);
+      final int targetPage = 1000 + diffMonths;
+
+      _pageController.jumpToPage(targetPage);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text(
-          '$_currentYear年 $_currentMonth月',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        // ▼▼ 変更: タイトルをタップ可能にする ▼▼
+        title: GestureDetector(
+          onTap: _pickMonth,
+          child: Container(
+            color: Colors.transparent, // タップ判定を広げる
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$_currentYear年 $_currentMonth月',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down, size: 24),
+              ],
+            ),
+          ),
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -181,8 +221,8 @@ class _MonthPageState extends State<MonthPage> {
                             filterValue: expense,
                             filterKey: 'expense',
                             color: color,
-                            year: widget.year,
-                            month: widget.month,
+                            // ▼▼ 変更: 固定月ではなく、初期表示月として渡す ▼▼
+                            initialDate: DateTime(widget.year, widget.month),
                           ),
                         ),
                       );
@@ -322,14 +362,13 @@ class _MonthPageState extends State<MonthPage> {
                     (t) => t.label == item.expense,
                   );
                   color = tag.color;
-                  // ▼▼ アイコンを取得 ▼▼
                   icon = tag.displayIcon;
                 } catch (_) {}
 
                 return TransactionTile(
                   item: item,
                   categoryColor: color,
-                  categoryIcon: icon, // アイコンを渡す
+                  categoryIcon: icon,
                   showDate: false,
                   onTap: () {
                     showDialog(

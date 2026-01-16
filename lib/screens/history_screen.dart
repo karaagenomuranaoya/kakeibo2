@@ -11,8 +11,11 @@ class HistoryScreen extends StatefulWidget {
   final String filterValue;
   final String filterKey; // 'expense' or 'payment'
   final Color? color;
+  // 固定表示用のパラメータは削除推奨だが、互換性のために残しつつ、基本は initialDate を使うように変更
   final int? year;
   final int? month;
+  // ▼▼ 追加: 初期表示する日付（指定があればそこからPageViewを開始） ▼▼
+  final DateTime? initialDate;
 
   const HistoryScreen({
     super.key,
@@ -21,6 +24,7 @@ class HistoryScreen extends StatefulWidget {
     this.color,
     this.year,
     this.month,
+    this.initialDate,
   });
 
   @override
@@ -32,12 +36,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _showTab = false;
   CategoryTag? _currentCardTag;
 
-  final PageController _pageController = PageController(initialPage: 1000);
+  late PageController _pageController;
   final SettingsRepository _settingsRepository = SettingsRepository();
 
   @override
   void initState() {
     super.initState();
+
+    // ▼▼ 追加: PageViewの初期位置を計算 ▼▼
+    int initialPage = 1000;
+    if (widget.initialDate != null) {
+      final now = DateTime.now();
+      final diff =
+          (widget.initialDate!.year - now.year) * 12 +
+          (widget.initialDate!.month - now.month);
+      initialPage = 1000 + diff;
+    }
+
+    _pageController = PageController(initialPage: initialPage);
+
     if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
       _loadCardInfo();
     }
@@ -103,8 +120,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  // ▼▼ 追加: 年月ジャンプ処理 ▼▼
+  void _jumpToDate(DateTime date) {
+    final DateTime now = DateTime.now();
+    final int diffMonths =
+        (date.year - now.year) * 12 + (date.month - now.month);
+    final int targetPage = 1000 + diffMonths;
+    _pageController.jumpToPage(targetPage);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 固定月指定がある場合はタイトルに年月を入れる（以前の互換性）
+    // ただし、initialDateを使ってPageViewで開く場合はタイトルはフィルタ名のみでOK（各ページに年月が出るため）
     String title = widget.filterValue;
     if (widget.year != null && widget.month != null) {
       title = "${widget.year}/${widget.month} $title";
@@ -157,6 +185,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
           Expanded(
+            // year/monthが明示的に指定されている場合は単一ページ（以前の仕様）
+            // それ以外（initialDate使用含む）はPageViewで無限スクロール
             child: (widget.year != null && widget.month != null)
                 ? _HistoryPage(
                     year: widget.year!,
@@ -190,6 +220,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         ),
+                        // ▼▼ 追加: 年月タップ時の処理 ▼▼
+                        onDateTap: () async {
+                          final DateTime current = DateTime(
+                            targetDate.year,
+                            targetDate.month,
+                          );
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: current,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2101),
+                            initialDatePickerMode: DatePickerMode.year,
+                            helpText: '移動先の年月を選択',
+                          );
+                          if (picked != null) {
+                            _jumpToDate(picked);
+                          }
+                        },
                       );
                     },
                   ),
@@ -210,6 +258,8 @@ class _HistoryPage extends StatefulWidget {
   final VoidCallback? onPrev;
   final VoidCallback? onNext;
   final bool showNavButtons;
+  // ▼▼ 追加: 日付タップコールバック ▼▼
+  final VoidCallback? onDateTap;
 
   const _HistoryPage({
     required this.year,
@@ -221,6 +271,7 @@ class _HistoryPage extends StatefulWidget {
     this.onPrev,
     this.onNext,
     this.showNavButtons = true,
+    this.onDateTap,
   });
 
   @override
@@ -230,7 +281,6 @@ class _HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<_HistoryPage> {
   List<TransactionItem> _history = [];
   final TransactionRepository _repository = TransactionRepository();
-  // ▼▼ 追加: タグ情報を取得するため設定リポジトリを使う ▼▼
   final SettingsRepository _settingsRepository = SettingsRepository();
   List<CategoryTag> _expenseTags = [];
   bool _isLoading = true;
@@ -253,13 +303,12 @@ class _HistoryPageState extends State<_HistoryPage> {
 
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
-    // ▼▼ 追加: タグ情報も読み込む ▼▼
     final expenses = await _settingsRepository.loadExpenseTags();
 
     if (!mounted) return;
 
     setState(() {
-      _expenseTags = expenses; // 保存
+      _expenseTags = expenses;
       _history = allItems.where((i) {
         if (widget.filterKey == 'expense') {
           if (i.expense != widget.filterValue) return false;
@@ -310,12 +359,34 @@ class _HistoryPageState extends State<_HistoryPage> {
                     )
                   else
                     const SizedBox(width: 48),
-                  Text(
-                    '${widget.year}年 ${widget.month}月',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: widget.color,
+                  // ▼▼ 変更: 年月表示をタップ可能に ▼▼
+                  GestureDetector(
+                    onTap: widget.onDateTap,
+                    child: Container(
+                      color: Colors.transparent, // タップ領域確保
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${widget.year}年 ${widget.month}月',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: widget.color,
+                            ),
+                          ),
+                          // 移動可能ならアイコンを出す
+                          if (widget.onDateTap != null) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              color: widget.color,
+                              size: 20,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                   if (widget.showNavButtons)
@@ -359,11 +430,8 @@ class _HistoryPageState extends State<_HistoryPage> {
                   separatorBuilder: (c, i) => const Divider(height: 1),
                   itemBuilder: (c, i) {
                     final item = _history[i];
-
-                    // ▼▼ 追加: アイコン取得ロジック ▼▼
                     IconData? icon;
                     try {
-                      // 費目リストからタグを探し、displayIconを取得
                       final tag = _expenseTags.firstWhere(
                         (t) => t.label == item.expense,
                       );
@@ -373,7 +441,7 @@ class _HistoryPageState extends State<_HistoryPage> {
                     return TransactionTile(
                       item: item,
                       categoryColor: widget.color,
-                      categoryIcon: icon, // アイコンを渡す
+                      categoryIcon: icon,
                       showDate: true,
                       onTap: () {
                         showDialog(

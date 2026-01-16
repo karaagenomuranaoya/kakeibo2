@@ -115,7 +115,6 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                           (t) => t.label == label,
                         );
                         color = tag.color;
-                        // ▼▼ アイコン取得 ▼▼
                         icon = tag.displayIcon;
                       } catch (_) {}
 
@@ -124,7 +123,6 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                           : "0.0";
 
                       return ListTile(
-                        // ▼▼ アイコン表示 ▼▼
                         leading: Icon(icon, color: color),
                         title: Row(
                           children: [
@@ -170,8 +168,12 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                                 filterValue: label,
                                 filterKey: 'expense',
                                 color: color,
-                                year: widget.year,
-                                month: widget.month,
+                                // ▼▼ 変更: 固定月ではなく、初期表示月として渡す ▼▼
+                                // これにより詳細画面から飛んだ先でも前後の月に移動可能になる
+                                initialDate: DateTime(
+                                  widget.year,
+                                  widget.month,
+                                ),
                               ),
                             ),
                           );
