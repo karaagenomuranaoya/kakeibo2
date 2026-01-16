@@ -1401,16 +1401,34 @@ class GachaRepository {
     return current;
   }
 
-  Future<GachaItem> drawItem() async {
-    final List<GachaItem> items = GachaData.monsters;
-    int totalWeight = items.fold(0, (int sum, item) => sum + item.weight);
+  /// ガチャを引く
+  /// レベルMAX(10)に達していないアイテムの中から抽選する
+  /// 全てコンプリートしている場合は null を返す
+  Future<GachaItem?> drawItem() async {
+    // 最新の所持状況を確認
+    await getItemCounts();
+    final List<GachaItem> allItems = GachaData.monsters;
+
+    // レベル10未満のアイテムだけを抽選候補にする
+    final List<GachaItem> candidates = allItems.where((item) {
+      final count = _counts[item.id] ?? 0;
+      return count < 10;
+    }).toList();
+
+    // 候補がなければコンプリート状態
+    if (candidates.isEmpty) {
+      return null;
+    }
+
+    // 重み付け抽選
+    int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
     int randomValue = Random().nextInt(totalWeight);
 
-    for (final item in items) {
+    for (final item in candidates) {
       randomValue -= item.weight;
       if (randomValue < 0) return item;
     }
-    return items.last;
+    return candidates.last;
   }
 
   // --- クレジット管理 ---
@@ -1434,7 +1452,7 @@ class GachaRepository {
     return current;
   }
 
-  // ▼▼ 追加: 任意のポイントを加算する（被り救済用など） ▼▼
+  // 任意のポイントを加算する
   Future<int> addCredits(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;
@@ -2091,7 +2109,6 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                           (t) => t.label == label,
                         );
                         color = tag.color;
-                        // ▼▼ アイコン取得 ▼▼
                         icon = tag.displayIcon;
                       } catch (_) {}
 
@@ -2100,7 +2117,6 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                           : "0.0";
 
                       return ListTile(
-                        // ▼▼ アイコン表示 ▼▼
                         leading: Icon(icon, color: color),
                         title: Row(
                           children: [
@@ -2146,8 +2162,12 @@ class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
                                 filterValue: label,
                                 filterKey: 'expense',
                                 color: color,
-                                year: widget.year,
-                                month: widget.month,
+                                // ▼▼ 変更: 固定月ではなく、初期表示月として渡す ▼▼
+                                // これにより詳細画面から飛んだ先でも前後の月に移動可能になる
+                                initialDate: DateTime(
+                                  widget.year,
+                                  widget.month,
+                                ),
                               ),
                             ),
                           );
@@ -2180,8 +2200,11 @@ class HistoryScreen extends StatefulWidget {
   final String filterValue;
   final String filterKey; // 'expense' or 'payment'
   final Color? color;
+  // 固定表示用のパラメータは削除推奨だが、互換性のために残しつつ、基本は initialDate を使うように変更
   final int? year;
   final int? month;
+  // ▼▼ 追加: 初期表示する日付（指定があればそこからPageViewを開始） ▼▼
+  final DateTime? initialDate;
 
   const HistoryScreen({
     super.key,
@@ -2190,6 +2213,7 @@ class HistoryScreen extends StatefulWidget {
     this.color,
     this.year,
     this.month,
+    this.initialDate,
   });
 
   @override
@@ -2201,12 +2225,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _showTab = false;
   CategoryTag? _currentCardTag;
 
-  final PageController _pageController = PageController(initialPage: 1000);
+  late PageController _pageController;
   final SettingsRepository _settingsRepository = SettingsRepository();
 
   @override
   void initState() {
     super.initState();
+
+    // ▼▼ 追加: PageViewの初期位置を計算 ▼▼
+    int initialPage = 1000;
+    if (widget.initialDate != null) {
+      final now = DateTime.now();
+      final diff =
+          (widget.initialDate!.year - now.year) * 12 +
+          (widget.initialDate!.month - now.month);
+      initialPage = 1000 + diff;
+    }
+
+    _pageController = PageController(initialPage: initialPage);
+
     if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
       _loadCardInfo();
     }
@@ -2272,8 +2309,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  // ▼▼ 追加: 年月ジャンプ処理 ▼▼
+  void _jumpToDate(DateTime date) {
+    final DateTime now = DateTime.now();
+    final int diffMonths =
+        (date.year - now.year) * 12 + (date.month - now.month);
+    final int targetPage = 1000 + diffMonths;
+    _pageController.jumpToPage(targetPage);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 固定月指定がある場合はタイトルに年月を入れる（以前の互換性）
+    // ただし、initialDateを使ってPageViewで開く場合はタイトルはフィルタ名のみでOK（各ページに年月が出るため）
     String title = widget.filterValue;
     if (widget.year != null && widget.month != null) {
       title = "${widget.year}/${widget.month} $title";
@@ -2326,6 +2374,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
           Expanded(
+            // year/monthが明示的に指定されている場合は単一ページ（以前の仕様）
+            // それ以外（initialDate使用含む）はPageViewで無限スクロール
             child: (widget.year != null && widget.month != null)
                 ? _HistoryPage(
                     year: widget.year!,
@@ -2359,6 +2409,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         ),
+                        // ▼▼ 追加: 年月タップ時の処理 ▼▼
+                        onDateTap: () async {
+                          final DateTime current = DateTime(
+                            targetDate.year,
+                            targetDate.month,
+                          );
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: current,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2101),
+                            initialDatePickerMode: DatePickerMode.year,
+                            helpText: '移動先の年月を選択',
+                          );
+                          if (picked != null) {
+                            _jumpToDate(picked);
+                          }
+                        },
                       );
                     },
                   ),
@@ -2379,6 +2447,8 @@ class _HistoryPage extends StatefulWidget {
   final VoidCallback? onPrev;
   final VoidCallback? onNext;
   final bool showNavButtons;
+  // ▼▼ 追加: 日付タップコールバック ▼▼
+  final VoidCallback? onDateTap;
 
   const _HistoryPage({
     required this.year,
@@ -2390,6 +2460,7 @@ class _HistoryPage extends StatefulWidget {
     this.onPrev,
     this.onNext,
     this.showNavButtons = true,
+    this.onDateTap,
   });
 
   @override
@@ -2399,7 +2470,6 @@ class _HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<_HistoryPage> {
   List<TransactionItem> _history = [];
   final TransactionRepository _repository = TransactionRepository();
-  // ▼▼ 追加: タグ情報を取得するため設定リポジトリを使う ▼▼
   final SettingsRepository _settingsRepository = SettingsRepository();
   List<CategoryTag> _expenseTags = [];
   bool _isLoading = true;
@@ -2422,13 +2492,12 @@ class _HistoryPageState extends State<_HistoryPage> {
 
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
-    // ▼▼ 追加: タグ情報も読み込む ▼▼
     final expenses = await _settingsRepository.loadExpenseTags();
 
     if (!mounted) return;
 
     setState(() {
-      _expenseTags = expenses; // 保存
+      _expenseTags = expenses;
       _history = allItems.where((i) {
         if (widget.filterKey == 'expense') {
           if (i.expense != widget.filterValue) return false;
@@ -2479,12 +2548,34 @@ class _HistoryPageState extends State<_HistoryPage> {
                     )
                   else
                     const SizedBox(width: 48),
-                  Text(
-                    '${widget.year}年 ${widget.month}月',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: widget.color,
+                  // ▼▼ 変更: 年月表示をタップ可能に ▼▼
+                  GestureDetector(
+                    onTap: widget.onDateTap,
+                    child: Container(
+                      color: Colors.transparent, // タップ領域確保
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${widget.year}年 ${widget.month}月',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: widget.color,
+                            ),
+                          ),
+                          // 移動可能ならアイコンを出す
+                          if (widget.onDateTap != null) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              color: widget.color,
+                              size: 20,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                   if (widget.showNavButtons)
@@ -2528,11 +2619,8 @@ class _HistoryPageState extends State<_HistoryPage> {
                   separatorBuilder: (c, i) => const Divider(height: 1),
                   itemBuilder: (c, i) {
                     final item = _history[i];
-
-                    // ▼▼ 追加: アイコン取得ロジック ▼▼
                     IconData? icon;
                     try {
-                      // 費目リストからタグを探し、displayIconを取得
                       final tag = _expenseTags.firstWhere(
                         (t) => t.label == item.expense,
                       );
@@ -2542,7 +2630,7 @@ class _HistoryPageState extends State<_HistoryPage> {
                     return TransactionTile(
                       item: item,
                       categoryColor: widget.color,
-                      categoryIcon: icon, // アイコンを渡す
+                      categoryIcon: icon,
                       showDate: true,
                       onTap: () {
                         showDialog(
@@ -2569,6 +2657,7 @@ class _HistoryPageState extends State<_HistoryPage> {
 
 --- FILE: lib/screens/gacha_screen.dart ---
 ```dart
+import 'package:flutter/foundation.dart'; // ▼▼ kDebugModeのために追加 ▼▼
 import 'package:flutter/material.dart';
 import '../repositories/gacha_repository.dart';
 import '../models/gacha_item.dart';
@@ -2613,34 +2702,62 @@ class _GachaScreenState extends State<GachaScreen> {
   Future<void> _spinGacha() async {
     if (_credits < 3) return;
 
+    // ローディング表示
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-    Navigator.pop(context);
 
-    // 消費
-    final success = await _repository.consumeCredits(3);
-    if (!success) return;
-
-    // 抽選
+    // 抽選処理 (まだ消費しない)
     final item = await _repository.drawItem();
-    final newCount = await _repository.unlockItem(item.id);
 
-    // カンスト救済
-    if (newCount > _maxLevel) {
-      await _repository.addCredits(2);
+    // 演出のため少し待つ
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (!mounted) return;
+    Navigator.pop(context); // ローディングを閉じる
+
+    // コンプリート済みの場合
+    if (item == null) {
+      _showCompleteDialog();
+      return;
     }
 
-    // クレジット情報を更新するために再ロード
+    // 消費処理
+    final success = await _repository.consumeCredits(3);
+    if (!success) {
+      // 万が一消費できなかった場合
+      return;
+    }
+
+    // 保存処理
+    final newCount = await _repository.unlockItem(item.id);
+
+    // 画面更新
     await _loadData();
 
     if (mounted) {
       _showResultDialog(item, newCount);
     }
+  }
+
+  void _showCompleteDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("コンプリート！"),
+        content: const Text(
+          "全てのキャラクターが最大レベルに到達しました！\nこれ以上ガチャを引くことはできません。\n\n次回のアップデートをお楽しみに！",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showHistoryDialog(GachaItem item, int maxLevel) {
@@ -2658,7 +2775,6 @@ class _GachaScreenState extends State<GachaScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    // ▼▼ IDを表示 ▼▼
                     Text(
                       "No.${item.id}",
                       style: const TextStyle(
@@ -2741,7 +2857,6 @@ class _GachaScreenState extends State<GachaScreen> {
     final int level = item.getStage(count);
     final bool isNew = count == 1;
     final bool isMax = level == _maxLevel;
-    final bool isDuplicate = count > _maxLevel;
 
     String title = "LEVEL UP!!";
     Color titleColor = Colors.orange;
@@ -2749,12 +2864,9 @@ class _GachaScreenState extends State<GachaScreen> {
     if (isNew) {
       title = "NEW GET!!";
       titleColor = Colors.redAccent;
-    } else if (isMax && count == _maxLevel) {
+    } else if (isMax) {
       title = "MAX EVOLUTION!!";
       titleColor = Colors.purpleAccent;
-    } else if (isDuplicate) {
-      title = "DUPLICATE";
-      titleColor = Colors.grey;
     }
 
     showDialog(
@@ -2805,7 +2917,6 @@ class _GachaScreenState extends State<GachaScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              // ▼▼ IDを表示 ▼▼
               Text(
                 "No.${item.id}",
                 style: const TextStyle(
@@ -2832,34 +2943,7 @@ class _GachaScreenState extends State<GachaScreen> {
               ),
               const SizedBox(height: 20),
 
-              if (isDuplicate) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.auto_awesome, color: Colors.orange, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        "2pt 還元されました",
-                        style: TextStyle(
-                          color: Colors.deepOrange,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ] else if (!isMax) ...[
+              if (!isMax) ...[
                 LinearProgressIndicator(
                   value: level / _maxLevel,
                   minHeight: 10,
@@ -2906,6 +2990,8 @@ class _GachaScreenState extends State<GachaScreen> {
         .length;
     final int totalItems = _allItems.length;
     final double completeRate = totalItems > 0 ? maxLevelItems / totalItems : 0;
+    // 全コンプリート判定
+    final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
 
     return Scaffold(
       backgroundColor: Colors.yellow.shade50,
@@ -2991,16 +3077,20 @@ class _GachaScreenState extends State<GachaScreen> {
                   child: ElevatedButton(
                     onPressed: spins > 0 ? _spinGacha : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
+                      backgroundColor: isAllComplete
+                          ? Colors.grey
+                          : Colors.orange,
                       foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey.shade300,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       elevation: spins > 0 ? 4 : 0,
                     ),
                     child: Text(
-                      spins > 0
-                          ? "ガチャを回す (3pt)"
-                          : "あと ${3 - (_credits % 3)} 回入力でガチャ",
+                      isAllComplete
+                          ? "コンプリート済み"
+                          : (spins > 0
+                                ? "ガチャを回す (3pt)"
+                                : "あと ${3 - (_credits % 3)} 回入力でガチャ"),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -3033,6 +3123,18 @@ class _GachaScreenState extends State<GachaScreen> {
                     onTap: isUnlocked
                         ? () => _showResultDialog(item, count)
                         : null,
+                    // ▼▼ 修正: kDebugModeの時だけ有効にする ▼▼
+                    onLongPress: kDebugMode
+                        ? () async {
+                            final newCount = await _repository.unlockItem(
+                              item.id,
+                            );
+                            await _loadData();
+                            if (mounted) {
+                              _showResultDialog(item, newCount);
+                            }
+                          }
+                        : null,
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -3052,7 +3154,6 @@ class _GachaScreenState extends State<GachaScreen> {
                             ),
                         ],
                       ),
-                      // ▼▼ Stackに変更して左上に番号を表示 ▼▼
                       child: Stack(
                         children: [
                           Column(
@@ -3113,7 +3214,6 @@ class _GachaScreenState extends State<GachaScreen> {
                               const SizedBox(height: 10),
                             ],
                           ),
-                          // ID表示部分
                           Positioned(
                             top: 8,
                             left: 8,
@@ -3771,10 +3871,8 @@ class _InputTabState extends State<InputTab>
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
 
-                  // ▼▼ 変更: カード欄を表示する場合としない場合で処理を分ける ▼▼
+                  // カード欄を表示する場合
                   if (_showCardOnInput)
-                    // GestureDetectorで囲むことで、このエリア内のタップが
-                    // 背景の _closeKeyboard に伝播しないようにする（キーボード閉じ防止）
                     GestureDetector(
                       onTap: () {},
                       child: PaymentSelector(
@@ -3787,7 +3885,6 @@ class _InputTabState extends State<InputTab>
                       ),
                     )
                   else
-                    // カード欄がない場合は余白を確保してカテゴリとくっつかないようにする
                     const SizedBox(height: 24),
 
                   CategorySelector(
@@ -3818,6 +3915,10 @@ class _InputTabState extends State<InputTab>
               child: CustomNumberKeyboard(
                 controller: _amountController,
                 onSubmitted: () => _saveData(keepKeyboard: true),
+                onSaveAndClose: () => _saveData(keepKeyboard: false),
+                // ▼▼ 追加: Undo機能のバインド ▼▼
+                // _lastInputId がある場合のみ有効にする
+                onUndo: _lastInputId != null ? _undoLastInput : null,
                 onClose: _closeKeyboard,
                 onChanged: (_) {},
               ),
@@ -3931,14 +4032,54 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
     });
   }
 
+  // ▼▼ 追加: 年月選択ダイアログを表示してジャンプする処理 ▼▼
+  Future<void> _pickMonth() async {
+    final DateTime now = DateTime.now();
+    final DateTime current = DateTime(_currentYear, _currentMonth);
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDatePickerMode: DatePickerMode.year, // 年から選択しやすくする
+      helpText: '移動先の年月を選択',
+    );
+
+    if (picked != null) {
+      // 基準(index 1000) = now
+      // ターゲットのindexを計算
+      final int diffMonths =
+          (picked.year - now.year) * 12 + (picked.month - now.month);
+      final int targetPage = 1000 + diffMonths;
+
+      _pageController.jumpToPage(targetPage);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text(
-          '$_currentYear年 $_currentMonth月',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        // ▼▼ 変更: タイトルをタップ可能にする ▼▼
+        title: GestureDetector(
+          onTap: _pickMonth,
+          child: Container(
+            color: Colors.transparent, // タップ判定を広げる
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$_currentYear年 $_currentMonth月',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down, size: 24),
+              ],
+            ),
+          ),
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -4053,8 +4194,8 @@ class _MonthPageState extends State<MonthPage> {
                             filterValue: expense,
                             filterKey: 'expense',
                             color: color,
-                            year: widget.year,
-                            month: widget.month,
+                            // ▼▼ 変更: 固定月ではなく、初期表示月として渡す ▼▼
+                            initialDate: DateTime(widget.year, widget.month),
                           ),
                         ),
                       );
@@ -4194,14 +4335,13 @@ class _MonthPageState extends State<MonthPage> {
                     (t) => t.label == item.expense,
                   );
                   color = tag.color;
-                  // ▼▼ アイコンを取得 ▼▼
                   icon = tag.displayIcon;
                 } catch (_) {}
 
                 return TransactionTile(
                   item: item,
                   categoryColor: color,
-                  categoryIcon: icon, // アイコンを渡す
+                  categoryIcon: icon,
                   showDate: false,
                   onTap: () {
                     showDialog(
@@ -5496,40 +5636,6 @@ class GachaData {
         "鉄壁の財務管理能力を持つ、冥界の番犬。もう赤字とは無縁だ。",
       ],
     ),
-
-    // -------------------------------------------------------
-    // No.4 メカ家計簿
-    // -------------------------------------------------------
-    GachaItem(
-      id: '4',
-      rarity: 4,
-      weight: 20,
-      iconData: Icons.smart_toy,
-      baseName: 'メカ家計簿',
-      descriptions: [
-        // Lv1
-        "ネジが数本足りないポンコツロボ。",
-        // Lv2
-        "カタカタと音を立てて計算を始めた。",
-        // Lv3
-        "単純な足し算なら任せろ。",
-        // Lv4
-        "オイル交換をして調子が良さそうだ。",
-        // Lv5
-        "AIを搭載したかもしれない。",
-        // Lv6
-        "グラフ作成機能が実装された。",
-        // Lv7
-        "資産運用のアドバイスまでしてくる。",
-        // Lv8
-        "スーパーコンピューター並みの演算速度。",
-        // Lv9
-        "未来の株価を予測しようとしている。",
-        // Lv10
-        "全人類の収支を管理するマザーコンピュータへと進化した。",
-      ],
-    ),
-
     // -------------------------------------------------------
     // No.5 タマゴ
     // -------------------------------------------------------
@@ -6054,6 +6160,39 @@ class GachaData {
         "あ",
         // Lv10
         "あ",
+      ],
+    ),
+
+    // -------------------------------------------------------
+    // No.20 優勝トロフィー
+    // -------------------------------------------------------
+    GachaItem(
+      id: '20',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.emoji_events,
+      baseName: '優勝トロフィー',
+      descriptions: [
+        // Lv1
+        "迷子選手権で優勝しちゃったトロフィー。",
+        // Lv2
+        "足が遅すぎる選手権で優勝しちゃったトロフィー。",
+        // Lv3
+        "陸上部に入って1年間無欠席だった皆勤賞トロフィー。",
+        // Lv4
+        "憧れの先輩が優勝した時に「触ってみろよ」って言ってくれた時のトロフィー。",
+        // Lv5
+        "新人戦でいよいよって時にフライングで失格になり、溢れた涙にどこか似ているトロフィー。",
+        // Lv6
+        "部室の掃除というハズレ係を押し付けられ掃除した古いトロフィー。",
+        // Lv7
+        "あれ、何かそばに書いてある。「絶対に取る」なんだろう、どこかで見た字だ。",
+        // Lv8
+        "あ、先輩の字だ...なんでこんなところに？もしかして、部室の掃除を押し付けられて？",
+        // Lv9
+        "後になって聞いた。先輩は私が入部する前の新人戦でフライングで失格になったらしい。掃除もきっとそれで...涙が溢れる。私も先輩みたいになれるかな...",
+        // Lv10
+        "月日は流れる。舞台はオリンピック、女子100m走。優勝したのは小柄な日本人女性。駆け寄る先輩。「触ってみる？」あの夏の匂いを差し出した金ピカのトロフィー。",
       ],
     ),
   ];
@@ -6862,25 +7001,27 @@ import 'package:flutter/material.dart';
 
 class CustomNumberKeyboard extends StatelessWidget {
   final TextEditingController controller;
-  final VoidCallback onSubmitted;
-  final VoidCallback onClose;
+  final VoidCallback onSubmitted; // 次へ
+  final VoidCallback? onSaveAndClose; // 保存して閉じる
+  final VoidCallback? onUndo; // ▼▼ 追加: 一つ戻す ▼▼
+  final VoidCallback onClose; // キーボードを閉じる
   final ValueChanged<String> onChanged;
-  final int maxLength; // 追加: 文字数制限
+  final int maxLength;
 
   const CustomNumberKeyboard({
     super.key,
     required this.controller,
     required this.onSubmitted,
+    this.onSaveAndClose,
+    this.onUndo, // 追加
     required this.onClose,
     required this.onChanged,
-    this.maxLength = 15, // デフォルト15文字
+    this.maxLength = 15,
   });
 
   void _handleTap(BuildContext context, String value) {
     final text = controller.text;
 
-    // ▼▼ 追加: 文字数制限チェック ▼▼
-    // 演算子が入力される場合は許可するが、数字が増えすぎるのを防ぐ
     bool isOperator = ["+", "-", "x", "÷"].contains(value);
 
     if (!isOperator && text.length >= maxLength) {
@@ -6973,7 +7114,6 @@ class CustomNumberKeyboard extends StatelessWidget {
             shadowColor: shadowColor,
             borderRadius: BorderRadius.circular(8),
             child: InkWell(
-              // contextを渡すように変更
               onTap: onTap ?? () => _handleTap(context, label),
               borderRadius: BorderRadius.circular(8),
               child: Container(
@@ -7006,17 +7146,63 @@ class CustomNumberKeyboard extends StatelessWidget {
       width: double.infinity,
       child: Column(
         children: [
+          // ▼▼ 変更: 左端にUndo、右端にSave&CloseとHideを配置 ▼▼
           SizedBox(
             height: 40,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween, // 両端揃え
               children: [
-                IconButton(
-                  onPressed: onClose,
-                  icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
-                  tooltip: '閉じる',
+                // 左側: Undoボタン (nullなら表示しない)
+                if (onUndo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: TextButton.icon(
+                      onPressed: onUndo,
+                      icon: const Icon(Icons.undo, size: 18),
+                      label: const Text(
+                        '1つ戻す',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.black54, // 少し控えめな色
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(), // 左側のスペース埋め
+                // 右側: 保存して閉じる & 閉じる
+                Row(
+                  children: [
+                    if (onSaveAndClose != null) ...[
+                      TextButton.icon(
+                        onPressed: onSaveAndClose,
+                        icon: const Icon(Icons.check_circle, size: 18),
+                        label: const Text(
+                          '保存して閉じる',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.blue.shade700,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        width: 1,
+                        height: 20,
+                        color: Colors.grey.shade300,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    IconButton(
+                      onPressed: onClose,
+                      icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
+                      tooltip: 'キーボードを閉じる',
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                 ),
-                const SizedBox(width: 8),
               ],
             ),
           ),

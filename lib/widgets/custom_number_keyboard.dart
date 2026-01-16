@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../utils/simple_calculator.dart';
 
-class CustomNumberKeyboard extends StatelessWidget {
+// ▼▼ StatelessWidget から StatefulWidget に変更 ▼▼
+class CustomNumberKeyboard extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSubmitted; // 次へ
   final VoidCallback? onSaveAndClose; // 保存して閉じる
-  final VoidCallback? onUndo; // ▼▼ 追加: 一つ戻す ▼▼
+  final VoidCallback? onUndo;
   final VoidCallback onClose; // キーボードを閉じる
   final ValueChanged<String> onChanged;
   final int maxLength;
@@ -14,30 +17,94 @@ class CustomNumberKeyboard extends StatelessWidget {
     required this.controller,
     required this.onSubmitted,
     this.onSaveAndClose,
-    this.onUndo, // 追加
+    this.onUndo,
     required this.onClose,
     required this.onChanged,
-    this.maxLength = 15,
+    this.maxLength = 20,
   });
 
+  @override
+  State<CustomNumberKeyboard> createState() => _CustomNumberKeyboardState();
+}
+
+class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
+  // 演算子かどうか判定
+  bool _isOperator(String value) {
+    return ["+", "-", "x", "÷"].contains(value);
+  }
+
+  // 文字列全体をフォーマット（カンマ区切り）し直す関数
+  String _formatExpression(String expression) {
+    if (expression.isEmpty) return "";
+
+    final formatter = NumberFormat("#,###");
+    StringBuffer result = StringBuffer();
+    String currentNum = "";
+
+    for (int i = 0; i < expression.length; i++) {
+      String char = expression[i];
+      if (_isOperator(char)) {
+        if (currentNum.isNotEmpty) {
+          try {
+            final numVal = int.parse(currentNum.replaceAll(',', ''));
+            result.write(formatter.format(numVal));
+          } catch (_) {
+            result.write(currentNum);
+          }
+          currentNum = "";
+        }
+        result.write(char);
+      } else {
+        currentNum += char;
+      }
+    }
+    if (currentNum.isNotEmpty) {
+      try {
+        final numVal = int.parse(currentNum.replaceAll(',', ''));
+        result.write(formatter.format(numVal));
+      } catch (_) {
+        result.write(currentNum);
+      }
+    }
+
+    return result.toString();
+  }
+
   void _handleTap(BuildContext context, String value) {
-    final text = controller.text;
+    String text = widget.controller.text;
+    final bool isInputOperator = _isOperator(value);
 
-    bool isOperator = ["+", "-", "x", "÷"].contains(value);
-
-    if (!isOperator && text.length >= maxLength) {
+    // ▼▼ 追加: 1桁目（テキストが空）の時に演算子が押されたら無視する ▼▼
+    if (text.isEmpty && isInputOperator) {
+      return;
+    }
+    if (!isInputOperator && text.length >= widget.maxLength) {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('これ以上入力できません'),
-          duration: Duration(milliseconds: 1000),
-          behavior: SnackBarBehavior.floating,
+          duration: Duration(milliseconds: 500),
         ),
       );
       return;
     }
 
-    final selection = controller.selection;
+    // 演算子の連続入力を防ぐ（置換する）
+    if (isInputOperator && text.isNotEmpty) {
+      final lastChar = text[text.length - 1];
+      if (_isOperator(lastChar)) {
+        text = text.substring(0, text.length - 1) + value;
+        widget.controller.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        widget.onChanged(text);
+        setState(() {}); // ▼▼ 再描画 ▼▼
+        return;
+      }
+    }
+
+    final selection = widget.controller.selection;
     int start = selection.start;
     int end = selection.end;
 
@@ -47,48 +114,61 @@ class CustomNumberKeyboard extends StatelessWidget {
     }
 
     String newText = text.replaceRange(start, end, value);
-    controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: start + value.length),
+    String formattedText = _formatExpression(newText);
+
+    widget.controller.value = TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
     );
-    onChanged(newText);
+    widget.onChanged(formattedText);
+    setState(() {}); // ▼▼ 再描画 ▼▼
   }
 
   void _handleDelete() {
-    final text = controller.text;
+    String text = widget.controller.text;
     if (text.isEmpty) return;
-    final selection = controller.selection;
+
+    final selection = widget.controller.selection;
     int start = selection.start;
     int end = selection.end;
+    if (start < 0) start = text.length;
+    if (end < 0) end = text.length;
 
-    if (start < 0) {
-      start = text.length;
-      end = text.length;
-    }
-
+    String rawText;
     if (start != end) {
-      String newText = text.replaceRange(start, end, "");
-      controller.value = TextEditingValue(
-        text: newText,
-        selection: TextSelection.collapsed(offset: start),
-      );
-      onChanged(newText);
+      rawText = text.replaceRange(start, end, "");
+    } else if (start > 0) {
+      rawText = text.replaceRange(start - 1, start, "");
+    } else {
       return;
     }
 
-    if (start == 0) return;
+    String formattedText = _formatExpression(rawText);
 
-    String newText = text.replaceRange(start - 1, start, "");
-    controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: start - 1),
+    widget.controller.value = TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
     );
-    onChanged(newText);
+    widget.onChanged(formattedText);
+    setState(() {}); // ▼▼ 再描画 ▼▼
   }
 
   void _handleClear() {
-    controller.clear();
-    onChanged("");
+    widget.controller.clear();
+    widget.onChanged("");
+    setState(() {}); // ▼▼ 再描画 ▼▼
+  }
+
+  void _handleCalculate() {
+    final result = SimpleCalculator.calculate(widget.controller.text);
+    final formattedResult = _formatExpression(result);
+
+    widget.controller.value = TextEditingValue(
+      text: formattedResult,
+      selection: TextSelection.collapsed(offset: formattedResult.length),
+    );
+    widget.onChanged(formattedResult);
+    setState(() {}); // ▼▼ 再描画 ▼▼
   }
 
   @override
@@ -96,6 +176,14 @@ class CustomNumberKeyboard extends StatelessWidget {
     const Color bgColor = Color(0xFFF2F2F7);
     const Color btnColor = Colors.white;
     const Color shadowColor = Colors.black12;
+
+    // ▼▼ ここで状態を見てボタンを切り替える判定を行う ▼▼
+    final bool hasOperator = [
+      "+",
+      "-",
+      "x",
+      "÷",
+    ].any((o) => widget.controller.text.contains(o));
 
     Widget buildKey(
       String label, {
@@ -147,37 +235,36 @@ class CustomNumberKeyboard extends StatelessWidget {
       width: double.infinity,
       child: Column(
         children: [
-          // ▼▼ 変更: 左端にUndo、右端にSave&CloseとHideを配置 ▼▼
           SizedBox(
             height: 40,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, // 両端揃え
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // 左側: Undoボタン (nullなら表示しない)
-                if (onUndo != null)
+                if (widget.onUndo != null)
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
                     child: TextButton.icon(
-                      onPressed: onUndo,
+                      onPressed: widget.onUndo,
                       icon: const Icon(Icons.undo, size: 18),
                       label: const Text(
                         '1つ戻す',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: TextButton.styleFrom(
-                        foregroundColor: Colors.black54, // 少し控えめな色
+                        foregroundColor: Colors.black54,
                         visualDensity: VisualDensity.compact,
                       ),
                     ),
                   )
                 else
-                  const SizedBox(), // 左側のスペース埋め
-                // 右側: 保存して閉じる & 閉じる
+                  const SizedBox(),
+
                 Row(
                   children: [
-                    if (onSaveAndClose != null) ...[
+                    // ▼▼ 「保存して閉じる」ボタンの表示制御 ▼▼
+                    if (widget.onSaveAndClose != null && !hasOperator) ...[
                       TextButton.icon(
-                        onPressed: onSaveAndClose,
+                        onPressed: widget.onSaveAndClose,
                         icon: const Icon(Icons.check_circle, size: 18),
                         label: const Text(
                           '保存して閉じる',
@@ -197,7 +284,7 @@ class CustomNumberKeyboard extends StatelessWidget {
                       const SizedBox(width: 4),
                     ],
                     IconButton(
-                      onPressed: onClose,
+                      onPressed: widget.onClose,
                       icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
                       tooltip: 'キーボードを閉じる',
                     ),
@@ -264,8 +351,7 @@ class CustomNumberKeyboard extends StatelessWidget {
                                 child: Row(
                                   children: [
                                     buildKey("0"),
-                                    buildKey("00"),
-                                    const Expanded(child: SizedBox()),
+                                    buildKey("00", flex: 2),
                                     buildKey("+", textColor: Colors.black87),
                                   ],
                                 ),
@@ -278,26 +364,31 @@ class CustomNumberKeyboard extends StatelessWidget {
                           child: Padding(
                             padding: const EdgeInsets.all(4.0),
                             child: Material(
-                              color: Colors.blue,
+                              // ▼▼ 計算記号の有無でボタンの色と機能を切り替え ▼▼
+                              color: hasOperator ? Colors.orange : Colors.blue,
                               elevation: 1,
                               borderRadius: BorderRadius.circular(8),
                               child: InkWell(
-                                onTap: onSubmitted,
+                                onTap: hasOperator
+                                    ? _handleCalculate
+                                    : widget.onSubmitted,
                                 borderRadius: BorderRadius.circular(8),
                                 child: Container(
                                   alignment: Alignment.center,
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: const [
+                                    children: [
                                       Icon(
-                                        Icons.playlist_add,
+                                        hasOperator
+                                            ? Icons.calculate
+                                            : Icons.playlist_add,
                                         color: Colors.white,
                                         size: 28,
                                       ),
-                                      SizedBox(height: 4),
+                                      const SizedBox(height: 4),
                                       Text(
-                                        "次へ",
-                                        style: TextStyle(
+                                        hasOperator ? "＝" : "次へ",
+                                        style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
                                           color: Colors.white,

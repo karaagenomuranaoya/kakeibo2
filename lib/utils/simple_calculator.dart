@@ -1,34 +1,28 @@
 class SimpleCalculator {
   /// 文字列の数式を計算して結果を返す
-  /// エラーや計算不能な場合は元の文字列または"Error"を返すなどの処理を行う
+  /// 日本円の家計簿なので、結果は必ず「四捨五入した整数」の文字列を返す
   static String calculate(String expression) {
     if (expression.isEmpty) return "";
 
-    // 末尾が演算子の場合は削除して計算する
-    String cleanExpr = expression;
+    // 1. カンマを除去
+    String cleanExpr = expression.replaceAll(',', '');
+
+    // 2. 末尾が演算子の場合は削除して計算する (例: "100+" -> "100")
     if (_isOperator(cleanExpr[cleanExpr.length - 1])) {
       cleanExpr = cleanExpr.substring(0, cleanExpr.length - 1);
     }
 
     try {
-      // 簡易的な計算ロジック（四則演算のみ対応）
-      // 演算子の優先順位を考慮してトークン化
       final tokens = _tokenize(cleanExpr);
       if (tokens.isEmpty) return expression;
 
-      final result = _evaluateTokens(tokens);
+      final double result = _evaluateTokens(tokens);
 
-      // 整数で表現できるなら整数に、そうでなければ小数（最大2桁）
-      if (result == result.toInt()) {
-        return result.toInt().toString();
-      } else {
-        return result
-            .toStringAsFixed(2)
-            .replaceAll(RegExp(r"0+$"), "")
-            .replaceAll(RegExp(r"\.$"), "");
-      }
+      // ▼▼ 修正箇所: ここで強制的に四捨五入して整数にする ▼▼
+      // 家計簿（円）に小数は不要なため、四捨五入(round)を行って整数文字列にする
+      return result.round().toString();
     } catch (e) {
-      // 計算エラー時はそのまま返す（ユーザーに修正させる）
+      // 計算不能な場合（ゼロ除算など）は元の文字列を返すか、"0"にする
       return expression;
     }
   }
@@ -67,12 +61,25 @@ class SimpleCalculator {
       final token = tokens[i];
       if (token == "x" || token == "÷") {
         final operator = token;
+        // 先頭がいきなり演算子などの不正なケース対策
+        if (processing.isEmpty || i + 1 >= tokens.length) {
+          i++;
+          continue;
+        }
+
         final left = processing.removeLast() as double;
         final right = tokens[i + 1] as double;
 
         double result = 0;
         if (operator == "x") result = left * right;
-        if (operator == "÷") result = left / right;
+        if (operator == "÷") {
+          // ゼロ除算対策（無限大になっても round() でエラーにならないようガード）
+          if (right == 0) {
+            result = 0; // または left をそのまま返す仕様もアリ
+          } else {
+            result = left / right;
+          }
+        }
 
         processing.add(result);
         i += 2;
@@ -83,6 +90,8 @@ class SimpleCalculator {
     }
 
     // 2. 加算・減算を計算
+    if (processing.isEmpty) return 0;
+
     double finalResult = processing[0] as double;
     for (int j = 1; j < processing.length; j += 2) {
       final operator = processing[j];
