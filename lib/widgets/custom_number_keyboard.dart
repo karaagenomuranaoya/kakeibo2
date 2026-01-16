@@ -237,199 +237,220 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
       return buildKey(label, onTap: onTap, textColor: textColor, isBold: true);
     }
 
-    return Container(
-      color: bgColor,
-      width: double.infinity,
-      child: Column(
-        children: [
-          SizedBox(
-            height: 40,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (widget.onUndo != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: TextButton.icon(
-                      onPressed: widget.onUndo,
-                      icon: const Icon(Icons.undo, size: 18),
-                      label: const Text(
-                        '1つ戻す',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.black54,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
-                  )
-                else
-                  const SizedBox(),
-
-                Row(
-                  children: [
-                    // ▼▼ 「保存して閉じる」ボタンの表示制御 ▼▼
-                    if (widget.onSaveAndClose != null && !hasOperator) ...[
-                      TextButton.icon(
-                        onPressed: widget.onSaveAndClose,
-                        icon: const Icon(Icons.check_circle, size: 18),
+    // ▼▼ GestureDetector でラップして、タップイベントをここで吸収する ▼▼
+    return GestureDetector(
+      onTap: () {
+        // 何もしない。
+        // これにより、キーボード内のタップが背後の「閉じる判定」に伝わるのを防ぐ。
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        color: bgColor,
+        width: double.infinity,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 40,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (widget.onUndo != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: TextButton.icon(
+                        onPressed: widget.onUndo,
+                        icon: const Icon(Icons.undo, size: 18),
                         label: const Text(
-                          '保存して閉じる',
+                          '1つ戻す',
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         style: TextButton.styleFrom(
-                          foregroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.black54,
                           visualDensity: VisualDensity.compact,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Container(
-                        width: 1,
-                        height: 20,
-                        color: Colors.grey.shade300,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    IconButton(
-                      onPressed: widget.onClose,
-                      icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
-                      tooltip: 'キーボードを閉じる',
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        buildKey("7"),
-                        buildKey("8"),
-                        buildKey("9"),
-                        buildKey("÷", textColor: Colors.black87),
-                        buildFunctionKey(
-                          "AC",
-                          _handleClear,
-                          textColor: Colors.black54,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        buildKey("4"),
-                        buildKey("5"),
-                        buildKey("6"),
-                        buildKey("x", textColor: Colors.black87),
-                        buildFunctionKey(
-                          "Del",
-                          _handleDelete,
-                          textColor: Colors.deepOrange,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 4,
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    buildKey("1"),
-                                    buildKey("2"),
-                                    buildKey("3"),
-                                    buildKey("-", textColor: Colors.black87),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    // 左側のボタン (通常は0、xの後は 1.1)
-                                    buildKey(
-                                      isMultiplyMode ? "1.1" : "0",
-                                      // 税率モードの時は少し色を変えて強調しても良いですが、
-                                      // ここではシンプルに文字色だけ変えるか、標準のままでいきます。
-                                      // 今回は分かりやすく太字のままにします。
-                                    ),
+                    )
+                  else
+                    const SizedBox(),
 
-                                    // 中央のボタン (通常は00、xの後は 1.08)
-                                    // flex: 2 で横幅2倍
-                                    buildKey(
-                                      isMultiplyMode ? "1.08" : "00",
-                                      flex: 2,
-                                    ),
-
-                                    // 右のプラスボタン
-                                    buildKey("+", textColor: Colors.black87),
-                                  ],
-                                ),
-                              ),
-                            ],
+                  Row(
+                    children: [
+                      // ▼▼ 「保存して閉じる」ボタンの表示制御 ▼▼
+                      if (widget.onSaveAndClose != null && !hasOperator) ...[
+                        TextButton.icon(
+                          onPressed: widget.onSaveAndClose,
+                          icon: const Icon(Icons.check_circle, size: 18),
+                          label: const Text(
+                            '保存して閉じる',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue.shade700,
+                            visualDensity: VisualDensity.compact,
                           ),
                         ),
-                        Expanded(
-                          flex: 1,
-                          child: Padding(
-                            padding: const EdgeInsets.all(4.0),
-                            child: Material(
-                              // ▼▼ 計算記号の有無でボタンの色と機能を切り替え ▼▼
-                              color: hasOperator ? Colors.orange : Colors.blue,
-                              elevation: 1,
-                              borderRadius: BorderRadius.circular(8),
-                              child: InkWell(
-                                onTap: hasOperator
-                                    ? _handleCalculate
-                                    : widget.onSubmitted,
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                        const SizedBox(width: 4),
+                        Container(
+                          width: 1,
+                          height: 20,
+                          color: Colors.grey.shade300,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      IconButton(
+                        onPressed: widget.onClose,
+                        icon: const Icon(
+                          Icons.keyboard_hide,
+                          color: Colors.grey,
+                        ),
+                        tooltip: 'キーボードを閉じる',
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          buildKey("7"),
+                          buildKey("8"),
+                          buildKey("9"),
+                          buildKey("÷", textColor: Colors.black87),
+                          buildFunctionKey(
+                            "AC",
+                            _handleClear,
+                            textColor: Colors.black54,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          buildKey("4"),
+                          buildKey("5"),
+                          buildKey("6"),
+                          buildKey("x", textColor: Colors.black87),
+                          buildFunctionKey(
+                            "Del",
+                            _handleDelete,
+                            textColor: Colors.deepOrange,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: Row(
                                     children: [
-                                      Icon(
-                                        hasOperator
-                                            ? Icons.calculate
-                                            : Icons.playlist_add,
-                                        color: Colors.white,
-                                        size: 28,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        hasOperator ? "＝" : "次へ",
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                      buildKey("1"),
+                                      buildKey("2"),
+                                      buildKey("3"),
+                                      buildKey("-", textColor: Colors.black87),
                                     ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      // 左側のボタン (通常は0、xの後は 1.1)
+                                      buildKey(
+                                        isMultiplyMode ? "1.1" : "0",
+                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
+                                        color: isMultiplyMode ? null : null,
+                                        textColor: isMultiplyMode
+                                            ? Colors.orange
+                                            : Colors.black,
+                                      ),
+
+                                      // 中央のボタン (通常は00、xの後は 1.08)
+                                      // flex: 2 で横幅2倍
+                                      buildKey(
+                                        isMultiplyMode ? "1.08" : "00",
+                                        flex: 2,
+                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
+                                        color: isMultiplyMode ? null : null,
+                                        textColor: isMultiplyMode
+                                            ? Colors.orange
+                                            : Colors.black,
+                                      ),
+
+                                      // 右のプラスボタン
+                                      buildKey("+", textColor: Colors.black87),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Material(
+                                // ▼▼ 計算記号の有無でボタンの色と機能を切り替え ▼▼
+                                color: hasOperator
+                                    ? Colors.orange
+                                    : Colors.blue,
+                                elevation: 1,
+                                borderRadius: BorderRadius.circular(8),
+                                child: InkWell(
+                                  onTap: hasOperator
+                                      ? _handleCalculate
+                                      : widget.onSubmitted,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    alignment: Alignment.center,
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          hasOperator
+                                              ? Icons.calculate
+                                              : Icons.playlist_add,
+                                          color: Colors.white,
+                                          size: 28,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          hasOperator ? "＝" : "次へ",
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
