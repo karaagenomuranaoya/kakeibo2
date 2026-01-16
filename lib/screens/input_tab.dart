@@ -444,10 +444,8 @@ class _InputTabState extends State<InputTab>
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
 
-                  // ▼▼ 変更: カード欄を表示する場合としない場合で処理を分ける ▼▼
+                  // カード欄を表示する場合
                   if (_showCardOnInput)
-                    // GestureDetectorで囲むことで、このエリア内のタップが
-                    // 背景の _closeKeyboard に伝播しないようにする（キーボード閉じ防止）
                     GestureDetector(
                       onTap: () {},
                       child: PaymentSelector(
@@ -460,7 +458,6 @@ class _InputTabState extends State<InputTab>
                       ),
                     )
                   else
-                    // カード欄がない場合は余白を確保してカテゴリとくっつかないようにする
                     const SizedBox(height: 24),
 
                   CategorySelector(
@@ -491,6 +488,10 @@ class _InputTabState extends State<InputTab>
               child: CustomNumberKeyboard(
                 controller: _amountController,
                 onSubmitted: () => _saveData(keepKeyboard: true),
+                onSaveAndClose: () => _saveData(keepKeyboard: false),
+                // ▼▼ 追加: Undo機能のバインド ▼▼
+                // _lastInputId がある場合のみ有効にする
+                onUndo: _lastInputId != null ? _undoLastInput : null,
                 onClose: _closeKeyboard,
                 onChanged: (_) {},
               ),

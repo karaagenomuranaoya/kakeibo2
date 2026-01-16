@@ -2,25 +2,27 @@ import 'package:flutter/material.dart';
 
 class CustomNumberKeyboard extends StatelessWidget {
   final TextEditingController controller;
-  final VoidCallback onSubmitted;
-  final VoidCallback onClose;
+  final VoidCallback onSubmitted; // 次へ
+  final VoidCallback? onSaveAndClose; // 保存して閉じる
+  final VoidCallback? onUndo; // ▼▼ 追加: 一つ戻す ▼▼
+  final VoidCallback onClose; // キーボードを閉じる
   final ValueChanged<String> onChanged;
-  final int maxLength; // 追加: 文字数制限
+  final int maxLength;
 
   const CustomNumberKeyboard({
     super.key,
     required this.controller,
     required this.onSubmitted,
+    this.onSaveAndClose,
+    this.onUndo, // 追加
     required this.onClose,
     required this.onChanged,
-    this.maxLength = 15, // デフォルト15文字
+    this.maxLength = 15,
   });
 
   void _handleTap(BuildContext context, String value) {
     final text = controller.text;
 
-    // ▼▼ 追加: 文字数制限チェック ▼▼
-    // 演算子が入力される場合は許可するが、数字が増えすぎるのを防ぐ
     bool isOperator = ["+", "-", "x", "÷"].contains(value);
 
     if (!isOperator && text.length >= maxLength) {
@@ -113,7 +115,6 @@ class CustomNumberKeyboard extends StatelessWidget {
             shadowColor: shadowColor,
             borderRadius: BorderRadius.circular(8),
             child: InkWell(
-              // contextを渡すように変更
               onTap: onTap ?? () => _handleTap(context, label),
               borderRadius: BorderRadius.circular(8),
               child: Container(
@@ -146,17 +147,63 @@ class CustomNumberKeyboard extends StatelessWidget {
       width: double.infinity,
       child: Column(
         children: [
+          // ▼▼ 変更: 左端にUndo、右端にSave&CloseとHideを配置 ▼▼
           SizedBox(
             height: 40,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween, // 両端揃え
               children: [
-                IconButton(
-                  onPressed: onClose,
-                  icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
-                  tooltip: '閉じる',
+                // 左側: Undoボタン (nullなら表示しない)
+                if (onUndo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: TextButton.icon(
+                      onPressed: onUndo,
+                      icon: const Icon(Icons.undo, size: 18),
+                      label: const Text(
+                        '1つ戻す',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.black54, // 少し控えめな色
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(), // 左側のスペース埋め
+                // 右側: 保存して閉じる & 閉じる
+                Row(
+                  children: [
+                    if (onSaveAndClose != null) ...[
+                      TextButton.icon(
+                        onPressed: onSaveAndClose,
+                        icon: const Icon(Icons.check_circle, size: 18),
+                        label: const Text(
+                          '保存して閉じる',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.blue.shade700,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        width: 1,
+                        height: 20,
+                        color: Colors.grey.shade300,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    IconButton(
+                      onPressed: onClose,
+                      icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
+                      tooltip: 'キーボードを閉じる',
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                 ),
-                const SizedBox(width: 8),
               ],
             ),
           ),
