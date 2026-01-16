@@ -7,11 +7,11 @@ import '../utils/simple_calculator.dart';
 
 /// 保存処理の結果をまとめたクラス
 class InputServiceResult {
-  final bool success; // 成功したか
-  final String message; // 表示するメッセージ
-  final Color messageColor; // メッセージの色
-  final String? formattedAmount; // 計算後の金額文字列（UI更新用）
-  final String? savedId; // 保存されたデータのID（Undo用）
+  final bool success;
+  final String message;
+  final Color messageColor;
+  final String? formattedAmount;
+  final String? savedId;
 
   InputServiceResult({
     required this.success,
@@ -26,16 +26,15 @@ class InputService {
   final TransactionRepository _transactionRepo = TransactionRepository();
   final GachaRepository _gachaRepo = GachaRepository();
 
-  /// データを保存するメインの処理
   Future<InputServiceResult> registerTransaction({
-    required String rawAmount, // 入力された金額（数式の可能性あり）
-    required String memo, // メモ
-    required DateTime date, // 選ばれた日付
-    required CategoryTag expenseTag, // 選ばれた費目
-    required bool isCardPayment, // カード払いモードか
-    required CategoryTag? cardTag, // 選ばれたカード（あれば）
-    required bool showCardOnInput, // 設定：カード入力を表示しているか
-    required bool isGachaEnabled, // 設定：ガチャが有効か
+    required String rawAmount,
+    required String memo,
+    required DateTime date,
+    required CategoryTag expenseTag,
+    required bool isCardPayment,
+    required CategoryTag? cardTag,
+    required bool showCardOnInput,
+    required bool isGachaEnabled,
   }) async {
     // 1. 計算とバリデーション
     final calculatedText = SimpleCalculator.calculate(rawAmount);
@@ -61,15 +60,11 @@ class InputService {
     String paymentMethod = '';
     DateTime? paymentDate;
 
-    // 設定でカードが隠されている場合は、強制的に現金扱いにするかどうか
-    // ※元のロジックに従い、UIで隠していてもisCardPaymentがtrueならカード扱いにします
     final bool shouldUseCard = showCardOnInput && isCardPayment;
 
     if (shouldUseCard) {
       if (cardTag != null) {
         paymentMethod = cardTag.label;
-
-        // 締め日・支払日の計算
         if (cardTag.closingDay != null && cardTag.paymentDay != null) {
           int monthsToAdd = cardTag.paymentMonthOffset;
           if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
@@ -80,7 +75,7 @@ class InputService {
           int targetDay = cardTag.paymentDay!;
 
           paymentDate = (targetDay == 99)
-              ? DateTime(targetYear, targetMonth + 1, 0) // 末日
+              ? DateTime(targetYear, targetMonth + 1, 0)
               : DateTime(targetYear, targetMonth, targetDay);
         }
       } else {
@@ -113,18 +108,15 @@ class InputService {
 
       if (isGachaEnabled) {
         final result = await _gachaRepo.addCredit();
-        final int currentCredits = result.$1;
+        // final int currentCredits = result.$1; // 未使用のためコメントアウト
         final bool isAdded = result.$2;
 
         if (isAdded) {
-          if (currentCredits % 3 == 0) {
-            msg = 'ガチャが回せます！';
-            color = Colors.orange;
-          } else {
-            msg = '保存しました';
-          }
+          // ▼▼ 変更: 1入力1ガチャなので、加算＝ガチャ権利獲得 ▼▼
+          msg = 'ガチャチケット獲得！';
+          color = Colors.orange;
         } else {
-          msg = '保存しました（本日のポイント上限）';
+          msg = '保存しました（本日の上限到達）';
           color = Colors.grey;
         }
       } else if (paymentDate != null) {
@@ -147,12 +139,10 @@ class InputService {
     }
   }
 
-  /// 削除（取り消し）処理
   Future<void> deleteTransaction(String id) async {
     await _transactionRepo.deleteTransaction(id);
   }
 
-  /// 取り消し対象のアイテムを取得
   Future<TransactionItem?> getTransaction(String id) async {
     final allItems = await _transactionRepo.getAllTransactions();
     try {

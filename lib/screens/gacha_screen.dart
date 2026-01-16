@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart'; // ▼▼ kDebugModeのために追加 ▼▼
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../repositories/gacha_repository.dart';
 import '../models/gacha_item.dart';
@@ -18,6 +18,8 @@ class _GachaScreenState extends State<GachaScreen> {
   bool _isLoading = true;
 
   static const int _maxLevel = 10;
+  // ▼▼ 変更: 1回あたりの消費ポイントを1に変更 ▼▼
+  static const int _costPerSpin = 1;
 
   @override
   void initState() {
@@ -25,8 +27,10 @@ class _GachaScreenState extends State<GachaScreen> {
     _loadData();
   }
 
+  // ... _showRateDialog などのメソッドは変更なしのため省略 ...
   void _showRateDialog() {
-    // まだMAXレベルに達していないアイテムを抽出
+    // 省略（元のコードのまま）
+    // もしコード全体が必要であれば再度提示しますが、ここは変更ありません
     final availableItems = _allItems.where((item) {
       final int count = _itemCounts[item.id] ?? 0;
       final int level = item.getStage(count);
@@ -35,7 +39,6 @@ class _GachaScreenState extends State<GachaScreen> {
 
     final int totalAvailable = availableItems.length;
 
-    // コンプリート済みの場合
     if (totalAvailable == 0) {
       showDialog(
         context: context,
@@ -53,7 +56,6 @@ class _GachaScreenState extends State<GachaScreen> {
       return;
     }
 
-    // 確率計算
     final double rate = 100.0 / totalAvailable;
     final String rateString = rate.toStringAsFixed(2);
 
@@ -126,22 +128,16 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ),
                   const Divider(),
-
-                  // ▼▼▼ ここからリスト表示 ▼▼▼
                   ...availableItems.map((item) {
                     final int count = _itemCounts[item.id] ?? 0;
                     final int level = item.getStage(count);
-
-                    // ▼ 未所持かどうかの判定
                     final bool isUnobtained = count == 0;
-
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         children: [
-                          // アイコン
                           Container(
-                            width: 36, // 少し大きく
+                            width: 36,
                             height: 36,
                             decoration: BoxDecoration(
                               color: isUnobtained
@@ -152,37 +148,30 @@ class _GachaScreenState extends State<GachaScreen> {
                             child: Icon(
                               item.iconData,
                               size: 20,
-                              // 未所持ならアイコンを少し薄くする
                               color: isUnobtained
                                   ? Colors.grey.shade400
                                   : Colors.grey,
                             ),
                           ),
                           const SizedBox(width: 12),
-
-                          // キャラ名 (審査のため未所持でも名前は出す)
                           Expanded(
                             child: Text(
                               item.baseName,
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
-                                // 未所持なら文字色を少し薄くして「まだ持ってない感」を出す
                                 color: isUnobtained
                                     ? Colors.black54
                                     : Colors.black87,
                               ),
                             ),
                           ),
-
-                          // ▼ 現在の状態表示 (未所持 or Lv表示)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              // 未所持なら赤系、所持済みなら青系
                               color: isUnobtained
                                   ? Colors.red.shade50
                                   : Colors.blueGrey.shade50,
@@ -240,41 +229,31 @@ class _GachaScreenState extends State<GachaScreen> {
   }
 
   Future<void> _spinGacha() async {
-    if (_credits < 3) return;
+    // ▼▼ 変更: コスト判定を1に変更 ▼▼
+    if (_credits < _costPerSpin) return;
 
-    // ローディング表示
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    // 抽選処理 (まだ消費しない)
     final item = await _repository.drawItem();
-
-    // 演出のため少し待つ
     await Future.delayed(const Duration(seconds: 1));
 
     if (!mounted) return;
-    Navigator.pop(context); // ローディングを閉じる
+    Navigator.pop(context);
 
-    // コンプリート済みの場合
     if (item == null) {
       _showCompleteDialog();
       return;
     }
 
-    // 消費処理
-    final success = await _repository.consumeCredits(3);
-    if (!success) {
-      // 万が一消費できなかった場合
-      return;
-    }
+    // ▼▼ 変更: 消費ポイントを1に変更 ▼▼
+    final success = await _repository.consumeCredits(_costPerSpin);
+    if (!success) return;
 
-    // 保存処理
     final newCount = await _repository.unlockItem(item.id);
-
-    // 画面更新
     await _loadData();
 
     if (mounted) {
@@ -282,6 +261,8 @@ class _GachaScreenState extends State<GachaScreen> {
     }
   }
 
+  // _showCompleteDialog, _showHistoryDialog, _showResultDialog は変更なしのため省略
+  // 省略したメソッドも必要であれば統合しますが、ここではロジックに関わるbuildメソッドを中心に記述します。
   void _showCompleteDialog() {
     showDialog(
       context: context,
@@ -522,15 +503,14 @@ class _GachaScreenState extends State<GachaScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final int spins = _credits ~/ 3;
-    final double progress = (_credits % 3) / 3.0;
+    // ▼▼ 変更: 1pt = 1回なので、spins = _credits そのまま ▼▼
+    final int spins = _credits;
 
     final int maxLevelItems = _itemCounts.entries
         .where((e) => e.value >= _maxLevel)
         .length;
     final int totalItems = _allItems.length;
     final double completeRate = totalItems > 0 ? maxLevelItems / totalItems : 0;
-    // 全コンプリート判定
     final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
 
     return Scaffold(
@@ -561,7 +541,7 @@ class _GachaScreenState extends State<GachaScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          "クレジット",
+                          "ガチャチケット", // クレジットよりチケットの方がしっくりくるかも
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                         Row(
@@ -575,7 +555,7 @@ class _GachaScreenState extends State<GachaScreen> {
                               ),
                             ),
                             const Text(
-                              " pt",
+                              " 枚",
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey,
@@ -603,15 +583,10 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 15),
-                LinearProgressIndicator(
-                  value: spins > 0 ? 1.0 : progress,
-                  backgroundColor: Colors.grey.shade200,
-                  color: Colors.orange,
-                  minHeight: 8,
-                  borderRadius: BorderRadius.circular(4),
-                ),
+
+                // ▼▼ 変更: 中途半端なプログレスバーを削除（1入力1ポイントなので不要） ▼▼
                 const SizedBox(height: 20),
+
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -628,9 +603,7 @@ class _GachaScreenState extends State<GachaScreen> {
                     child: Text(
                       isAllComplete
                           ? "コンプリート済み"
-                          : (spins > 0
-                                ? "ガチャを回す (3pt)"
-                                : "あと ${3 - (_credits % 3)} 回入力でガチャ"),
+                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "入力をするとチケットが貰えます"),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -638,8 +611,7 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ),
                 ),
-                // ▼▼▼ 追加: 提供割合ボタン ▼▼▼
-                if (!isAllComplete) // コンプリート後は表示不要なら隠す
+                if (!isAllComplete)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Align(
@@ -667,10 +639,10 @@ class _GachaScreenState extends State<GachaScreen> {
                       ),
                     ),
                   ),
-                // ▲▲▲ 追加ここまで ▲▲▲
               ],
             ),
           ),
+          // リスト部分は変更なし
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -693,7 +665,6 @@ class _GachaScreenState extends State<GachaScreen> {
                     onTap: isUnlocked
                         ? () => _showResultDialog(item, count)
                         : null,
-                    // ▼▼ 修正: kDebugModeの時だけ有効にする ▼▼
                     onLongPress: kDebugMode
                         ? () async {
                             final newCount = await _repository.unlockItem(

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart'; // kDebugModeを使うために必要
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/gacha_item.dart';
 import '../data/gacha_data.dart';
@@ -12,7 +12,9 @@ class GachaRepository {
   // 日次制限用のキー
   static const String _dailyCountKey = 'gacha_daily_count';
   static const String _lastDateKey = 'gacha_last_input_date';
-  static const int _dailyLimit = 15; // 1日15回（ガチャ5回分）
+
+  // ▼▼ 変更: 1入力1ガチャにするため、入力回数上限を15から5に変更 ▼▼
+  static const int _dailyLimit = 5; // 1日5回（ガチャ5回分）
 
   Map<String, int> _counts = {};
 
@@ -98,7 +100,7 @@ class GachaRepository {
 
       final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
 
-      // 上限チェック (15回以上なら加算せずリターン)
+      // 上限チェック (5回以上なら加算せずリターン)
       if (dailyCount >= _dailyLimit) {
         return (currentTotal, false);
       }
