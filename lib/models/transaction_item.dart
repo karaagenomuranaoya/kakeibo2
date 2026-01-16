@@ -5,7 +5,7 @@ class TransactionItem {
   final String payment;
   final DateTime date;
   final DateTime? paymentDate;
-  final String memo; // 追加: メモ欄
+  final String memo;
 
   TransactionItem({
     String? id,
@@ -14,12 +14,8 @@ class TransactionItem {
     required this.payment,
     required this.date,
     this.paymentDate,
-    this.memo = '', // デフォルトは空文字
+    this.memo = '',
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
-
-  String get displayDate {
-    return "${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
-  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -29,13 +25,14 @@ class TransactionItem {
       'payment': payment,
       'date_iso': date.toIso8601String(),
       'payment_date_iso': paymentDate?.toIso8601String(),
-      'memo': memo, // 保存
+      'memo': memo,
     };
   }
 
   factory TransactionItem.fromJson(Map<String, dynamic> json) {
     return TransactionItem(
-      id: json['id'] as String? ??
+      id:
+          json['id'] as String? ??
           DateTime.now().microsecondsSinceEpoch.toString() +
               (json['date_iso'] as String),
       amount: json['amount'] as int,
@@ -45,7 +42,7 @@ class TransactionItem {
       paymentDate: json['payment_date_iso'] != null
           ? DateTime.parse(json['payment_date_iso'] as String)
           : null,
-      memo: json['memo'] as String? ?? '', // 読み込み（既存データ対策でnull許容）
+      memo: json['memo'] as String? ?? '',
     );
   }
 

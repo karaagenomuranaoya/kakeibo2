@@ -9,7 +9,7 @@ class GachaRepository {
   static const String _creditKey = 'gacha_credits';
   static const String _countsKey = 'gacha_counts_v2';
 
-  // ▼▼ 追加: 日次制限用のキー ▼▼
+  // 日次制限用のキー
   static const String _dailyCountKey = 'gacha_daily_count';
   static const String _lastDateKey = 'gacha_last_input_date';
   static const int _dailyLimit = 15; // 1日15回（ガチャ5回分）
@@ -79,7 +79,7 @@ class GachaRepository {
     return prefs.getInt(_creditKey) ?? 0;
   }
 
-  // ▼▼ 変更: 入力時の加算（戻り値を (現在の合計, 加算されたか) に変更） ▼▼
+  // 入力時の加算（戻り値を (現在の合計, 加算されたか) に変更）
   Future<(int total, bool added)> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
     int currentTotal = prefs.getInt(_creditKey) ?? 0;
@@ -117,15 +117,6 @@ class GachaRepository {
 
     await prefs.setInt(_creditKey, currentTotal);
     return (currentTotal, true);
-  }
-
-  // 任意のポイントを加算する
-  Future<int> addCredits(int amount) async {
-    final prefs = await SharedPreferences.getInstance();
-    int current = prefs.getInt(_creditKey) ?? 0;
-    current += amount;
-    await prefs.setInt(_creditKey, current);
-    return current;
   }
 
   Future<bool> consumeCredits(int amount) async {

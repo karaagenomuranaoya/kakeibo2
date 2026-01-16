@@ -2,16 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
-import '../models/transaction_item.dart';
-import '../repositories/transaction_repository.dart';
-import '../repositories/gacha_repository.dart';
+// ▼ 今回作成したサービスをインポート
+import '../services/input_service.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
 import '../widgets/custom_number_keyboard.dart';
+import '../widgets/flash_message.dart';
 import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
 import '../widgets/input/payment_selector.dart';
-import '../utils/simple_calculator.dart';
 import 'settings/category_manage_screen.dart';
 import 'history_screen.dart';
 
@@ -37,9 +36,8 @@ class _InputTabState extends State<InputTab>
   final FocusNode _amountFocusNode = FocusNode();
   final FocusNode _memoFocusNode = FocusNode();
 
-  // --- Repositories ---
-  final TransactionRepository _repository = TransactionRepository();
-  final GachaRepository _gachaRepository = GachaRepository();
+  // --- Services & Repositories ---
+  final InputService _inputService = InputService(); // New!
   final SettingsRepository _settingsRepository = SettingsRepository();
 
   // --- State ---
@@ -238,95 +236,50 @@ class _InputTabState extends State<InputTab>
     );
   }
 
-  // --- Save Logic ---
+  // --- Save Logic (大幅に簡略化！) ---
   Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
-
-    final rawText = _amountController.text;
-    final calculatedText = SimpleCalculator.calculate(rawText);
-
-    if (calculatedText.isEmpty) {
-      _showFlashMessage('金額を入力してください', Colors.redAccent);
-      return;
-    }
-
-    _amountController.text = calculatedText;
-    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
-
-    if (amount <= 0) {
-      _showFlashMessage('1円以上の金額を入力してください', Colors.redAccent);
-      return;
-    }
 
     if (_expenseList.isEmpty) {
       _showFlashMessage('カテゴリがありません', Colors.redAccent);
       return;
     }
+    // インデックス範囲外ガード
     if (_selectedExpenseIndex >= _expenseList.length) {
       _selectedExpenseIndex = 0;
     }
 
     if (!keepKeyboard) _closeKeyboard();
 
-    String paymentMethod = '';
-    DateTime? paymentDate;
-
-    // 設定でカードが隠されている場合は、強制的に現金扱いにする
-    final bool shouldUseCard = _showCardOnInput && _isCardPayment;
-
-    if (shouldUseCard && _cardList.isNotEmpty) {
-      final card = _cardList[_selectedCardIndex];
-      paymentMethod = card.label;
-
-      if (card.closingDay != null && card.paymentDay != null) {
-        int monthsToAdd = card.paymentMonthOffset;
-        if (card.closingDay != 99 && _selectedDate.day > card.closingDay!) {
-          monthsToAdd++;
-        }
-        int targetYear = _selectedDate.year;
-        int targetMonth = _selectedDate.month + monthsToAdd;
-        int targetDay = card.paymentDay!;
-
-        paymentDate = (targetDay == 99)
-            ? DateTime(targetYear, targetMonth + 1, 0)
-            : DateTime(targetYear, targetMonth, targetDay);
-      }
-    } else if (shouldUseCard) {
-      paymentMethod = 'カード';
+    // 選択されているカードタグの取得
+    CategoryTag? selectedCardTag;
+    if (_cardList.isNotEmpty && _selectedCardIndex < _cardList.length) {
+      selectedCardTag = _cardList[_selectedCardIndex];
     }
 
-    try {
-      final newItem = TransactionItem(
-        amount: amount,
-        expense: _expenseList[_selectedExpenseIndex].label,
-        payment: paymentMethod,
-        date: DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-          DateTime.now().hour,
-          DateTime.now().minute,
-        ),
-        paymentDate: paymentDate,
-        memo: _memoController.text.trim(),
-      );
+    // ★ サービスに処理を委譲
+    final result = await _inputService.registerTransaction(
+      rawAmount: _amountController.text,
+      memo: _memoController.text.trim(),
+      date: _selectedDate,
+      expenseTag: _expenseList[_selectedExpenseIndex],
+      isCardPayment: _isCardPayment,
+      cardTag: selectedCardTag,
+      showCardOnInput: _showCardOnInput,
+      isGachaEnabled: _isGachaEnabled,
+    );
 
-      await _repository.addTransaction(newItem);
-
-      // ▼▼ 変更: ポイント加算処理とメッセージ分岐 ▼▼
-      int currentCredits = 0;
-      bool isPointAdded = false;
-
-      if (_isGachaEnabled) {
-        // Record (int total, bool added) を受け取る
-        final result = await _gachaRepository.addCredit();
-        currentCredits = result.$1; // total
-        isPointAdded = result.$2; // added
+    // 結果に応じたUI更新
+    if (result.success) {
+      // 成功時
+      if (result.formattedAmount != null) {
+        _amountController.text = result.formattedAmount!;
       }
 
+      // UI状態の保存（これはUIの責任）
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
-      if (shouldUseCard) {
+      if (_showCardOnInput && _isCardPayment) {
         await prefs.setInt('last_card_index', _selectedCardIndex);
       }
       await prefs.setBool('last_is_card', _isCardPayment);
@@ -334,62 +287,42 @@ class _InputTabState extends State<InputTab>
       setState(() {
         _amountController.clear();
         _memoController.clear();
-        _lastInputId = newItem.id;
+        _lastInputId = result.savedId;
       });
 
       if (keepKeyboard) _amountFocusNode.requestFocus();
 
       if (mounted) {
-        String msg = '保存しました';
-        Color color = Colors.blue;
-
-        if (_isGachaEnabled) {
-          if (isPointAdded) {
-            // ポイントが加算された場合
-            if (currentCredits % 3 == 0) {
-              msg = 'ガチャが回せます！';
-              color = Colors.orange;
-            } else {
-              // 通常の保存＋ポイント付与
-              // 必要なら '保存しました (あと${3 - (currentCredits % 3)}回)' なども可
-              msg = '保存しました';
-            }
-          } else {
-            // 上限に達していた場合
-            msg = '保存しました（本日のポイント上限）';
-            color = Colors.grey;
-          }
-        } else if (paymentDate != null) {
-          msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
-        }
-        _showFlashMessage(msg, color);
+        _showFlashMessage(result.message, result.messageColor);
       }
-    } catch (e) {
-      _showFlashMessage('保存エラー: $e', Colors.red);
+    } else {
+      // 失敗時（バリデーションエラーなど）
+      if (mounted) {
+        _showFlashMessage(result.message, result.messageColor);
+      }
     }
   }
 
   Future<void> _undoLastInput() async {
     if (_lastInputId == null) return;
-    final allItems = await _repository.getAllTransactions();
-    TransactionItem? targetItem;
-    try {
-      targetItem = allItems.firstWhere((e) => e.id == _lastInputId);
-    } catch (_) {
+
+    // 削除対象の情報を取得
+    final targetItem = await _inputService.getTransaction(_lastInputId!);
+    if (targetItem == null) {
       setState(() => _lastInputId = null);
       return;
     }
 
     if (!mounted) return;
     final weekDays = ["月", "火", "水", "木", "金", "土", "日"];
-    final weekStr = weekDays[targetItem!.date.weekday - 1];
+    final weekStr = weekDays[targetItem.date.weekday - 1];
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('直前の入力を取り消しますか？'),
         content: Text(
-          '¥${targetItem!.amount} (${targetItem.expense})\n'
+          '¥${targetItem.amount} (${targetItem.expense})\n'
           '日時: ${targetItem.date.month}/${targetItem.date.day} ($weekStr)',
         ),
         actions: [
@@ -400,7 +333,8 @@ class _InputTabState extends State<InputTab>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _repository.deleteTransaction(_lastInputId!);
+              // ★ 削除処理もサービスに委譲
+              await _inputService.deleteTransaction(_lastInputId!);
               if (mounted) {
                 setState(() => _lastInputId = null);
                 _showFlashMessage('入力を取り消しました', Colors.grey);
@@ -463,7 +397,6 @@ class _InputTabState extends State<InputTab>
                     onAmountTap: () => _amountFocusNode.requestFocus(),
                   ),
 
-                  // カード欄を表示する場合
                   if (_showCardOnInput)
                     GestureDetector(
                       onTap: () {},
@@ -508,49 +441,16 @@ class _InputTabState extends State<InputTab>
                 controller: _amountController,
                 onSubmitted: () => _saveData(keepKeyboard: true),
                 onSaveAndClose: () => _saveData(keepKeyboard: false),
-                // ▼▼ 追加: Undo機能のバインド ▼▼
-                // _lastInputId がある場合のみ有効にする
                 onUndo: _lastInputId != null ? _undoLastInput : null,
                 onClose: _closeKeyboard,
                 onChanged: (_) {},
               ),
             ),
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: true,
-              child: AnimatedOpacity(
-                opacity: _isFlashVisible ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _flashColor.withOpacity(0.85),
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      _flashMsg,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+
+          FlashMessage(
+            isVisible: _isFlashVisible,
+            message: _flashMsg,
+            color: _flashColor,
           ),
         ],
       ),

@@ -6,7 +6,7 @@ class GachaItem {
   final int weight;
   final IconData iconData;
   final String baseName;
-  // 変更: 説明文を1つではなく、レベルごとのリストに変更
+  // 説明文をレベルごとのリストに変更
   final List<String> descriptions;
 
   const GachaItem({
@@ -56,8 +56,6 @@ class GachaItem {
   // ステージに応じた色を取得
   Color getColor(int count) {
     final stage = getStage(count);
-    // countがレベルとして渡される場合と、1~10のindexとして渡される場合の両方に対応
-    // ここでは count が 1以上前提のロジックで安全策をとる
     int safeIndex = stage - 1;
     if (safeIndex < 0) safeIndex = 0;
     if (safeIndex >= _stageColors.length) safeIndex = _stageColors.length - 1;
@@ -77,27 +75,15 @@ class GachaItem {
     return "${_stagePrefixes[safeIndex]}$baseName";
   }
 
-  // 変更: ステージに応じた説明文をリストから取得
+  // ステージに応じた説明文をリストから取得
   String getDescription(int count) {
     final stage = getStage(count);
     if (stage == 0) return "";
 
     int safeIndex = stage - 1;
-    // データ不足エラー回避
     if (safeIndex >= descriptions.length) {
       return "（説明文データがありません）";
     }
     return descriptions[safeIndex];
-  }
-
-  factory GachaItem.fromJson(Map<String, dynamic> json) {
-    return GachaItem(
-      id: json['id'] as String,
-      rarity: json['rarity'] as int? ?? 1,
-      weight: json['weight'] as int? ?? 10,
-      iconData: Icons.help_outline,
-      baseName: '不明なデータ',
-      descriptions: ['データ読み込みエラー'],
-    );
   }
 }
