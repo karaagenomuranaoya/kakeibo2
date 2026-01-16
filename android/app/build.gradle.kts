@@ -37,14 +37,14 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             
             // ▼▼▼ リリース版の名前設定 (KTS版) ▼▼▼
-            manifestPlaceholders["appName"] = "次へ家計簿"
+            manifestPlaceholders["appName"] = "ガチャと家計簿"
         }
         debug {
             // ▼▼▼ デバッグ版の設定 (KTS版) ▼▼▼
             // IDを変えて、本番アプリと共存できるようにする
             applicationIdSuffix = ".dev"
             // 名前を変えて、画面上で見分けられるようにする
-            manifestPlaceholders["appName"] = "次へ家計簿(Dev)"
+            manifestPlaceholders["appName"] = "ガチャと家計簿(Dev)"
         }
     }
 }

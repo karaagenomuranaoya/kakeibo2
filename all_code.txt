@@ -1223,35 +1223,29 @@ class QuickKakeiboApp extends StatelessWidget {
 ```dart
 class SimpleCalculator {
   /// 文字列の数式を計算して結果を返す
-  /// エラーや計算不能な場合は元の文字列または"Error"を返すなどの処理を行う
+  /// 日本円の家計簿なので、結果は必ず「四捨五入した整数」の文字列を返す
   static String calculate(String expression) {
     if (expression.isEmpty) return "";
 
-    // 末尾が演算子の場合は削除して計算する
-    String cleanExpr = expression;
+    // 1. カンマを除去
+    String cleanExpr = expression.replaceAll(',', '');
+
+    // 2. 末尾が演算子の場合は削除して計算する (例: "100+" -> "100")
     if (_isOperator(cleanExpr[cleanExpr.length - 1])) {
       cleanExpr = cleanExpr.substring(0, cleanExpr.length - 1);
     }
 
     try {
-      // 簡易的な計算ロジック（四則演算のみ対応）
-      // 演算子の優先順位を考慮してトークン化
       final tokens = _tokenize(cleanExpr);
       if (tokens.isEmpty) return expression;
 
-      final result = _evaluateTokens(tokens);
+      final double result = _evaluateTokens(tokens);
 
-      // 整数で表現できるなら整数に、そうでなければ小数（最大2桁）
-      if (result == result.toInt()) {
-        return result.toInt().toString();
-      } else {
-        return result
-            .toStringAsFixed(2)
-            .replaceAll(RegExp(r"0+$"), "")
-            .replaceAll(RegExp(r"\.$"), "");
-      }
+      // ▼▼ 修正箇所: ここで強制的に四捨五入して整数にする ▼▼
+      // 家計簿（円）に小数は不要なため、四捨五入(round)を行って整数文字列にする
+      return result.round().toString();
     } catch (e) {
-      // 計算エラー時はそのまま返す（ユーザーに修正させる）
+      // 計算不能な場合（ゼロ除算など）は元の文字列を返すか、"0"にする
       return expression;
     }
   }
@@ -1290,12 +1284,25 @@ class SimpleCalculator {
       final token = tokens[i];
       if (token == "x" || token == "÷") {
         final operator = token;
+        // 先頭がいきなり演算子などの不正なケース対策
+        if (processing.isEmpty || i + 1 >= tokens.length) {
+          i++;
+          continue;
+        }
+
         final left = processing.removeLast() as double;
         final right = tokens[i + 1] as double;
 
         double result = 0;
         if (operator == "x") result = left * right;
-        if (operator == "÷") result = left / right;
+        if (operator == "÷") {
+          // ゼロ除算対策（無限大になっても round() でエラーにならないようガード）
+          if (right == 0) {
+            result = 0; // または left をそのまま返す仕様もアリ
+          } else {
+            result = left / right;
+          }
+        }
 
         processing.add(result);
         i += 2;
@@ -1306,6 +1313,8 @@ class SimpleCalculator {
     }
 
     // 2. 加算・減算を計算
+    if (processing.isEmpty) return 0;
+
     double finalResult = processing[0] as double;
     for (int j = 1; j < processing.length; j += 2) {
       final operator = processing[j];
@@ -5549,25 +5558,25 @@ class GachaData {
       baseName: 'ゴースト',
       descriptions: [
         // Lv1
-        "計算が合わない時に現れる小さな霊。まだ無害。",
+        "幽霊だ。でもよく見ると可愛らしい顔をしている。「あの...すいません。」うわ！喋った！",
         // Lv2
-        "少し実体化してきた。レシートを隠すいたずらをする。",
+        "「初めまして。ゴーストの「スト」と言います。」「あ、どうもどうも。素敵な名前ですね。（そこを取るんだ...）」",
         // Lv3
-        "家計簿の裏側に住み着いたようだ。",
+        "ストの話を聞いてみると、どうやら夢を叶えるために、群れを自ら出てきたらしい。",
         // Lv4
-        "夜な夜な「1円足りない...」と囁いてくる。",
+        "彼女の夢はみんなの心を踊らせる作家になること。これがほんとのゴーストライター。",
         // Lv5
-        "実は寂しがり屋なだけかもしれない。",
+        "本当にたくさんんことを話した。彼女は勉強熱心で、メモをとりながら聞いてくれるのが嬉しくて、つい私も長話したものだ。",
         // Lv6
-        "こちらの入力を手伝ってくれるようになった気がする。",
+        "お別れの日は急に来た。「パパの病気がどんどん悪くなってるみたいなの...私、戻らなきゃ。」彼女とはそれっきり...だと思っていたんだ。",
         // Lv7
-        "数字のミスを指摘してくれる頼もしい霊。",
+        "本日の対談には大人気作家のスト先生にお越しいただきました！早速お聞きしたいのですが、ゴーストでありながら人間界で作家を志されたっきかけは？",
         // Lv8
-        "守護霊としての自覚が芽生えたようだ。",
+        "「ありがとうございます。実は私、幽霊界で元々作家を目指していたんです。でも、今は亡き父に「絶対に許さん！」って怒られちゃって。泣く泣く人間界を彷徨っていたら、ある人に出会ったんです。」",
         // Lv9
-        "家計の危機を予知して教えてくれる。",
+        "みんなが私を不気味がる中で、怖がらないでくれた最初の方。それが彼だったんです。私ってば、つい自分から出ていったんだ！って見栄を張っちゃって。",
         // Lv10
-        "もはや家族の一員。金運を運んでくる座敷童子的な存在に進化した。",
+        "「たくさんお話ししました。人間が何が好きで、どんな時に心が躍るのか、全て彼が教えてくれました。彼がいなかったら、私は今ここにいないでしょう。あっ...！」噂を聞いて汗だくで会場に駆け込んだ僕に気づいて、ブンブンと手を振ってくれる君。彼女は僕の大切で大好きな友達だ。",
       ],
     ),
 
@@ -5576,34 +5585,33 @@ class GachaData {
     // -------------------------------------------------------
     GachaItem(
       id: '2',
-      rarity: 2,
+      rarity: 1,
       weight: 20,
-      iconData: Icons.bug_report,
-      baseName: 'バグズ',
+      iconData: Icons.sentiment_very_dissatisfied,
+      baseName: 'バグ',
       descriptions: [
         // Lv1
-        "アプリの隙間に潜む小さなバグ。",
+        "アプリ開発者の天敵。",
         // Lv2
-        "増殖しようとしている。早めに駆除が必要か？",
+        "なんでプログラムのエラーを「バグ（虫）」というのか知っているかい？",
         // Lv3
-        "カサカサと動く音が聞こえる...",
+        "昔ハーバード大学の計算機が故障を起こし、いつまで経っても直らなかった。",
         // Lv4
-        "コードを食べて成長しているようだ。",
+        "しかし、当時グレース・ホッパーというコンピュータ科学の先駆者が率いるチームが決定的な原因を見つけたんだ。なんだと思う？",
         // Lv5
-        "実は悪いバグではなく、益虫かもしれない。",
+        "計算機のリレー（スイッチ）に挟まっていた小さな「蛾（ガ）」だよ。",
         // Lv6
-        "システムの脆弱性を見つけて報告してくれる。",
+        "そう、まさにただの1匹の虫、バグでシステムがダウンしていたんだ。",
         // Lv7
-        "デバッガーとしての才能が開花した。",
+        "彼らはその蛾を取り除き、日誌に貼り付けこう綴った。",
         // Lv8
-        "バグを喰らうバグ。最強のセキュリティ。",
+        "First actual case of bug being found（バグが発見された最初の実際の例）",
         // Lv9
-        "電子世界を自由に飛び回る能力を得た。",
+        "昔から小さな不具合をバグと呼ぶ用法はあったらしいんだ。元々は比喩だったんだけど、「実際の例」が広まっちゃって、バグ＝不具合が定着したんだろうね。",
         // Lv10
-        "すべてのエラーを未然に防ぐ、伝説の守護プログラムへと昇華した。",
+        "どうだったかな。このアプリも入念にテストしてるけど、もしバグがあったらレビューで教えてくれよな。",
       ],
     ),
-
     // -------------------------------------------------------
     // No.3 ケルベロス
     // -------------------------------------------------------
@@ -6998,12 +7006,15 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
 --- FILE: lib/widgets/custom_number_keyboard.dart ---
 ```dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../utils/simple_calculator.dart';
 
-class CustomNumberKeyboard extends StatelessWidget {
+// ▼▼ StatelessWidget から StatefulWidget に変更 ▼▼
+class CustomNumberKeyboard extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSubmitted; // 次へ
   final VoidCallback? onSaveAndClose; // 保存して閉じる
-  final VoidCallback? onUndo; // ▼▼ 追加: 一つ戻す ▼▼
+  final VoidCallback? onUndo;
   final VoidCallback onClose; // キーボードを閉じる
   final ValueChanged<String> onChanged;
   final int maxLength;
@@ -7013,30 +7024,94 @@ class CustomNumberKeyboard extends StatelessWidget {
     required this.controller,
     required this.onSubmitted,
     this.onSaveAndClose,
-    this.onUndo, // 追加
+    this.onUndo,
     required this.onClose,
     required this.onChanged,
-    this.maxLength = 15,
+    this.maxLength = 20,
   });
 
+  @override
+  State<CustomNumberKeyboard> createState() => _CustomNumberKeyboardState();
+}
+
+class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
+  // 演算子かどうか判定
+  bool _isOperator(String value) {
+    return ["+", "-", "x", "÷"].contains(value);
+  }
+
+  // 文字列全体をフォーマット（カンマ区切り）し直す関数
+  String _formatExpression(String expression) {
+    if (expression.isEmpty) return "";
+
+    final formatter = NumberFormat("#,###");
+    StringBuffer result = StringBuffer();
+    String currentNum = "";
+
+    for (int i = 0; i < expression.length; i++) {
+      String char = expression[i];
+      if (_isOperator(char)) {
+        if (currentNum.isNotEmpty) {
+          try {
+            final numVal = int.parse(currentNum.replaceAll(',', ''));
+            result.write(formatter.format(numVal));
+          } catch (_) {
+            result.write(currentNum);
+          }
+          currentNum = "";
+        }
+        result.write(char);
+      } else {
+        currentNum += char;
+      }
+    }
+    if (currentNum.isNotEmpty) {
+      try {
+        final numVal = int.parse(currentNum.replaceAll(',', ''));
+        result.write(formatter.format(numVal));
+      } catch (_) {
+        result.write(currentNum);
+      }
+    }
+
+    return result.toString();
+  }
+
   void _handleTap(BuildContext context, String value) {
-    final text = controller.text;
+    String text = widget.controller.text;
+    final bool isInputOperator = _isOperator(value);
 
-    bool isOperator = ["+", "-", "x", "÷"].contains(value);
-
-    if (!isOperator && text.length >= maxLength) {
+    // ▼▼ 追加: 1桁目（テキストが空）の時に演算子が押されたら無視する ▼▼
+    if (text.isEmpty && isInputOperator) {
+      return;
+    }
+    if (!isInputOperator && text.length >= widget.maxLength) {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('これ以上入力できません'),
-          duration: Duration(milliseconds: 1000),
-          behavior: SnackBarBehavior.floating,
+          duration: Duration(milliseconds: 500),
         ),
       );
       return;
     }
 
-    final selection = controller.selection;
+    // 演算子の連続入力を防ぐ（置換する）
+    if (isInputOperator && text.isNotEmpty) {
+      final lastChar = text[text.length - 1];
+      if (_isOperator(lastChar)) {
+        text = text.substring(0, text.length - 1) + value;
+        widget.controller.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        widget.onChanged(text);
+        setState(() {}); // ▼▼ 再描画 ▼▼
+        return;
+      }
+    }
+
+    final selection = widget.controller.selection;
     int start = selection.start;
     int end = selection.end;
 
@@ -7046,48 +7121,61 @@ class CustomNumberKeyboard extends StatelessWidget {
     }
 
     String newText = text.replaceRange(start, end, value);
-    controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: start + value.length),
+    String formattedText = _formatExpression(newText);
+
+    widget.controller.value = TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
     );
-    onChanged(newText);
+    widget.onChanged(formattedText);
+    setState(() {}); // ▼▼ 再描画 ▼▼
   }
 
   void _handleDelete() {
-    final text = controller.text;
+    String text = widget.controller.text;
     if (text.isEmpty) return;
-    final selection = controller.selection;
+
+    final selection = widget.controller.selection;
     int start = selection.start;
     int end = selection.end;
+    if (start < 0) start = text.length;
+    if (end < 0) end = text.length;
 
-    if (start < 0) {
-      start = text.length;
-      end = text.length;
-    }
-
+    String rawText;
     if (start != end) {
-      String newText = text.replaceRange(start, end, "");
-      controller.value = TextEditingValue(
-        text: newText,
-        selection: TextSelection.collapsed(offset: start),
-      );
-      onChanged(newText);
+      rawText = text.replaceRange(start, end, "");
+    } else if (start > 0) {
+      rawText = text.replaceRange(start - 1, start, "");
+    } else {
       return;
     }
 
-    if (start == 0) return;
+    String formattedText = _formatExpression(rawText);
 
-    String newText = text.replaceRange(start - 1, start, "");
-    controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: start - 1),
+    widget.controller.value = TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
     );
-    onChanged(newText);
+    widget.onChanged(formattedText);
+    setState(() {}); // ▼▼ 再描画 ▼▼
   }
 
   void _handleClear() {
-    controller.clear();
-    onChanged("");
+    widget.controller.clear();
+    widget.onChanged("");
+    setState(() {}); // ▼▼ 再描画 ▼▼
+  }
+
+  void _handleCalculate() {
+    final result = SimpleCalculator.calculate(widget.controller.text);
+    final formattedResult = _formatExpression(result);
+
+    widget.controller.value = TextEditingValue(
+      text: formattedResult,
+      selection: TextSelection.collapsed(offset: formattedResult.length),
+    );
+    widget.onChanged(formattedResult);
+    setState(() {}); // ▼▼ 再描画 ▼▼
   }
 
   @override
@@ -7095,6 +7183,21 @@ class CustomNumberKeyboard extends StatelessWidget {
     const Color bgColor = Color(0xFFF2F2F7);
     const Color btnColor = Colors.white;
     const Color shadowColor = Colors.black12;
+
+    // 現在のテキストを取得
+    String text = widget.controller.text;
+
+    // ▼▼ 判定：末尾が "x" で終わっているか？ ▼▼
+    // "100x" の状態なら true になり、ボタンが税率に変わります
+    bool isMultiplyMode = text.isNotEmpty && text.endsWith("x");
+
+    // ▼▼ ここで状態を見てボタンを切り替える判定を行う ▼▼
+    final bool hasOperator = [
+      "+",
+      "-",
+      "x",
+      "÷",
+    ].any((o) => widget.controller.text.contains(o));
 
     Widget buildKey(
       String label, {
@@ -7141,182 +7244,220 @@ class CustomNumberKeyboard extends StatelessWidget {
       return buildKey(label, onTap: onTap, textColor: textColor, isBold: true);
     }
 
-    return Container(
-      color: bgColor,
-      width: double.infinity,
-      child: Column(
-        children: [
-          // ▼▼ 変更: 左端にUndo、右端にSave&CloseとHideを配置 ▼▼
-          SizedBox(
-            height: 40,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, // 両端揃え
-              children: [
-                // 左側: Undoボタン (nullなら表示しない)
-                if (onUndo != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: TextButton.icon(
-                      onPressed: onUndo,
-                      icon: const Icon(Icons.undo, size: 18),
-                      label: const Text(
-                        '1つ戻す',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.black54, // 少し控えめな色
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
-                  )
-                else
-                  const SizedBox(), // 左側のスペース埋め
-                // 右側: 保存して閉じる & 閉じる
-                Row(
-                  children: [
-                    if (onSaveAndClose != null) ...[
-                      TextButton.icon(
-                        onPressed: onSaveAndClose,
-                        icon: const Icon(Icons.check_circle, size: 18),
+    // ▼▼ GestureDetector でラップして、タップイベントをここで吸収する ▼▼
+    return GestureDetector(
+      onTap: () {
+        // 何もしない。
+        // これにより、キーボード内のタップが背後の「閉じる判定」に伝わるのを防ぐ。
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        color: bgColor,
+        width: double.infinity,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 40,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (widget.onUndo != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: TextButton.icon(
+                        onPressed: widget.onUndo,
+                        icon: const Icon(Icons.undo, size: 18),
                         label: const Text(
-                          '保存して閉じる',
+                          '1つ戻す',
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         style: TextButton.styleFrom(
-                          foregroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.black54,
                           visualDensity: VisualDensity.compact,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Container(
-                        width: 1,
-                        height: 20,
-                        color: Colors.grey.shade300,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    IconButton(
-                      onPressed: onClose,
-                      icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
-                      tooltip: 'キーボードを閉じる',
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        buildKey("7"),
-                        buildKey("8"),
-                        buildKey("9"),
-                        buildKey("÷", textColor: Colors.black87),
-                        buildFunctionKey(
-                          "AC",
-                          _handleClear,
-                          textColor: Colors.black54,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        buildKey("4"),
-                        buildKey("5"),
-                        buildKey("6"),
-                        buildKey("x", textColor: Colors.black87),
-                        buildFunctionKey(
-                          "Del",
-                          _handleDelete,
-                          textColor: Colors.deepOrange,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 4,
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    buildKey("1"),
-                                    buildKey("2"),
-                                    buildKey("3"),
-                                    buildKey("-", textColor: Colors.black87),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    buildKey("0"),
-                                    buildKey("00"),
-                                    const Expanded(child: SizedBox()),
-                                    buildKey("+", textColor: Colors.black87),
-                                  ],
-                                ),
-                              ),
-                            ],
+                    )
+                  else
+                    const SizedBox(),
+
+                  Row(
+                    children: [
+                      // ▼▼ 「保存して閉じる」ボタンの表示制御 ▼▼
+                      if (widget.onSaveAndClose != null && !hasOperator) ...[
+                        TextButton.icon(
+                          onPressed: widget.onSaveAndClose,
+                          icon: const Icon(Icons.check_circle, size: 18),
+                          label: const Text(
+                            '保存して閉じる',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue.shade700,
+                            visualDensity: VisualDensity.compact,
                           ),
                         ),
-                        Expanded(
-                          flex: 1,
-                          child: Padding(
-                            padding: const EdgeInsets.all(4.0),
-                            child: Material(
-                              color: Colors.blue,
-                              elevation: 1,
-                              borderRadius: BorderRadius.circular(8),
-                              child: InkWell(
-                                onTap: onSubmitted,
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: const [
-                                      Icon(
-                                        Icons.playlist_add,
-                                        color: Colors.white,
-                                        size: 28,
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        "次へ",
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                        const SizedBox(width: 4),
+                        Container(
+                          width: 1,
+                          height: 20,
+                          color: Colors.grey.shade300,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      IconButton(
+                        onPressed: widget.onClose,
+                        icon: const Icon(
+                          Icons.keyboard_hide,
+                          color: Colors.grey,
+                        ),
+                        tooltip: 'キーボードを閉じる',
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          buildKey("7"),
+                          buildKey("8"),
+                          buildKey("9"),
+                          buildKey("÷", textColor: Colors.black87),
+                          buildFunctionKey(
+                            "AC",
+                            _handleClear,
+                            textColor: Colors.black54,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          buildKey("4"),
+                          buildKey("5"),
+                          buildKey("6"),
+                          buildKey("x", textColor: Colors.black87),
+                          buildFunctionKey(
+                            "Del",
+                            _handleDelete,
+                            textColor: Colors.deepOrange,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      buildKey("1"),
+                                      buildKey("2"),
+                                      buildKey("3"),
+                                      buildKey("-", textColor: Colors.black87),
                                     ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      // 左側のボタン (通常は0、xの後は 1.1)
+                                      buildKey(
+                                        isMultiplyMode ? "1.1" : "0",
+                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
+                                        color: isMultiplyMode ? null : null,
+                                        textColor: isMultiplyMode
+                                            ? Colors.orange
+                                            : Colors.black,
+                                      ),
+
+                                      // 中央のボタン (通常は00、xの後は 1.08)
+                                      // flex: 2 で横幅2倍
+                                      buildKey(
+                                        isMultiplyMode ? "1.08" : "00",
+                                        flex: 2,
+                                        // ▼▼ 色の指定：モード時はオレンジ背景・白文字 ▼▼
+                                        color: isMultiplyMode ? null : null,
+                                        textColor: isMultiplyMode
+                                            ? Colors.orange
+                                            : Colors.black,
+                                      ),
+
+                                      // 右のプラスボタン
+                                      buildKey("+", textColor: Colors.black87),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Material(
+                                // ▼▼ 計算記号の有無でボタンの色と機能を切り替え ▼▼
+                                color: hasOperator
+                                    ? Colors.orange
+                                    : Colors.blue,
+                                elevation: 1,
+                                borderRadius: BorderRadius.circular(8),
+                                child: InkWell(
+                                  onTap: hasOperator
+                                      ? _handleCalculate
+                                      : widget.onSubmitted,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    alignment: Alignment.center,
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          hasOperator
+                                              ? Icons.calculate
+                                              : Icons.playlist_add,
+                                          color: Colors.white,
+                                          size: 28,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          hasOperator ? "＝" : "次へ",
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

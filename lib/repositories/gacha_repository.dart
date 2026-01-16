@@ -9,6 +9,11 @@ class GachaRepository {
   static const String _creditKey = 'gacha_credits';
   static const String _countsKey = 'gacha_counts_v2';
 
+  // ▼▼ 追加: 日次制限用のキー ▼▼
+  static const String _dailyCountKey = 'gacha_daily_count';
+  static const String _lastDateKey = 'gacha_last_input_date';
+  static const int _dailyLimit = 15; // 1日15回（ガチャ5回分）
+
   Map<String, int> _counts = {};
 
   Future<List<GachaItem>> getItems() async {
@@ -45,25 +50,19 @@ class GachaRepository {
   }
 
   /// ガチャを引く
-  /// レベルMAX(10)に達していないアイテムの中から抽選する
-  /// 全てコンプリートしている場合は null を返す
   Future<GachaItem?> drawItem() async {
-    // 最新の所持状況を確認
     await getItemCounts();
     final List<GachaItem> allItems = GachaData.monsters;
 
-    // レベル10未満のアイテムだけを抽選候補にする
     final List<GachaItem> candidates = allItems.where((item) {
       final count = _counts[item.id] ?? 0;
       return count < 10;
     }).toList();
 
-    // 候補がなければコンプリート状態
     if (candidates.isEmpty) {
       return null;
     }
 
-    // 重み付け抽選
     int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
     int randomValue = Random().nextInt(totalWeight);
 
@@ -80,19 +79,44 @@ class GachaRepository {
     return prefs.getInt(_creditKey) ?? 0;
   }
 
-  // 入力時の加算（デバッグモードなら+10000）
-  Future<int> addCredit() async {
+  // ▼▼ 変更: 入力時の加算（戻り値を (現在の合計, 加算されたか) に変更） ▼▼
+  Future<(int total, bool added)> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
-    int current = prefs.getInt(_creditKey) ?? 0;
+    int currentTotal = prefs.getInt(_creditKey) ?? 0;
 
+    // --- 日次制限チェック ---
+    if (!kDebugMode) {
+      final now = DateTime.now();
+      final todayStr = "${now.year}-${now.month}-${now.day}";
+      final lastDate = prefs.getString(_lastDateKey);
+
+      // 日付が変わっていればリセット
+      if (lastDate != todayStr) {
+        await prefs.setString(_lastDateKey, todayStr);
+        await prefs.setInt(_dailyCountKey, 0);
+      }
+
+      final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
+
+      // 上限チェック (15回以上なら加算せずリターン)
+      if (dailyCount >= _dailyLimit) {
+        return (currentTotal, false);
+      }
+
+      // 回数をインクリメント
+      await prefs.setInt(_dailyCountKey, dailyCount + 1);
+    }
+    // -----------------------
+
+    // 加算処理
     if (kDebugMode) {
-      current += 10000;
+      currentTotal += 10000;
     } else {
-      current++;
+      currentTotal++;
     }
 
-    await prefs.setInt(_creditKey, current);
-    return current;
+    await prefs.setInt(_creditKey, currentTotal);
+    return (currentTotal, true);
   }
 
   // 任意のポイントを加算する

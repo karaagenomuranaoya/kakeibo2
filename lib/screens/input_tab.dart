@@ -313,9 +313,15 @@ class _InputTabState extends State<InputTab>
 
       await _repository.addTransaction(newItem);
 
-      int newCredits = 0;
+      // ▼▼ 変更: ポイント加算処理とメッセージ分岐 ▼▼
+      int currentCredits = 0;
+      bool isPointAdded = false;
+
       if (_isGachaEnabled) {
-        newCredits = await _gachaRepository.addCredit();
+        // Record (int total, bool added) を受け取る
+        final result = await _gachaRepository.addCredit();
+        currentCredits = result.$1; // total
+        isPointAdded = result.$2; // added
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -337,9 +343,22 @@ class _InputTabState extends State<InputTab>
         String msg = '保存しました';
         Color color = Colors.blue;
 
-        if (_isGachaEnabled && newCredits > 0 && newCredits % 3 == 0) {
-          msg = 'ガチャが回せます！';
-          color = Colors.orange;
+        if (_isGachaEnabled) {
+          if (isPointAdded) {
+            // ポイントが加算された場合
+            if (currentCredits % 3 == 0) {
+              msg = 'ガチャが回せます！';
+              color = Colors.orange;
+            } else {
+              // 通常の保存＋ポイント付与
+              // 必要なら '保存しました (あと${3 - (currentCredits % 3)}回)' なども可
+              msg = '保存しました';
+            }
+          } else {
+            // 上限に達していた場合
+            msg = '保存しました（本日のポイント上限）';
+            color = Colors.grey;
+          }
         } else if (paymentDate != null) {
           msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
         }
