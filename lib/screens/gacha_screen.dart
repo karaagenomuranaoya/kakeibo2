@@ -25,6 +25,205 @@ class _GachaScreenState extends State<GachaScreen> {
     _loadData();
   }
 
+  void _showRateDialog() {
+    // まだMAXレベルに達していないアイテムを抽出
+    final availableItems = _allItems.where((item) {
+      final int count = _itemCounts[item.id] ?? 0;
+      final int level = item.getStage(count);
+      return level < _maxLevel;
+    }).toList();
+
+    final int totalAvailable = availableItems.length;
+
+    // コンプリート済みの場合
+    if (totalAvailable == 0) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("提供割合"),
+          content: const Text("全てのキャラクターが最大レベルです。\n排出対象はありません。"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("閉じる"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // 確率計算
+    final double rate = 100.0 / totalAvailable;
+    final String rateString = rate.toStringAsFixed(2);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            "提供割合",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "現在の排出確率",
+                          style: TextStyle(fontSize: 12, color: Colors.brown),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Text("全キャラ均等"),
+                            const Spacer(),
+                            Text(
+                              "$rateString %",
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "【仕様について】",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "・Lv.10(最大)に到達したキャラクターは排出されなくなります。\n・排出確率は、残りの排出対象キャラクター間で均等に分配されます。",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "排出対象一覧 ($totalAvailable種)",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const Divider(),
+
+                  // ▼▼▼ ここからリスト表示 ▼▼▼
+                  ...availableItems.map((item) {
+                    final int count = _itemCounts[item.id] ?? 0;
+                    final int level = item.getStage(count);
+
+                    // ▼ 未所持かどうかの判定
+                    final bool isUnobtained = count == 0;
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          // アイコン
+                          Container(
+                            width: 36, // 少し大きく
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isUnobtained
+                                  ? Colors.grey.shade200
+                                  : Colors.grey.shade100,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              item.iconData,
+                              size: 20,
+                              // 未所持ならアイコンを少し薄くする
+                              color: isUnobtained
+                                  ? Colors.grey.shade400
+                                  : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // キャラ名 (審査のため未所持でも名前は出す)
+                          Expanded(
+                            child: Text(
+                              item.baseName,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                // 未所持なら文字色を少し薄くして「まだ持ってない感」を出す
+                                color: isUnobtained
+                                    ? Colors.black54
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ),
+
+                          // ▼ 現在の状態表示 (未所持 or Lv表示)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              // 未所持なら赤系、所持済みなら青系
+                              color: isUnobtained
+                                  ? Colors.red.shade50
+                                  : Colors.blueGrey.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isUnobtained
+                                    ? Colors.red.shade200
+                                    : Colors.transparent,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              isUnobtained ? "未所持" : "現在 Lv.$level",
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isUnobtained
+                                    ? Colors.red
+                                    : Colors.blueGrey.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("閉じる"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _loadData() async {
     final credits = await _repository.getCredits();
     final counts = await _repository.getItemCounts();
@@ -439,6 +638,36 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ),
                 ),
+                // ▼▼▼ 追加: 提供割合ボタン ▼▼▼
+                if (!isAllComplete) // コンプリート後は表示不要なら隠す
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _showRateDialog,
+                        icon: const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
+                        label: const Text(
+                          "提供割合",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                  ),
+                // ▲▲▲ 追加ここまで ▲▲▲
               ],
             ),
           ),

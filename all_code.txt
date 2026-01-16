@@ -1375,6 +1375,11 @@ class GachaRepository {
   static const String _creditKey = 'gacha_credits';
   static const String _countsKey = 'gacha_counts_v2';
 
+  // ▼▼ 追加: 日次制限用のキー ▼▼
+  static const String _dailyCountKey = 'gacha_daily_count';
+  static const String _lastDateKey = 'gacha_last_input_date';
+  static const int _dailyLimit = 15; // 1日15回（ガチャ5回分）
+
   Map<String, int> _counts = {};
 
   Future<List<GachaItem>> getItems() async {
@@ -1411,25 +1416,19 @@ class GachaRepository {
   }
 
   /// ガチャを引く
-  /// レベルMAX(10)に達していないアイテムの中から抽選する
-  /// 全てコンプリートしている場合は null を返す
   Future<GachaItem?> drawItem() async {
-    // 最新の所持状況を確認
     await getItemCounts();
     final List<GachaItem> allItems = GachaData.monsters;
 
-    // レベル10未満のアイテムだけを抽選候補にする
     final List<GachaItem> candidates = allItems.where((item) {
       final count = _counts[item.id] ?? 0;
       return count < 10;
     }).toList();
 
-    // 候補がなければコンプリート状態
     if (candidates.isEmpty) {
       return null;
     }
 
-    // 重み付け抽選
     int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
     int randomValue = Random().nextInt(totalWeight);
 
@@ -1446,19 +1445,44 @@ class GachaRepository {
     return prefs.getInt(_creditKey) ?? 0;
   }
 
-  // 入力時の加算（デバッグモードなら+10000）
-  Future<int> addCredit() async {
+  // ▼▼ 変更: 入力時の加算（戻り値を (現在の合計, 加算されたか) に変更） ▼▼
+  Future<(int total, bool added)> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
-    int current = prefs.getInt(_creditKey) ?? 0;
+    int currentTotal = prefs.getInt(_creditKey) ?? 0;
 
+    // --- 日次制限チェック ---
+    if (!kDebugMode) {
+      final now = DateTime.now();
+      final todayStr = "${now.year}-${now.month}-${now.day}";
+      final lastDate = prefs.getString(_lastDateKey);
+
+      // 日付が変わっていればリセット
+      if (lastDate != todayStr) {
+        await prefs.setString(_lastDateKey, todayStr);
+        await prefs.setInt(_dailyCountKey, 0);
+      }
+
+      final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
+
+      // 上限チェック (15回以上なら加算せずリターン)
+      if (dailyCount >= _dailyLimit) {
+        return (currentTotal, false);
+      }
+
+      // 回数をインクリメント
+      await prefs.setInt(_dailyCountKey, dailyCount + 1);
+    }
+    // -----------------------
+
+    // 加算処理
     if (kDebugMode) {
-      current += 10000;
+      currentTotal += 10000;
     } else {
-      current++;
+      currentTotal++;
     }
 
-    await prefs.setInt(_creditKey, current);
-    return current;
+    await prefs.setInt(_creditKey, currentTotal);
+    return (currentTotal, true);
   }
 
   // 任意のポイントを加算する
@@ -2693,6 +2717,205 @@ class _GachaScreenState extends State<GachaScreen> {
     _loadData();
   }
 
+  void _showRateDialog() {
+    // まだMAXレベルに達していないアイテムを抽出
+    final availableItems = _allItems.where((item) {
+      final int count = _itemCounts[item.id] ?? 0;
+      final int level = item.getStage(count);
+      return level < _maxLevel;
+    }).toList();
+
+    final int totalAvailable = availableItems.length;
+
+    // コンプリート済みの場合
+    if (totalAvailable == 0) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("提供割合"),
+          content: const Text("全てのキャラクターが最大レベルです。\n排出対象はありません。"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("閉じる"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // 確率計算
+    final double rate = 100.0 / totalAvailable;
+    final String rateString = rate.toStringAsFixed(2);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            "提供割合",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "現在の排出確率",
+                          style: TextStyle(fontSize: 12, color: Colors.brown),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Text("全キャラ均等"),
+                            const Spacer(),
+                            Text(
+                              "$rateString %",
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "【仕様について】",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "・Lv.10(最大)に到達したキャラクターは排出されなくなります。\n・排出確率は、残りの排出対象キャラクター間で均等に分配されます。",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "排出対象一覧 ($totalAvailable種)",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const Divider(),
+
+                  // ▼▼▼ ここからリスト表示 ▼▼▼
+                  ...availableItems.map((item) {
+                    final int count = _itemCounts[item.id] ?? 0;
+                    final int level = item.getStage(count);
+
+                    // ▼ 未所持かどうかの判定
+                    final bool isUnobtained = count == 0;
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          // アイコン
+                          Container(
+                            width: 36, // 少し大きく
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isUnobtained
+                                  ? Colors.grey.shade200
+                                  : Colors.grey.shade100,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              item.iconData,
+                              size: 20,
+                              // 未所持ならアイコンを少し薄くする
+                              color: isUnobtained
+                                  ? Colors.grey.shade400
+                                  : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // キャラ名 (審査のため未所持でも名前は出す)
+                          Expanded(
+                            child: Text(
+                              item.baseName,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                // 未所持なら文字色を少し薄くして「まだ持ってない感」を出す
+                                color: isUnobtained
+                                    ? Colors.black54
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ),
+
+                          // ▼ 現在の状態表示 (未所持 or Lv表示)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              // 未所持なら赤系、所持済みなら青系
+                              color: isUnobtained
+                                  ? Colors.red.shade50
+                                  : Colors.blueGrey.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isUnobtained
+                                    ? Colors.red.shade200
+                                    : Colors.transparent,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              isUnobtained ? "未所持" : "現在 Lv.$level",
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isUnobtained
+                                    ? Colors.red
+                                    : Colors.blueGrey.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("閉じる"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _loadData() async {
     final credits = await _repository.getCredits();
     final counts = await _repository.getItemCounts();
@@ -3107,6 +3330,36 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ),
                 ),
+                // ▼▼▼ 追加: 提供割合ボタン ▼▼▼
+                if (!isAllComplete) // コンプリート後は表示不要なら隠す
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _showRateDialog,
+                        icon: const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
+                        label: const Text(
+                          "提供割合",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                  ),
+                // ▲▲▲ 追加ここまで ▲▲▲
               ],
             ),
           ),
@@ -3749,9 +4002,15 @@ class _InputTabState extends State<InputTab>
 
       await _repository.addTransaction(newItem);
 
-      int newCredits = 0;
+      // ▼▼ 変更: ポイント加算処理とメッセージ分岐 ▼▼
+      int currentCredits = 0;
+      bool isPointAdded = false;
+
       if (_isGachaEnabled) {
-        newCredits = await _gachaRepository.addCredit();
+        // Record (int total, bool added) を受け取る
+        final result = await _gachaRepository.addCredit();
+        currentCredits = result.$1; // total
+        isPointAdded = result.$2; // added
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -3773,9 +4032,22 @@ class _InputTabState extends State<InputTab>
         String msg = '保存しました';
         Color color = Colors.blue;
 
-        if (_isGachaEnabled && newCredits > 0 && newCredits % 3 == 0) {
-          msg = 'ガチャが回せます！';
-          color = Colors.orange;
+        if (_isGachaEnabled) {
+          if (isPointAdded) {
+            // ポイントが加算された場合
+            if (currentCredits % 3 == 0) {
+              msg = 'ガチャが回せます！';
+              color = Colors.orange;
+            } else {
+              // 通常の保存＋ポイント付与
+              // 必要なら '保存しました (あと${3 - (currentCredits % 3)}回)' なども可
+              msg = '保存しました';
+            }
+          } else {
+            // 上限に達していた場合
+            msg = '保存しました（本日のポイント上限）';
+            color = Colors.grey;
+          }
         } else if (paymentDate != null) {
           msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
         }
@@ -5566,11 +5838,11 @@ class GachaData {
         // Lv4
         "彼女の夢はみんなの心を踊らせる作家になること。これがほんとのゴーストライター。",
         // Lv5
-        "本当にたくさんんことを話した。彼女は勉強熱心で、メモをとりながら聞いてくれるのが嬉しくて、つい私も長話したものだ。",
+        "本当にたくさんのことを話した。彼女は勉強熱心で、メモをとりながら聞いてくれるのが嬉しくて、つい私も長話したものだ。",
         // Lv6
         "お別れの日は急に来た。「パパの病気がどんどん悪くなってるみたいなの...私、戻らなきゃ。」彼女とはそれっきり...だと思っていたんだ。",
         // Lv7
-        "本日の対談には大人気作家のスト先生にお越しいただきました！早速お聞きしたいのですが、ゴーストでありながら人間界で作家を志されたっきかけは？",
+        "本日の対談には大人気作家のスト先生にお越しいただきました！早速お聞きしたいのですが、ゴーストでありながら人間界で作家を志されたきっかけは？",
         // Lv8
         "「ありがとうございます。実は私、幽霊界で元々作家を目指していたんです。でも、今は亡き父に「絶対に許さん！」って怒られちゃって。泣く泣く人間界を彷徨っていたら、ある人に出会ったんです。」",
         // Lv9
@@ -5587,7 +5859,7 @@ class GachaData {
       id: '2',
       rarity: 1,
       weight: 20,
-      iconData: Icons.sentiment_very_dissatisfied,
+      iconData: Icons.bug_report,
       baseName: 'バグ',
       descriptions: [
         // Lv1
@@ -5595,9 +5867,9 @@ class GachaData {
         // Lv2
         "なんでプログラムのエラーを「バグ（虫）」というのか知っているかい？",
         // Lv3
-        "昔ハーバード大学の計算機が故障を起こし、いつまで経っても直らなかった。",
+        "昔とある有名大学の計算機が故障を起こし、いつまで経っても直らなかった。",
         // Lv4
-        "しかし、当時グレース・ホッパーというコンピュータ科学の先駆者が率いるチームが決定的な原因を見つけたんだ。なんだと思う？",
+        "しかし、当時のうコンピュータ科学の先駆者が率いるチームが決定的な原因を見つけたんだ。なんだと思う？",
         // Lv5
         "計算機のリレー（スイッチ）に挟まっていた小さな「蛾（ガ）」だよ。",
         // Lv6
@@ -5612,232 +5884,213 @@ class GachaData {
         "どうだったかな。このアプリも入念にテストしてるけど、もしバグがあったらレビューで教えてくれよな。",
       ],
     ),
-    // -------------------------------------------------------
-    // No.3 ケルベロス
-    // -------------------------------------------------------
     GachaItem(
       id: '3',
-      rarity: 3,
+      rarity: 1,
       weight: 20,
       iconData: Icons.pets,
       baseName: 'ケルベロス',
       descriptions: [
         // Lv1
-        "捨てられていた子犬。よく吠える。",
+        "道路に捨てられていた。怪我をしている。誰がこんなことを...",
         // Lv2
-        "頭が2つあるような残像が見える。",
+        "毛布に包んでミルクをあげたら少し元気になった。今日からうちの子だよ。",
         // Lv3
-        "財布の紐を噛みちぎろうとするので注意。",
+        "怪我が治ってきた。やけに早い気が...まあ元気ならいいか。",
         // Lv4
-        "無駄遣いをしようとすると唸り声をあげる。",
+        "明らかにでかい。拾って2週間でドーベルマンと間違えられた。",
         // Lv5
-        "番犬として立派に成長した。",
+        "頭が2つに分かれた。これは...ケルベロス！！！そう思ったらまだちょっと小さいか。",
         // Lv6
-        "本当に頭が3つに分かれてきた気がする。",
+        "今日も火を吐く練習をしている。頭は3つになった。ボールで遊んでいた時代はどこへ...",
         // Lv7
-        "地獄の門ではなく、金庫の門を守っている。",
+        "でもなんだかんだ懐いてくれている。ぺろぺろされていると命の危険を感じるけど。",
         // Lv8
-        "その眼光はレシートの二重計上を見逃さない。",
+        "そろそろお別れみたいだ。ケルベロスの役目を知っているかい。",
         // Lv9
-        "炎を吐いて無駄な出費を焼き尽くす。",
+        "彼は本来冥界を守る番犬だ。どういうわけか地上に出てきてしまったが、地上の空気は本来彼にとっては猛毒だ。ここまで生きられたのも奇跡かもしれない。",
         // Lv10
-        "鉄壁の財務管理能力を持つ、冥界の番犬。もう赤字とは無縁だ。",
+        "でも大丈夫、彼にとって死は本来いるべき場所への帰還だ。おやすみ、ケル。そっちでは思う存分火を吐いて、3つの頭でおしゃべりして、仲良く過ごすんだよ。",
       ],
     ),
-    // -------------------------------------------------------
-    // No.5 タマゴ
-    // -------------------------------------------------------
     GachaItem(
-      id: '5',
-      rarity: 5,
+      id: '4',
+      rarity: 1,
       weight: 20,
       iconData: Icons.egg,
       baseName: 'タマゴ',
       descriptions: [
         // Lv1
-        "ただのタマゴ。何かが入っている。",
+        "冷蔵庫に入っていた卵を割ろうとしたのだが...硬いぞこいつ。",
         // Lv2
-        "少し温かい。脈動を感じる。",
+        "でも握っているとほのかに暖かい。時々中で何かが動いているのを感じる。",
         // Lv3
-        "ヒビが入った！中身はなんだ？",
+        "ちょっと育ててみるか。足元で毛布に包んで温めてみる。ペンギンごっこ。ペンギンごっこでそれやるやついないか。",
         // Lv4
-        "まだ割れない。殻が硬すぎる。",
+        "温めること1ヶ月。なかなか孵らない。受験も近いし、勉強しなきゃ。こたつに放り込んでしまえ。",
         // Lv5
-        "金色の光が漏れ出している...",
+        "いい加減捨てちゃいなよ。ママは言うけど、なんかすごいものが孵る気がするんだよなあ。",
         // Lv6
-        "中からゴソゴソと音がする。",
+        "ある日のこと。思い出したようにペンギンごっこをしていると、突然卵にヒビが入った。みるみる割れていき光が溢れる。",
         // Lv7
-        "殻の隙間から鋭い目が見えた。",
+        "出てきたのは...犬？手の平くらいちっちゃい犬がちょこんと卵かの中から見上げている。犬って卵から生まれるんだっけ？でも..とってもかわいい。",
         // Lv8
-        "もうすぐ生まれそうだ！",
+        "「なあんだ。犬か。犬はダメだよ。捨ててきちゃいなさい。」ひどい、何度言ってもママは聞く耳を持ってくれない。でも大丈夫だよ、私が君を守るからね。",
         // Lv9
-        "バリバリと音を立てて殻が砕ける！",
+        "その時、犬が玄関を飛び出し一目散に走っていった。追いかけたけど随分遠くに行ってしまったのだろう、見つかるわけもなかった。どこか遠くで、どしーんと鈍い音が聞こえた気がする。ママはこれ幸いと今日の夜ご飯の話をし出した。",
         // Lv10
-        "中から出てきたのは...君自身の「節約への情熱」だったのだ！(完)",
+        "今思えば、彼はうちで犬が飼えないことを知っていた気がする。どこか世界の深いところを射抜くような、賢そうな目を持っていたから。どこかで元気に、大切な人に出会えていたらいいな。",
       ],
     ),
     // -------------------------------------------------------
-    // No.6 炎の精霊
+    // No.5 炎の精霊
     // -------------------------------------------------------
     GachaItem(
-      id: '6',
-      rarity: 2,
+      id: '5',
+      rarity: 1,
       weight: 20,
       iconData: Icons.whatshot,
       baseName: '炎の精霊',
       descriptions: [
         // Lv1
-        "あ",
+        "線香花火の先っちょに宿る精霊。斜めに持つと長持ちするらしい。",
         // Lv2
-        "あ",
+        "蝋燭の揺蕩う炎に宿る精霊。ハッピーバースデーの歌が得意。",
         // Lv3
-        "あ",
+        "線香の小さな火種に宿る精霊。安寧をもたらす煙を放つ。",
         // Lv4
-        "あ",
+        "ガスコンロに宿る精霊。最近IHが増えて経営難に陥っているらしい。",
         // Lv5
-        "あ",
+        "マッチに宿る精霊。なかなかパワフルで、凍えそうなマッチ売りの少女を1箱で1週間温め続けたらしい。",
         // Lv6
-        "あ",
+        "その1週間の間に少女は驚くほどイメチェン、なんとガールズグループのオーディション番組の最終選考に。",
         // Lv7
-        "あ",
+        "「どんなアイドルになりたいの？」カリスマプロデューサーの直球の質問。",
         // Lv8
-        "あ",
+        "みんなの心に火をつけられるアイドルになりたいんです。どんなに辛くても、凍えていても、暖かく明るく人々を照らす、炎のような。",
         // Lv9
-        "あ",
+        "マッチに宿った炎の精霊は大切な人に身を捧げて燃え尽きてしまったが、彼の熱は確かに受け継がれたのだ。そしてその熱もまた誰かを温めるはず。",
         // Lv10
-        "あ",
+        "これは彼女が大人気ガールズグループ、「HONO（炎）」のメンバーとしてデビューする前のお話。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.7 スライム
-    // -------------------------------------------------------
     GachaItem(
-      id: '7',
+      id: '6',
       rarity: 1,
       weight: 20,
       iconData: Icons.water_drop,
       baseName: 'スライム',
       descriptions: [
         // Lv1
-        "あ",
+        "出た、スライム。なんかいきなりいっぱい強くなれそうな見た目。",
         // Lv2
-        "あ",
+        "まだ見た目は小さい。丸い容器に6つ入ったチーズのうちの1個くらいかな。",
         // Lv3
-        "あ",
+        "だんだん大きくなってきた。ちょっといい店で食べるチーズフォンデュくらいかな。",
         // Lv4
-        "あ",
+        "急に癒し系になった。好きな人を片っ端から癒してあげられる。",
         // Lv5
-        "あ",
+        "急に世界最弱急に弱体化されてしまった。なんだろう。色が関係あるのかな。",
         // Lv6
-        "あ",
+        "まだ弱そう。でもだいぶでかい。今韓国料理屋で出てくるたっぷりのチーズくらいかな。",
         // Lv7
-        "あ",
+        "これも弱そう。でも今までは結構シャバシャバだったけど、だんだんもったりとしてきた。",
         // Lv8
-        "あ",
+        "毒属性になった。相手にしたら相当手強いだろう。",
         // Lv9
-        "あ",
+        "火属性になった。その粘体から放出される豪炎は全てを焼き尽くす。",
         // Lv10
-        "あ",
+        "おめでとう。これで君も億万長者。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.8 マンドラゴラ
-    // -------------------------------------------------------
     GachaItem(
-      id: '8',
+      id: '7',
       rarity: 1,
       weight: 20,
       iconData: Icons.grass,
       baseName: 'マンドラゴラ',
       descriptions: [
         // Lv1
-        "あ",
+        "別名マンドレイク。恐ろしい伝説を持つ魔法の植物だ。",
         // Lv2
-        "あ",
+        "多くの伝説を持つが、実はナス科マンドラゴラ属の植物として実在するらしい。",
         // Lv3
-        "あ",
+        "幻覚、幻聴、そして過剰摂取による死をもたらす毒性を含む。",
         // Lv4
-        "あ",
+        "伝説をいくつか語ろう。有名なもので言えば、引き抜くとこの世のものとは思えない声で泣き叫び、聞いたものはショック死してしまうという伝説。",
         // Lv5
-        "あ",
+        "絞首刑に処された罪人の体液から生えると言う伝説がある。",
         // Lv6
-        "あ",
+        "このように死と強く結び付けられていたため、人間の代わりに犬に引き抜かせるというひどい方法もあったらしい。犬に謝れ！",
         // Lv7
-        "あ",
+        "一方、医学の面では強力な麻酔薬や鎮痛剤として用いられてきた。",
         // Lv8
-        "あ",
+        "魔術的な伝承により、媚薬（愛の妙薬）や、幸運をもたらすお守りとして高値で取引されていた。",
         // Lv9
-        "あ",
+        "錬金術ではホムンクルス、いわゆる人造人間の材料になると考えられたこともある。",
         // Lv10
-        "あ",
+        "もちろん忘れてならないのは、魔法学校で生徒を平気で気絶させる薬草学の授業の一環として用いられる点だ。",
       ],
     ),
-
-    // -------------------------------------------------------
-    // No.9 ウィンドエレメント
-    // -------------------------------------------------------
     GachaItem(
-      id: '9',
-      rarity: 2,
+      id: '8',
+      rarity: 1,
       weight: 20,
       iconData: Icons.air,
       baseName: 'ウィンドエレメント',
       descriptions: [
         // Lv1
-        "あ",
+        "風が吹いていると、なんだか出かけたくなる。囂々と家の間を吹き抜けていく音がすると、その風に乗って飛んでいくのを思い浮かべる。",
         // Lv2
-        "あ",
+        "いつだって、私の大事な時には風が吹いていた。そう、本当にいつだって。",
         // Lv3
-        "あ",
+        "産まれた時。大急ぎで病院に駆けつけた父が車のドアを開けると、あまりの強風でドアが開いてしまい隣の車にぶつけてしまったのだ。隣の人がいい人で許してくれて、無事立ち会えて良かったよ本当に。",
         // Lv4
-        "あ",
+        "幼稚園の入園式。ぽかぽか天気にそよ風が吹いていてほんとに気持ちいい道だった。道はね。いざ幼稚園に着いたらママと離れるのが嫌すぎて泣いていたらしい。大きくなってからも何度聞かされたか。",
         // Lv5
-        "あ",
+        "小学校の運動会。すごい追い風が吹いていて、飛ぶように走れて1番だった時。先生に「追い風参考だね笑」って言われて、意味も知らずに、「そう！すごいでしょ！」って自慢したんだ。",
         // Lv6
-        "あ",
+        "そういえば、あの時クラスが一緒だったあの子、運動会の後元気がなかったな。足が遅すぎる、お前のせいでクラスが負けた、逆に遅すぎる選手権優勝だ、って男子にいじめられてた気がする。なんでこんなこと覚えてるんだろ。彼女、元気かな。",
         // Lv7
-        "あ",
+        "中学校の修学旅行。せっかく遊園地に行ったのに、強風でジェットコースターも観覧車も止まっちゃってがっかりした記憶。でも、あの時暇でずっと話してた友達と今でも会ったりするんだよね。",
         // Lv8
-        "あ",
+        "受験の時。冬風が身に沁みる日だった。ママは朝なのにカツ丼作って「美味しいわよ〜」って言うから完食して胃もたれだし、歩いて10分の大学なのにもしものためにスタッドレス履いた車で送るって言い出すし。",
         // Lv9
-        "あ",
+        "社会人になった時。行きたかった商社に初めて出社する時、両親は嬉し涙まで流して見送ってくれた。そうだ。この人たちが私の一番の追い風だ。",
         // Lv10
-        "あ",
+        "そして今。今までで一番大きな商談なのに、強風で電車が止まった。しかたない、そんなに遠くじゃない。走れば間に合う。行け、「追い風参考」今日も髪を靡かせて。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.10 サンダーバード
-    // -------------------------------------------------------
     GachaItem(
-      id: '10',
-      rarity: 3,
+      id: '9',
+      rarity: 1,
       weight: 20,
       iconData: Icons.bolt,
       baseName: 'サンダーバード',
       descriptions: [
         // Lv1
-        "あ",
+        "稲光が家の近くに落ちた。焦げた切り株の上にちょこんといたのは、小さな白い鳥だった。",
         // Lv2
-        "あ",
+        "あまりに目がキュルキュルで家に連れて帰ってしまった。どことなくこの世の生き物じゃない感じがしたんだ。",
         // Lv3
-        "あ",
+        "ご飯もよく食べるし、すくすく育っている。しかし、最近ドアとか触ると静電気がすごいんだよな。",
         // Lv4
-        "あ",
+        "餌をあげていたら、突然ビリリ！と来た。大袈裟だって？違うんだよ。あれだよ、あの、ペン持ったらビリッとするやつあるだろ？あれの3倍くらい！違うの！本当だって！",
         // Lv5
-        "あ",
+        "どうやらこの子は自分の中で餌を利用して発電しているらしい。まあ、電気鰻みたいなもんか、と妻と納得した。家の電気を賄ってくれないかな〜。と寝転んで煎餅をビリビリ、じゃなくてバリバリ食べている妻の横でサンちゃんに餌をあげる。それは重荷ってやつじゃないか？",
         // Lv6
-        "あ",
+        "「いーいー！」サンちゃんが携帯の充電コードで遊んでいる。「こら！イタズラしないの！」しかし、よく見るとコンセントにも繋いでいないのに、携帯が充電されている。びっくりして妻と顔を見合わせた。",
         // Lv7
-        "あ",
+        "それ以来モバイルバッテリーの代わりに、サンちゃんを胸ポケットに入れて外出するようになった。便利すぎ...いやいや、かわいすぎる！",
         // Lv8
-        "あ",
+        "サンちゃんはできることがどんどん増えていく。前までは携帯の充電くらいしかできなかったのに。今やテレビもエアコンもつけられる。便利...いや、かわいいよ！サンちゃん、かわいいね！",
         // Lv9
-        "あ",
+        "とうとう電気を解約した。我が家は今やオールサンちゃん化だ。寝ている時でもどの電化製品にも完璧に電気を送り届けてくれるサンちゃん。しかし、この寝姿よ。ふふ、姿仕事してるとは思わないよなあ。いつもありがとね。",
         // Lv10
-        "あ",
+        "「ぜひ！ぜひうちに来ていただきたく！」サンちゃんの評判は広まり、最近できた「サンちゃん発電所」で彼は日本の30％もの電気を1人、いや、1鳥で賄っている。最初は心配だったけど、やりがいもあるみたいだし楽しそうだ。家に帰ってきて仕事のことをピーチクパーチク話すサンちゃんは便利だけど、それ以上に大切な僕らの家族だ。",
       ],
     ),
 
@@ -5845,32 +6098,32 @@ class GachaData {
     // No.11 アイスゴーレム
     // -------------------------------------------------------
     GachaItem(
-      id: '11',
-      rarity: 3,
+      id: '10',
+      rarity: 1,
       weight: 20,
       iconData: Icons.ac_unit,
       baseName: 'アイスゴーレム',
       descriptions: [
         // Lv1
-        "あ",
+        "ゴーレム系は属性がたくさんあるのかな。使い回す気か！いやいや、全然違う説明書きますよちゃんと！",
         // Lv2
-        "あ",
+        "ハンバーガー屋とかで最後に残ったジュースの氷にそっくり。あのちっちゃいし、もう飲み物ないんだっていう悲しさであんま美味しくないやつ。それです。伸びしろ伸びしろ！",
         // Lv3
-        "あ",
+        "冷蔵庫についてる自動製氷器で作られる氷にそっくり。量産型でいいのかお前は！",
         // Lv4
-        "あ",
+        "製氷器がない冷蔵庫で百均の製氷皿で作る氷にそっくり。こっちの方が大きくて氷って感じがするよね。猫ちゃんの顔のやつとかもあるのかわいい。",
         // Lv5
-        "あ",
+        "カチ割り氷にそっくり。お酒飲みにはたまらない。家に氷ない時にどうしても冷たくしたくて、コンビニに行く時に買うのはこう言うのじゃない？",
         // Lv6
-        "あ",
+        "来た！いい感じのバーとかでしか見ない、あの完全に球体の氷！どうやって作ってるんだろ。",
         // Lv7
-        "あ",
+        "あ、あれ？サラサラになっちゃった。原宿のカフェが夏だけやってるかき氷にそっくり。おいおい、大衆に迎合していいのか。",
         // Lv8
-        "あ",
+        "うおおお！かき氷の砕かれる前の氷塊にそっくり！サラサラになってたのは現場視察だったのか、すまないすまない。末端まで把握するのが人の上に立つ義務だよね。",
         // Lv9
-        "あ",
+        "...彼はその後現れなくなってしまった。最近の夏は暑いし、溶けてしまったのかな...心配だ。いやきっと、彼は生きてる。次は田舎の広いおばあちゃんちでゲームのためにスーパーコンピュータを冷やせるくらいの氷になって戻ってきてくれるんだろ！なあ、そうだろ！",
         // Lv10
-        "あ",
+        "ある日、南極の流氷が立ち上がり歩き始めた。お前は...あの時の！どうやら地球温暖化防止のために世界中を練り歩くらしい。お前ら！氷の巨人に地鳴らしされるなよ！地球温暖化防止のために、1人1人ができることを。（氷の巨人になって練り歩くのはやらなくていいです。）",
       ],
     ),
 
@@ -5878,32 +6131,32 @@ class GachaData {
     // No.12 太陽神
     // -------------------------------------------------------
     GachaItem(
-      id: '12',
-      rarity: 5,
+      id: '11',
+      rarity: 1,
       weight: 20,
       iconData: Icons.wb_sunny,
       baseName: '太陽神',
       descriptions: [
         // Lv1
-        "あ",
+        "生命の源や世界の秩序を司る最高神。一つの神の名前じゃなくて、太陽の神全体のことなんだ。例えば、日本神話のアマテラス、エジプト神話のラー、ギリシャ神話のアポロンなんかが有名だね。",
         // Lv2
-        "あ",
+        "日本神話の太陽神、アマテラスは日本の八百万の神のボス。1番偉い、天と地を照らす神様だよ。弟スサノオがあんまり乱暴だから洞窟に引き篭っちゃって世界が荒れたんだけど、他の神様たちで洞窟の前で宴会をやって、何かしらって出てきたところを捕まえたんだよね。象徴は八咫鏡（ヤタノカガミ）、今でも伊勢神宮に祀られてるよ。",
         // Lv3
-        "あ",
+        "エジプト神話の太陽神、ラーは、隼（はやぶさ）の頭を持った男性の姿で描かれる神々の王だよ。でも時間によって姿が変わって、朝はフンコロガシの姿、、昼は「ラー」、夕方は老人の姿になるんだ。なぜにフンコロガシ...エジプトの王ファラオは、ラーの息子と呼ばれて強権を奮ったんだよね。",
         // Lv4
-        "あ",
+        "ギリシャ神話の太陽神、アポロンはオリュンポス十二神の1人で、ゼウスの息子なんだ。太陽の神であると同時に、音楽、詩、予言、弓術、そして医術の神の面も持つんだ。多才だね。基本は好青年なんだけど、プライドが高くて自分を侮辱した者に疫病の矢を放つっていうぶっ飛んだ一面も持つんだ。怖い怖い。",
         // Lv5
-        "あ",
+        "太陽神は万物にエネルギーを与えると考えられているよ。離れていても力を与える...ハンドパワーってやつかしら。",
         // Lv6
-        "あ",
+        "万物にエネルギーだから、もちろん植物も育てちゃう。庭いじりとかも好きなのかな。",
         // Lv7
-        "あ",
+        "ラーでも書いたけど、昔は王様の権威づけに利用されたらしいよ。私は神だ！って結構ぶっ飛んでるよね。",
         // Lv8
-        "あ",
+        "全てを照らすことから、隠し事を見逃さない正義の象徴の面もあるらしい。真実はいつも1つ！",
         // Lv9
-        "あ",
+        "毎日昇って沈むから、生と死のサイクルを司っているらしい。そうだとすれば、日が長い夏の方が生きてる時間が長そうでお得だよね。",
         // Lv10
-        "あ",
+        "考えてみれば、初日の出を拝んだり、「お天道様が見てる」と言ったり、今の我々でも太陽にどこか神性を感じているのかもね。以上、長くなりましたが太陽神講座でした！",
       ],
     ),
 
@@ -6182,7 +6435,7 @@ class GachaData {
       baseName: '優勝トロフィー',
       descriptions: [
         // Lv1
-        "迷子選手権で優勝しちゃったトロフィー。",
+        "大切な人と抱えた、思い出のトロフィーなんです。そう言って彼女はお題ヤカに笑った。",
         // Lv2
         "足が遅すぎる選手権で優勝しちゃったトロフィー。",
         // Lv3
