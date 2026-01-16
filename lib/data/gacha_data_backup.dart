@@ -631,14 +631,14 @@ class GachaData {
     ),
 
     // -------------------------------------------------------
-    // No.20 鋼鉄ビートル
+    // No.20 優勝トロフィー
     // -------------------------------------------------------
     GachaItem(
       id: '20',
-      rarity: 3,
+      rarity: 5,
       weight: 20,
-      iconData: Icons.bug_report,
-      baseName: '鋼鉄ビートル',
+      iconData: Icons.emoji_events,
+      baseName: '優勝トロフィー',
       descriptions: [
         // Lv1
         "あ",
@@ -662,7 +662,6 @@ class GachaData {
         "あ",
       ],
     ),
-
     // -------------------------------------------------------
     // No.21 リヴァイアサン
     // -------------------------------------------------------
@@ -2079,16 +2078,15 @@ class GachaData {
         "あ",
       ],
     ),
-
     // -------------------------------------------------------
-    // No.64 優勝トロフィー
+    // No.64 鋼鉄ビートル
     // -------------------------------------------------------
     GachaItem(
       id: '64',
-      rarity: 5,
+      rarity: 3,
       weight: 20,
-      iconData: Icons.emoji_events,
-      baseName: '優勝トロフィー',
+      iconData: Icons.bug_report,
+      baseName: '鋼鉄ビートル',
       descriptions: [
         // Lv1
         "あ",

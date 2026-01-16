@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart'; // ▼▼ kDebugModeのために追加 ▼▼
 import 'package:flutter/material.dart';
 import '../repositories/gacha_repository.dart';
 import '../models/gacha_item.dart';
@@ -42,34 +43,62 @@ class _GachaScreenState extends State<GachaScreen> {
   Future<void> _spinGacha() async {
     if (_credits < 3) return;
 
+    // ローディング表示
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-    Navigator.pop(context);
 
-    // 消費
-    final success = await _repository.consumeCredits(3);
-    if (!success) return;
-
-    // 抽選
+    // 抽選処理 (まだ消費しない)
     final item = await _repository.drawItem();
-    final newCount = await _repository.unlockItem(item.id);
 
-    // カンスト救済
-    if (newCount > _maxLevel) {
-      await _repository.addCredits(2);
+    // 演出のため少し待つ
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (!mounted) return;
+    Navigator.pop(context); // ローディングを閉じる
+
+    // コンプリート済みの場合
+    if (item == null) {
+      _showCompleteDialog();
+      return;
     }
 
-    // クレジット情報を更新するために再ロード
+    // 消費処理
+    final success = await _repository.consumeCredits(3);
+    if (!success) {
+      // 万が一消費できなかった場合
+      return;
+    }
+
+    // 保存処理
+    final newCount = await _repository.unlockItem(item.id);
+
+    // 画面更新
     await _loadData();
 
     if (mounted) {
       _showResultDialog(item, newCount);
     }
+  }
+
+  void _showCompleteDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("コンプリート！"),
+        content: const Text(
+          "全てのキャラクターが最大レベルに到達しました！\nこれ以上ガチャを引くことはできません。\n\n次回のアップデートをお楽しみに！",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showHistoryDialog(GachaItem item, int maxLevel) {
@@ -87,7 +116,6 @@ class _GachaScreenState extends State<GachaScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    // ▼▼ IDを表示 ▼▼
                     Text(
                       "No.${item.id}",
                       style: const TextStyle(
@@ -170,7 +198,6 @@ class _GachaScreenState extends State<GachaScreen> {
     final int level = item.getStage(count);
     final bool isNew = count == 1;
     final bool isMax = level == _maxLevel;
-    final bool isDuplicate = count > _maxLevel;
 
     String title = "LEVEL UP!!";
     Color titleColor = Colors.orange;
@@ -178,12 +205,9 @@ class _GachaScreenState extends State<GachaScreen> {
     if (isNew) {
       title = "NEW GET!!";
       titleColor = Colors.redAccent;
-    } else if (isMax && count == _maxLevel) {
+    } else if (isMax) {
       title = "MAX EVOLUTION!!";
       titleColor = Colors.purpleAccent;
-    } else if (isDuplicate) {
-      title = "DUPLICATE";
-      titleColor = Colors.grey;
     }
 
     showDialog(
@@ -234,7 +258,6 @@ class _GachaScreenState extends State<GachaScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              // ▼▼ IDを表示 ▼▼
               Text(
                 "No.${item.id}",
                 style: const TextStyle(
@@ -261,34 +284,7 @@ class _GachaScreenState extends State<GachaScreen> {
               ),
               const SizedBox(height: 20),
 
-              if (isDuplicate) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.auto_awesome, color: Colors.orange, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        "2pt 還元されました",
-                        style: TextStyle(
-                          color: Colors.deepOrange,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ] else if (!isMax) ...[
+              if (!isMax) ...[
                 LinearProgressIndicator(
                   value: level / _maxLevel,
                   minHeight: 10,
@@ -335,6 +331,8 @@ class _GachaScreenState extends State<GachaScreen> {
         .length;
     final int totalItems = _allItems.length;
     final double completeRate = totalItems > 0 ? maxLevelItems / totalItems : 0;
+    // 全コンプリート判定
+    final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
 
     return Scaffold(
       backgroundColor: Colors.yellow.shade50,
@@ -420,16 +418,20 @@ class _GachaScreenState extends State<GachaScreen> {
                   child: ElevatedButton(
                     onPressed: spins > 0 ? _spinGacha : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
+                      backgroundColor: isAllComplete
+                          ? Colors.grey
+                          : Colors.orange,
                       foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey.shade300,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       elevation: spins > 0 ? 4 : 0,
                     ),
                     child: Text(
-                      spins > 0
-                          ? "ガチャを回す (3pt)"
-                          : "あと ${3 - (_credits % 3)} 回入力でガチャ",
+                      isAllComplete
+                          ? "コンプリート済み"
+                          : (spins > 0
+                                ? "ガチャを回す (3pt)"
+                                : "あと ${3 - (_credits % 3)} 回入力でガチャ"),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -462,6 +464,18 @@ class _GachaScreenState extends State<GachaScreen> {
                     onTap: isUnlocked
                         ? () => _showResultDialog(item, count)
                         : null,
+                    // ▼▼ 修正: kDebugModeの時だけ有効にする ▼▼
+                    onLongPress: kDebugMode
+                        ? () async {
+                            final newCount = await _repository.unlockItem(
+                              item.id,
+                            );
+                            await _loadData();
+                            if (mounted) {
+                              _showResultDialog(item, newCount);
+                            }
+                          }
+                        : null,
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -481,7 +495,6 @@ class _GachaScreenState extends State<GachaScreen> {
                             ),
                         ],
                       ),
-                      // ▼▼ Stackに変更して左上に番号を表示 ▼▼
                       child: Stack(
                         children: [
                           Column(
@@ -542,7 +555,6 @@ class _GachaScreenState extends State<GachaScreen> {
                               const SizedBox(height: 10),
                             ],
                           ),
-                          // ID表示部分
                           Positioned(
                             top: 8,
                             left: 8,

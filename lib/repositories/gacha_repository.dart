@@ -44,16 +44,34 @@ class GachaRepository {
     return current;
   }
 
-  Future<GachaItem> drawItem() async {
-    final List<GachaItem> items = GachaData.monsters;
-    int totalWeight = items.fold(0, (int sum, item) => sum + item.weight);
+  /// ガチャを引く
+  /// レベルMAX(10)に達していないアイテムの中から抽選する
+  /// 全てコンプリートしている場合は null を返す
+  Future<GachaItem?> drawItem() async {
+    // 最新の所持状況を確認
+    await getItemCounts();
+    final List<GachaItem> allItems = GachaData.monsters;
+
+    // レベル10未満のアイテムだけを抽選候補にする
+    final List<GachaItem> candidates = allItems.where((item) {
+      final count = _counts[item.id] ?? 0;
+      return count < 10;
+    }).toList();
+
+    // 候補がなければコンプリート状態
+    if (candidates.isEmpty) {
+      return null;
+    }
+
+    // 重み付け抽選
+    int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
     int randomValue = Random().nextInt(totalWeight);
 
-    for (final item in items) {
+    for (final item in candidates) {
       randomValue -= item.weight;
       if (randomValue < 0) return item;
     }
-    return items.last;
+    return candidates.last;
   }
 
   // --- クレジット管理 ---
@@ -77,7 +95,7 @@ class GachaRepository {
     return current;
   }
 
-  // ▼▼ 追加: 任意のポイントを加算する（被り救済用など） ▼▼
+  // 任意のポイントを加算する
   Future<int> addCredits(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;
