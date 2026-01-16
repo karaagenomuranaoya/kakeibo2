@@ -177,6 +177,13 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     const Color btnColor = Colors.white;
     const Color shadowColor = Colors.black12;
 
+    // 現在のテキストを取得
+    String text = widget.controller.text;
+
+    // ▼▼ 判定：末尾が "x" で終わっているか？ ▼▼
+    // "100x" の状態なら true になり、ボタンが税率に変わります
+    bool isMultiplyMode = text.isNotEmpty && text.endsWith("x");
+
     // ▼▼ ここで状態を見てボタンを切り替える判定を行う ▼▼
     final bool hasOperator = [
       "+",
@@ -350,8 +357,22 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
                               Expanded(
                                 child: Row(
                                   children: [
-                                    buildKey("0"),
-                                    buildKey("00", flex: 2),
+                                    // 左側のボタン (通常は0、xの後は 1.1)
+                                    buildKey(
+                                      isMultiplyMode ? "1.1" : "0",
+                                      // 税率モードの時は少し色を変えて強調しても良いですが、
+                                      // ここではシンプルに文字色だけ変えるか、標準のままでいきます。
+                                      // 今回は分かりやすく太字のままにします。
+                                    ),
+
+                                    // 中央のボタン (通常は00、xの後は 1.08)
+                                    // flex: 2 で横幅2倍
+                                    buildKey(
+                                      isMultiplyMode ? "1.08" : "00",
+                                      flex: 2,
+                                    ),
+
+                                    // 右のプラスボタン
                                     buildKey("+", textColor: Colors.black87),
                                   ],
                                 ),
