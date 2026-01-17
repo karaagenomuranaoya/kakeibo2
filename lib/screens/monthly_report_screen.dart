@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 追加
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart'; // 追加
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
@@ -24,6 +26,9 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
   late int _currentMonth;
   int _currentTabIndex = 0;
 
+  // ▼▼ 追加: チュートリアル用のキー ▼▼
+  final GlobalKey _titleKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +44,74 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
         });
       }
     });
+
+    // ▼▼ 追加: 画面描画後にチュートリアルチェック ▼▼
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkTutorial();
+    });
+  }
+
+  // ▼▼ 追加: チュートリアル表示ロジック ▼▼
+  Future<void> _checkTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    // 入力画面とは別のキーで管理
+    final bool isShown = prefs.getBool('is_report_tutorial_shown_v1') ?? false;
+
+    if (!isShown && mounted && _titleKey.currentContext != null) {
+      _showTutorial();
+      await prefs.setBool('is_report_tutorial_shown_v1', true);
+    }
+  }
+
+  void _showTutorial() {
+    TutorialCoachMark(
+      targets: [
+        TargetFocus(
+          identify: "report_title",
+          keyTarget: _titleKey,
+          alignSkip: Alignment.bottomRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: const [
+                    Text(
+                      "過去の履歴へ",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "ここをタップすると、カレンダーから\n過去の年月にジャンプできます。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+          shape: ShapeLightFocus.RRect,
+          radius: 10,
+        ),
+      ],
+      colorShadow: Colors.black,
+      textSkip: "閉じる",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {},
+      onClickTarget: (target) {},
+      onClickOverlay: (target) {},
+      onSkip: () {
+        return true;
+      },
+    ).show(context: context);
   }
 
   @override
@@ -59,7 +132,6 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
     });
   }
 
-  // ▼▼ 追加: 年月選択ダイアログを表示してジャンプする処理 ▼▼
   Future<void> _pickMonth() async {
     final DateTime now = DateTime.now();
     final DateTime current = DateTime(_currentYear, _currentMonth);
@@ -69,13 +141,11 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
       initialDate: current,
       firstDate: DateTime(2000),
       lastDate: DateTime(2101),
-      initialDatePickerMode: DatePickerMode.year, // 年から選択しやすくする
+      initialDatePickerMode: DatePickerMode.year,
       helpText: '移動先の年月を選択',
     );
 
     if (picked != null) {
-      // 基準(index 1000) = now
-      // ターゲットのindexを計算
       final int diffMonths =
           (picked.year - now.year) * 12 + (picked.month - now.month);
       final int targetPage = 1000 + diffMonths;
@@ -89,11 +159,11 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        // ▼▼ 変更: タイトルをタップ可能にする ▼▼
         title: GestureDetector(
+          key: _titleKey, // ▼▼ 追加: キーを設定 ▼▼
           onTap: _pickMonth,
           child: Container(
-            color: Colors.transparent, // タップ判定を広げる
+            color: Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -135,6 +205,7 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
   }
 }
 
+// ... (以下の MonthPage クラスなどは変更なしのため省略) ...
 class MonthPage extends StatefulWidget {
   final int year;
   final int month;
@@ -212,7 +283,6 @@ class _MonthPageState extends State<MonthPage> {
                 : GraphView(
                     history: _history,
                     expenseTags: _expenseTags,
-                    // 凡例タップ時の処理
                     onLegendTap: (expense, color) {
                       Navigator.push(
                         context,
@@ -221,7 +291,6 @@ class _MonthPageState extends State<MonthPage> {
                             filterValue: expense,
                             filterKey: 'expense',
                             color: color,
-                            // ▼▼ 変更: 固定月ではなく、初期表示月として渡す ▼▼
                             initialDate: DateTime(widget.year, widget.month),
                           ),
                         ),

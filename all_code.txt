@@ -21,6 +21,8 @@ dependencies:
   shared_preferences: ^2.5.4
   intl: ^0.20.2
   fl_chart: ^0.69.0
+  tutorial_coach_mark: ^1.2.9
+
 
 dev_dependencies:
   flutter_test:
@@ -916,6 +918,30 @@ class CategoryTag {
 ```
 
 
+--- FILE: lib/models/bonus_item.dart ---
+```dart
+import 'package:flutter/material.dart';
+
+/// ボーナスアイテムのモデル定義
+class BonusItem {
+  final int targetDays;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String description;
+
+  const BonusItem({
+    required this.targetDays,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.description,
+  });
+}
+
+```
+
+
 --- FILE: lib/models/gacha_item.dart ---
 ```dart
 import 'package:flutter/material.dart';
@@ -1649,811 +1675,35 @@ class _HistoryPageState extends State<_HistoryPage> {
 
 --- FILE: lib/screens/gacha_screen.dart ---
 ```dart
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../repositories/gacha_repository.dart';
-import '../models/gacha_item.dart';
+import 'gacha/gacha_game_tab.dart';
+import 'gacha/bonus_tab.dart';
 
-class GachaScreen extends StatefulWidget {
+class GachaScreen extends StatelessWidget {
   const GachaScreen({super.key});
 
   @override
-  State<GachaScreen> createState() => _GachaScreenState();
-}
-
-class _GachaScreenState extends State<GachaScreen> {
-  final GachaRepository _repository = GachaRepository();
-  int _credits = 0;
-  Map<String, int> _itemCounts = {};
-  List<GachaItem> _allItems = [];
-  bool _isLoading = true;
-
-  static const int _maxLevel = 10;
-  // ▼▼ 変更: 1回あたりの消費ポイントを1に変更 ▼▼
-  static const int _costPerSpin = 1;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  // ... _showRateDialog などのメソッドは変更なしのため省略 ...
-  void _showRateDialog() {
-    // 省略（元のコードのまま）
-    // もしコード全体が必要であれば再度提示しますが、ここは変更ありません
-    final availableItems = _allItems.where((item) {
-      final int count = _itemCounts[item.id] ?? 0;
-      final int level = item.getStage(count);
-      return level < _maxLevel;
-    }).toList();
-
-    final int totalAvailable = availableItems.length;
-
-    if (totalAvailable == 0) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text("提供割合"),
-          content: const Text("全てのキャラクターが最大レベルです。\n排出対象はありません。"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("閉じる"),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    final double rate = 100.0 / totalAvailable;
-    final String rateString = rate.toStringAsFixed(2);
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            "提供割合",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "現在の排出確率",
-                          style: TextStyle(fontSize: 12, color: Colors.brown),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Text("全キャラ均等"),
-                            const Spacer(),
-                            Text(
-                              "$rateString %",
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "【仕様について】",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    "・Lv.10(最大)に到達したキャラクターは排出されなくなります。\n・排出確率は、残りの排出対象キャラクター間で均等に分配されます。",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "排出対象一覧 ($totalAvailable種)",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const Divider(),
-                  ...availableItems.map((item) {
-                    final int count = _itemCounts[item.id] ?? 0;
-                    final int level = item.getStage(count);
-                    final bool isUnobtained = count == 0;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: isUnobtained
-                                  ? Colors.grey.shade200
-                                  : Colors.grey.shade100,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              item.iconData,
-                              size: 20,
-                              color: isUnobtained
-                                  ? Colors.grey.shade400
-                                  : Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              item.baseName,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: isUnobtained
-                                    ? Colors.black54
-                                    : Colors.black87,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isUnobtained
-                                  ? Colors.red.shade50
-                                  : Colors.blueGrey.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isUnobtained
-                                    ? Colors.red.shade200
-                                    : Colors.transparent,
-                                width: 1,
-                              ),
-                            ),
-                            child: Text(
-                              isUnobtained ? "未所持" : "現在 Lv.$level",
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isUnobtained
-                                    ? Colors.red
-                                    : Colors.blueGrey.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("閉じる"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _loadData() async {
-    final credits = await _repository.getCredits();
-    final counts = await _repository.getItemCounts();
-    final items = await _repository.getItems();
-
-    if (mounted) {
-      setState(() {
-        _credits = credits;
-        _itemCounts = Map.from(counts);
-        _allItems = items;
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _spinGacha() async {
-    // ▼▼ 変更: コスト判定を1に変更 ▼▼
-    if (_credits < _costPerSpin) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    final item = await _repository.drawItem();
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (!mounted) return;
-    Navigator.pop(context);
-
-    if (item == null) {
-      _showCompleteDialog();
-      return;
-    }
-
-    // ▼▼ 変更: 消費ポイントを1に変更 ▼▼
-    final success = await _repository.consumeCredits(_costPerSpin);
-    if (!success) return;
-
-    final newCount = await _repository.unlockItem(item.id);
-    await _loadData();
-
-    if (mounted) {
-      _showResultDialog(item, newCount);
-    }
-  }
-
-  // _showCompleteDialog, _showHistoryDialog, _showResultDialog は変更なしのため省略
-  // 省略したメソッドも必要であれば統合しますが、ここではロジックに関わるbuildメソッドを中心に記述します。
-  void _showCompleteDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("コンプリート！"),
-        content: const Text(
-          "全てのキャラクターが最大レベルに到達しました！\nこれ以上ガチャを引くことはできません。\n\n次回のアップデートをお楽しみに！",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showHistoryDialog(GachaItem item, int maxLevel) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Text(
-                      "No.${item.id}",
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      "${item.baseName}の進化記録",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Flexible(
-                child: SizedBox(
-                  width: double.maxFinite,
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: maxLevel > _maxLevel ? _maxLevel : maxLevel,
-                    itemBuilder: (context, index) {
-                      final level = index + 1;
-                      return ListTile(
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade50,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: item.getColor(level).withOpacity(0.5),
-                              width: 2,
-                            ),
-                          ),
-                          child: Icon(
-                            item.iconData,
-                            color: item.getColor(level),
-                            size: 20,
-                          ),
-                        ),
-                        title: Text(
-                          item.getName(level),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          item.getDescription(level),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        trailing: Text(
-                          "Lv.$level",
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("閉じる"),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showResultDialog(GachaItem item, int count) {
-    final int level = item.getStage(count);
-    final bool isNew = count == 1;
-    final bool isMax = level == _maxLevel;
-
-    String title = "LEVEL UP!!";
-    Color titleColor = Colors.orange;
-
-    if (isNew) {
-      title = "NEW GET!!";
-      titleColor = Colors.redAccent;
-    } else if (isMax) {
-      title = "MAX EVOLUTION!!";
-      titleColor = Colors.purpleAccent;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 30),
-              GestureDetector(
-                onTap: () => _showHistoryDialog(item, level),
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.grey.shade100,
-                    border: Border.all(
-                      color: item.getColor(count).withOpacity(0.5),
-                      width: 4,
-                    ),
-                  ),
-                  child: Icon(
-                    item.iconData,
-                    size: 60,
-                    color: item.getColor(count),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                item.getName(count),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                "No.${item.id}",
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 5),
-
-              Text(
-                "Lv.$level / $_maxLevel",
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey,
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // ▼▼ 修正: テキストエリアをスクロール可能に変更 ▼▼
-              Container(
-                constraints: const BoxConstraints(maxHeight: 80), // 高さを制限
-                width: double.maxFinite, // 横幅を確保して中央揃えを維持
-                child: SingleChildScrollView(
-                  child: Text(
-                    item.getDescription(count),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                ),
-              ),
-
-              // ▲▲ 修正ここまで ▲▲
-              const SizedBox(height: 20),
-
-              if (!isMax) ...[
-                LinearProgressIndicator(
-                  value: level / _maxLevel,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey.shade200,
-                  color: item.getColor(count),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  "あと ${_maxLevel - level}枚で最大進化",
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 20),
-              ],
-
-              OutlinedButton.icon(
-                onPressed: () => _showHistoryDialog(item, level),
-                icon: const Icon(Icons.history_edu),
-                label: const Text("進化の記録を見る"),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('閉じる'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    // ▼▼ 変更: 1pt = 1回なので、spins = _credits そのまま ▼▼
-    final int spins = _credits;
-
-    final int maxLevelItems = _itemCounts.entries
-        .where((e) => e.value >= _maxLevel)
-        .length;
-    final int totalItems = _allItems.length;
-    final double completeRate = totalItems > 0 ? maxLevelItems / totalItems : 0;
-    final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
-
-    return Scaffold(
-      backgroundColor: Colors.yellow.shade50,
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(30),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "ガチャチケット", // クレジットよりチケットの方がしっくりくるかも
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              "$_credits",
-                              style: const TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Text(
-                              " 枚",
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text(
-                          "伝説到達率",
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        Text(
-                          "$maxLevelItems / $totalItems (${(completeRate * 100).toStringAsFixed(0)}%)",
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                // ▼▼ 変更: 中途半端なプログレスバーを削除（1入力1ポイントなので不要） ▼▼
-                const SizedBox(height: 20),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: spins > 0 ? _spinGacha : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isAllComplete
-                          ? Colors.grey
-                          : Colors.orange,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade300,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      elevation: spins > 0 ? 4 : 0,
-                    ),
-                    child: Text(
-                      isAllComplete
-                          ? "コンプリート済み"
-                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "入力をするとチケットが貰えます"),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                // ▼▼ 追加: 無料であることの明記 & 提供割合ボタン ▼▼
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // 左側：無料注釈
-                      const Text(
-                        "※ガチャは完全無料です。課金要素はありません。",
-                        style: TextStyle(fontSize: 10, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                // ▲▲ 追加ここまで ▲▲
-                if (!isAllComplete)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: _showRateDialog,
-                        icon: const Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                        label: const Text(
-                          "提供割合",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const TabBar(
+            labelColor: Colors.orange,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Colors.orange,
+            tabs: [
+              Tab(text: 'ガチャ', icon: Icon(Icons.star)),
+              Tab(text: 'ボーナス', icon: Icon(Icons.calendar_month)),
+            ],
           ),
-          // リスト部分は変更なし
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 0.8,
-                ),
-                itemCount: _allItems.length,
-                itemBuilder: (context, index) {
-                  final item = _allItems[index];
-                  final int count = _itemCounts[item.id] ?? 0;
-                  final int level = item.getStage(count);
-                  final bool isUnlocked = count > 0;
-                  final Color itemColor = item.getColor(count);
-
-                  return GestureDetector(
-                    onTap: isUnlocked
-                        ? () => _showResultDialog(item, count)
-                        : null,
-                    onLongPress: kDebugMode
-                        ? () async {
-                            final newCount = await _repository.unlockItem(
-                              item.id,
-                            );
-                            await _loadData();
-                            if (mounted) {
-                              _showResultDialog(item, newCount);
-                            }
-                          }
-                        : null,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                          color: isUnlocked
-                              ? itemColor.withOpacity(0.5)
-                              : Colors.grey.shade200,
-                          width: level == _maxLevel ? 3 : 1.5,
-                        ),
-                        boxShadow: [
-                          if (isUnlocked)
-                            BoxShadow(
-                              color: itemColor.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                        ],
-                      ),
-                      child: Stack(
-                        children: [
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Center(
-                                  child: isUnlocked
-                                      ? Icon(
-                                          item.iconData,
-                                          size: 40,
-                                          color: itemColor,
-                                        )
-                                      : Icon(
-                                          Icons.lock,
-                                          size: 30,
-                                          color: Colors.grey.shade300,
-                                        ),
-                                ),
-                              ),
-                              if (isUnlocked)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        "Lv.$level",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: itemColor,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(2),
-                                        child: LinearProgressIndicator(
-                                          value: level / _maxLevel,
-                                          minHeight: 4,
-                                          backgroundColor: Colors.grey.shade100,
-                                          color: itemColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              else
-                                const Text(
-                                  "???",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              const SizedBox(height: 10),
-                            ],
-                          ),
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Text(
-                              "No.${item.id}",
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: isUnlocked
-                                    ? Colors.grey.shade500
-                                    : Colors.grey.shade300,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
+        ),
+        body: const TabBarView(
+          children: [
+            GachaGameTab(), // 従来のガチャ画面
+            BonusTab(), // 新しいボーナス画面
+          ],
+        ),
       ),
     );
   }
@@ -2638,8 +1888,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// ▼▼ 追加: ライブラリのインポート ▼▼
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+
 import '../models/category_tag.dart';
-// ▼ 今回作成したサービスをインポート
 import '../services/input_service.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
@@ -2674,7 +1926,7 @@ class _InputTabState extends State<InputTab>
   final FocusNode _memoFocusNode = FocusNode();
 
   // --- Services & Repositories ---
-  final InputService _inputService = InputService(); // New!
+  final InputService _inputService = InputService();
   final SettingsRepository _settingsRepository = SettingsRepository();
 
   // --- State ---
@@ -2701,6 +1953,11 @@ class _InputTabState extends State<InputTab>
   Timer? _flashTimer;
 
   static const double _keyboardHeight = 312.0;
+
+  // ▼▼ 追加: チュートリアル用のキー ▼▼
+  final GlobalKey _paymentKey = GlobalKey();
+  final GlobalKey _categoryKey = GlobalKey();
+  TutorialCoachMark? _tutorialCoachMark;
 
   @override
   bool get wantKeepAlive => true;
@@ -2796,7 +2053,123 @@ class _InputTabState extends State<InputTab>
         _isCardPayment = savedIsCard;
         _isLoading = false;
       });
+
+      // ▼▼ 追加: ロード完了後にチュートリアルチェック ▼▼
+      // 画面描画が終わるのを待ってから実行
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkTutorial();
+      });
     }
+  }
+
+  // ▼▼ 追加: チュートリアル表示ロジック ▼▼
+  Future<void> _checkTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isShown = prefs.getBool('is_input_tutorial_shown_v1') ?? false;
+
+    if (!isShown && mounted) {
+      _showTutorial();
+      await prefs.setBool('is_input_tutorial_shown_v1', true);
+    }
+  }
+
+  void _showTutorial() {
+    // ターゲットの作成
+    List<TargetFocus> targets = [];
+
+    // 1. 支払い方法選択（表示されている場合のみ）
+    if (_showCardOnInput && _paymentKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "payment_selector",
+          keyTarget: _paymentKey,
+          alignSkip: Alignment.topRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      "支払い方法の選択",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "左右にスワイプして「カード」や「現金（記録なし）」を切り替えられます。\n\n長押しすると、そのカードの利用明細へジャンプします。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+          shape: ShapeLightFocus.RRect,
+          radius: 10,
+        ),
+      );
+    }
+
+    // 2. カテゴリ選択
+    if (_categoryKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "category_selector",
+          keyTarget: _categoryKey,
+          alignSkip: Alignment.topRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top, // 上側に表示
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      "支出の記録",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "ここをタップすると入力完了です。\n\n長押しすると、その費目の履歴へジャンプします。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+          shape: ShapeLightFocus.RRect,
+          radius: 10,
+        ),
+      );
+    }
+
+    if (targets.isEmpty) return;
+
+    _tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "スキップ",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {},
+      onClickTarget: (target) {},
+      onClickOverlay: (target) {},
+      onSkip: () {
+        return true;
+      },
+    )..show(context: context);
   }
 
   // --- User Actions ---
@@ -2873,7 +2246,7 @@ class _InputTabState extends State<InputTab>
     );
   }
 
-  // --- Save Logic (大幅に簡略化！) ---
+  // --- Save Logic ---
   Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
 
@@ -2894,7 +2267,6 @@ class _InputTabState extends State<InputTab>
       selectedCardTag = _cardList[_selectedCardIndex];
     }
 
-    // ★ サービスに処理を委譲
     final result = await _inputService.registerTransaction(
       rawAmount: _amountController.text,
       memo: _memoController.text.trim(),
@@ -2906,14 +2278,12 @@ class _InputTabState extends State<InputTab>
       isGachaEnabled: _isGachaEnabled,
     );
 
-    // 結果に応じたUI更新
     if (result.success) {
       // 成功時
       if (result.formattedAmount != null) {
         _amountController.text = result.formattedAmount!;
       }
 
-      // UI状態の保存（これはUIの責任）
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
       if (_showCardOnInput && _isCardPayment) {
@@ -2933,7 +2303,7 @@ class _InputTabState extends State<InputTab>
         _showFlashMessage(result.message, result.messageColor);
       }
     } else {
-      // 失敗時（バリデーションエラーなど）
+      // 失敗時
       if (mounted) {
         _showFlashMessage(result.message, result.messageColor);
       }
@@ -2943,7 +2313,6 @@ class _InputTabState extends State<InputTab>
   Future<void> _undoLastInput() async {
     if (_lastInputId == null) return;
 
-    // 削除対象の情報を取得
     final targetItem = await _inputService.getTransaction(_lastInputId!);
     if (targetItem == null) {
       setState(() => _lastInputId = null);
@@ -2970,7 +2339,6 @@ class _InputTabState extends State<InputTab>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              // ★ 削除処理もサービスに委譲
               await _inputService.deleteTransaction(_lastInputId!);
               if (mounted) {
                 setState(() => _lastInputId = null);
@@ -3036,6 +2404,8 @@ class _InputTabState extends State<InputTab>
 
                   if (_showCardOnInput)
                     GestureDetector(
+                      // ▼▼ 追加: PaymentSelectorにKeyを設定 ▼▼
+                      key: _paymentKey,
                       onTap: () {},
                       child: PaymentSelector(
                         isCardPayment: _isCardPayment,
@@ -3050,6 +2420,8 @@ class _InputTabState extends State<InputTab>
                     const SizedBox(height: 24),
 
                   CategorySelector(
+                    // ▼▼ 追加: CategorySelectorにKeyを設定 ▼▼
+                    key: _categoryKey,
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: _changeExpenseIndex,
@@ -3101,6 +2473,8 @@ class _InputTabState extends State<InputTab>
 --- FILE: lib/screens/monthly_report_screen.dart ---
 ```dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 追加
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart'; // 追加
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
@@ -3126,6 +2500,9 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
   late int _currentMonth;
   int _currentTabIndex = 0;
 
+  // ▼▼ 追加: チュートリアル用のキー ▼▼
+  final GlobalKey _titleKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -3141,6 +2518,74 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
         });
       }
     });
+
+    // ▼▼ 追加: 画面描画後にチュートリアルチェック ▼▼
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkTutorial();
+    });
+  }
+
+  // ▼▼ 追加: チュートリアル表示ロジック ▼▼
+  Future<void> _checkTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    // 入力画面とは別のキーで管理
+    final bool isShown = prefs.getBool('is_report_tutorial_shown_v1') ?? false;
+
+    if (!isShown && mounted && _titleKey.currentContext != null) {
+      _showTutorial();
+      await prefs.setBool('is_report_tutorial_shown_v1', true);
+    }
+  }
+
+  void _showTutorial() {
+    TutorialCoachMark(
+      targets: [
+        TargetFocus(
+          identify: "report_title",
+          keyTarget: _titleKey,
+          alignSkip: Alignment.bottomRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: const [
+                    Text(
+                      "過去の履歴へ",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "ここをタップすると、カレンダーから\n過去の年月にジャンプできます。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+          shape: ShapeLightFocus.RRect,
+          radius: 10,
+        ),
+      ],
+      colorShadow: Colors.black,
+      textSkip: "閉じる",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {},
+      onClickTarget: (target) {},
+      onClickOverlay: (target) {},
+      onSkip: () {
+        return true;
+      },
+    ).show(context: context);
   }
 
   @override
@@ -3161,7 +2606,6 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
     });
   }
 
-  // ▼▼ 追加: 年月選択ダイアログを表示してジャンプする処理 ▼▼
   Future<void> _pickMonth() async {
     final DateTime now = DateTime.now();
     final DateTime current = DateTime(_currentYear, _currentMonth);
@@ -3171,13 +2615,11 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
       initialDate: current,
       firstDate: DateTime(2000),
       lastDate: DateTime(2101),
-      initialDatePickerMode: DatePickerMode.year, // 年から選択しやすくする
+      initialDatePickerMode: DatePickerMode.year,
       helpText: '移動先の年月を選択',
     );
 
     if (picked != null) {
-      // 基準(index 1000) = now
-      // ターゲットのindexを計算
       final int diffMonths =
           (picked.year - now.year) * 12 + (picked.month - now.month);
       final int targetPage = 1000 + diffMonths;
@@ -3191,11 +2633,11 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        // ▼▼ 変更: タイトルをタップ可能にする ▼▼
         title: GestureDetector(
+          key: _titleKey, // ▼▼ 追加: キーを設定 ▼▼
           onTap: _pickMonth,
           child: Container(
-            color: Colors.transparent, // タップ判定を広げる
+            color: Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -3237,6 +2679,7 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
   }
 }
 
+// ... (以下の MonthPage クラスなどは変更なしのため省略) ...
 class MonthPage extends StatefulWidget {
   final int year;
   final int month;
@@ -3314,7 +2757,6 @@ class _MonthPageState extends State<MonthPage> {
                 : GraphView(
                     history: _history,
                     expenseTags: _expenseTags,
-                    // 凡例タップ時の処理
                     onLegendTap: (expense, color) {
                       Navigator.push(
                         context,
@@ -3323,7 +2765,6 @@ class _MonthPageState extends State<MonthPage> {
                             filterValue: expense,
                             filterKey: 'expense',
                             color: color,
-                            // ▼▼ 変更: 固定月ではなく、初期表示月として渡す ▼▼
                             initialDate: DateTime(widget.year, widget.month),
                           ),
                         ),
@@ -3833,6 +3274,9 @@ import '../../models/category_tag.dart';
 import '../../models/gacha_item.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/gacha_repository.dart';
+import '../../repositories/transaction_repository.dart';
+import '../../models/bonus_item.dart';
+import '../../data/bonus_data.dart';
 
 class CategoryManageScreen extends StatefulWidget {
   const CategoryManageScreen({super.key});
@@ -3846,35 +3290,35 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
   final GachaRepository _gachaRepository = GachaRepository();
+  final TransactionRepository _transactionRepository = TransactionRepository();
 
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
 
-  // ガチャデータ用
+  // ガチャ・ボーナスデータ用
   List<GachaItem> _gachaItems = [];
   Map<String, int> _gachaCounts = {};
+  int _totalDays = 0;
 
   bool _isLoading = true;
 
   // 標準アイコンリスト
   final List<IconData> _standardIcons = [
-    // 基本・デフォルト系
-    Icons.restaurant, // 食費
-    Icons.shopping_bag, // 日用品
-    Icons.train, // 交通費
-    Icons.wine_bar, // 交際費
-    Icons.sports_esports, // 趣味
-    Icons.checkroom, // 美容・衣服
-    Icons.medical_services, // 医療
-    Icons.menu_book, // 教育・本
-    Icons.home, // 住居・光熱
-    Icons.wifi, // 通信
-    Icons.directions_car, // 車
-    Icons.movie, // 映画
-    Icons.attach_money, // 給料
-    Icons.credit_card, // カード
-    Icons.payment, // 決済
-    // その他便利系
+    Icons.restaurant,
+    Icons.shopping_bag,
+    Icons.train,
+    Icons.wine_bar,
+    Icons.sports_esports,
+    Icons.checkroom,
+    Icons.medical_services,
+    Icons.menu_book,
+    Icons.home,
+    Icons.wifi,
+    Icons.directions_car,
+    Icons.movie,
+    Icons.attach_money,
+    Icons.credit_card,
+    Icons.payment,
     Icons.shopping_cart,
     Icons.school,
     Icons.phone_iphone,
@@ -3909,9 +3353,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   Future<void> _loadData() async {
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
-
     final gachaItems = await _gachaRepository.getItems();
     final gachaCounts = await _gachaRepository.getItemCounts();
+
+    // 取引データからユニークな入力日数を取得
+    await _transactionRepository.getAllTransactions();
+    final days = _transactionRepository.getUniqueInputDaysCount();
 
     if (mounted) {
       setState(() {
@@ -3919,6 +3366,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
         _cardList = cards;
         _gachaItems = gachaItems;
         _gachaCounts = gachaCounts;
+        _totalDays = days;
         _isLoading = false;
       });
     }
@@ -3929,7 +3377,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     await _settingsRepository.saveCardTags(_cardList);
   }
 
-  // スタイル（色/レベル）選択ダイアログを表示するメソッド
+  // ガチャアイテム用のスタイル選択ダイアログ（これは残す）
   Future<void> _showStyleSelectionDialog({
     required BuildContext context,
     required GachaItem item,
@@ -3967,37 +3415,17 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           color: Colors.white,
                           shape: BoxShape.circle,
                           border: Border.all(color: color, width: 2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: color.withOpacity(0.2),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
                         ),
                         child: Icon(item.iconData, color: color, size: 28),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        "Lv.$level",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
+                      Text("Lv.$level", style: const TextStyle(fontSize: 10)),
                     ],
                   ),
                 );
               }),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('キャンセル'),
-            ),
-          ],
         );
       },
     );
@@ -4011,15 +3439,11 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     final TextEditingController nameController = TextEditingController(
       text: item?.label ?? '',
     );
-
     Color selectedColor =
         item?.color ?? (isExpense ? Colors.orange : Colors.blue);
-
-    // 初期アイコンの設定
     IconData selectedIcon =
         item?.displayIcon ?? (isExpense ? Icons.category : Icons.credit_card);
 
-    // --- カード設定用の変数 ---
     bool isClosingMode = (item?.closingDay != null);
     int closingDay = item?.closingDay ?? 99;
     int paymentDay = item?.paymentDay ?? 27;
@@ -4071,22 +3495,16 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // --- 1. 名称入力 ---
                       TextField(
                         controller: nameController,
                         decoration: const InputDecoration(labelText: '名称'),
-                        autofocus: false,
                         onChanged: (_) => setStateDialog(() {}),
                       ),
                       const SizedBox(height: 20),
-
-                      // --- 2. プレビュー (修正箇所) ---
+                      // プレビュー
                       Row(
                         children: [
                           const Text("プレビュー: "),
-                          const SizedBox(width: 10),
-                          // ▼▼▼ プレビューも「選択時」のデザインに合わせる ▼▼▼
-                          // 背景: 固有色, 文字・アイコン: 白, 形状: 角丸10, 枠線なし
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -4105,29 +3523,22 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                   size: 18,
                                 ),
                                 const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    nameController.text.isEmpty
-                                        ? "名称"
-                                        : nameController.text,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
+                                Text(
+                                  nameController.text.isEmpty
+                                      ? "名称"
+                                      : nameController.text,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          // ▲▲▲ 修正ここまで ▲▲▲
                         ],
                       ),
                       const SizedBox(height: 20),
-
-                      // --- 3. 標準アイコン選択 ---
+                      // 標準アイコン
                       const Text(
                         'アイコンを選択',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -4147,9 +3558,8 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           final icon = _standardIcons[idx];
                           final isSelected = selectedIcon == icon;
                           return InkWell(
-                            onTap: () {
-                              setStateDialog(() => selectedIcon = icon);
-                            },
+                            onTap: () =>
+                                setStateDialog(() => selectedIcon = icon),
                             child: Container(
                               decoration: BoxDecoration(
                                 color: isSelected
@@ -4170,8 +3580,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                         },
                       ),
                       const SizedBox(height: 20),
-
-                      // --- 4. 色の調整 ---
+                      // 色調整
                       const Text(
                         '色を調整',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -4206,54 +3615,27 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                         }).toList(),
                       ),
                       const SizedBox(height: 30),
-
-                      // --- 5. 獲得済みキャラを使用 ---
+                      // ガチャキャラセクション
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          border: Border.symmetric(
-                            horizontal: BorderSide(
-                              color: Colors.orange.shade200,
-                              width: 2,
+                        decoration: BoxDecoration(color: Colors.orange.shade50),
+                        child: const Center(
+                          child: Text(
+                            "獲得済みキャラを使用",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepOrange,
                             ),
                           ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.auto_awesome, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text(
-                              "獲得済みキャラを使用",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            Icon(Icons.auto_awesome, color: Colors.orange),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "※キャラをタップして、使用するレベル（色）を選択できます。",
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                       const SizedBox(height: 15),
-
-                      // --- 6. 獲得済みキャラ選択 ---
                       if (_gachaCounts.values.every((c) => c == 0))
                         const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(10),
-                            child: Text(
-                              "まだキャラクターがいません\nガチャを回してゲットしよう！",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                          child: Text(
+                            "ガチャを回してゲットしよう！",
+                            style: TextStyle(color: Colors.grey),
                           ),
                         )
                       else
@@ -4275,21 +3657,18 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                 .toList();
                             final item = unlockedItems[idx];
                             final count = _gachaCounts[item.id] ?? 0;
-                            final currentColor = item.getColor(count);
                             final isSelected = selectedIcon == item.iconData;
-
                             return InkWell(
                               onTap: () async {
                                 await _showStyleSelectionDialog(
                                   context: context,
                                   item: item,
                                   currentCount: count,
-                                  onColorSelected: (color) {
-                                    setStateDialog(() {
-                                      selectedIcon = item.iconData;
-                                      selectedColor = color;
-                                    });
-                                  },
+                                  onColorSelected: (color) =>
+                                      setStateDialog(() {
+                                        selectedIcon = item.iconData;
+                                        selectedColor = color;
+                                      }),
                                 );
                               },
                               child: Container(
@@ -4303,13 +3682,84 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                     width: isSelected ? 3 : 1,
                                   ),
                                 ),
-                                child: Icon(item.iconData, color: currentColor),
+                                child: Icon(
+                                  item.iconData,
+                                  color: item.getColor(count),
+                                ),
                               ),
                             );
                           },
                         ),
-
-                      // --- カード設定 ---
+                      const SizedBox(height: 30),
+                      // 継続ボーナスセクション
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(color: Colors.blue.shade50),
+                        child: const Center(
+                          child: Text(
+                            "継続ボーナス特典",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (BonusData.list.every(
+                        (item) => _totalDays < item.targetDays,
+                      ))
+                        const Center(
+                          child: Text(
+                            "継続日数に応じて解放されます！",
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        )
+                      else
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 5,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                              ),
+                          itemCount: BonusData.list
+                              .where((i) => _totalDays >= i.targetDays)
+                              .length,
+                          itemBuilder: (context, idx) {
+                            final unlockedBonuses = BonusData.list
+                                .where((i) => _totalDays >= i.targetDays)
+                                .toList();
+                            final item = unlockedBonuses[idx];
+                            final isSelected = selectedIcon == item.icon;
+                            return InkWell(
+                              onTap: () {
+                                // ★ここを修正：ダイアログなしで即座に反映
+                                setStateDialog(() {
+                                  selectedIcon = item.icon;
+                                  selectedColor = item.color;
+                                });
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? Colors.blueAccent
+                                        : Colors.grey.shade300,
+                                    width: isSelected ? 3 : 1,
+                                  ),
+                                ),
+                                child: Icon(item.icon, color: item.color),
+                              ),
+                            );
+                          },
+                        ),
+                      // カード設定
                       if (!isExpense) ...[
                         const Divider(height: 30),
                         Row(
@@ -4321,14 +3771,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                             const Spacer(),
                             Switch(
                               value: isClosingMode,
-                              onChanged: (val) {
-                                setStateDialog(() => isClosingMode = val);
-                              },
+                              onChanged: (val) =>
+                                  setStateDialog(() => isClosingMode = val),
                             ),
                           ],
                         ),
                         if (isClosingMode) ...[
-                          const SizedBox(height: 10),
                           Row(
                             children: [
                               const Text('締め: '),
@@ -4348,24 +3796,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              const Text('支払月: '),
-                              DropdownButton<int>(
-                                value: paymentOffset,
-                                items: const [
-                                  DropdownMenuItem(value: 1, child: Text('翌月')),
-                                  DropdownMenuItem(
-                                    value: 2,
-                                    child: Text('翌々月'),
-                                  ),
-                                ],
-                                onChanged: (val) =>
-                                    setStateDialog(() => paymentOffset = val!),
-                              ),
-                            ],
-                          ),
                         ],
                       ],
                     ],
@@ -4380,7 +3810,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                 ElevatedButton(
                   onPressed: () async {
                     if (nameController.text.isEmpty) return;
-
                     final newTag = CategoryTag(
                       id: item?.id,
                       label: nameController.text,
@@ -4397,20 +3826,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           : null,
                       paymentMonthOffset: paymentOffset,
                     );
-
                     setState(() {
-                      if (isExpense) {
-                        if (item == null) {
-                          _expenseList.add(newTag);
-                        } else {
-                          _expenseList[index] = newTag;
-                        }
+                      final list = isExpense ? _expenseList : _cardList;
+                      if (item == null) {
+                        list.add(newTag);
                       } else {
-                        if (item == null) {
-                          _cardList.add(newTag);
-                        } else {
-                          _cardList[index] = newTag;
-                        }
+                        list[index] = newTag;
                       }
                     });
                     await _saveCurrentList();
@@ -4439,10 +3860,8 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('カテゴリ・カード管理'),
@@ -4459,10 +3878,8 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
         children: [_buildList(isExpense: true), _buildList(isExpense: false)],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          final isExpense = _tabController.index == 0;
-          _showEditDialog(isExpense: isExpense, index: -1);
-        },
+        onPressed: () =>
+            _showEditDialog(isExpense: _tabController.index == 0, index: -1),
         child: const Icon(Icons.add),
       ),
     );
@@ -4470,15 +3887,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   Widget _buildList({required bool isExpense}) {
     final list = isExpense ? _expenseList : _cardList;
-
     return ReorderableListView.builder(
       itemCount: list.length,
       padding: const EdgeInsets.only(bottom: 80),
       onReorder: (oldIndex, newIndex) async {
         setState(() {
-          if (oldIndex < newIndex) {
-            newIndex -= 1;
-          }
+          if (oldIndex < newIndex) newIndex -= 1;
           final item = list.removeAt(oldIndex);
           list.insert(newIndex, item);
         });
@@ -4486,14 +3900,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       },
       itemBuilder: (context, index) {
         final item = list[index];
-        String subtitle = "";
-        if (!isExpense && item.closingDay != null) {
-          final closeStr = item.closingDay == 99 ? "末" : "${item.closingDay}日";
-          final payStr = item.paymentDay == 99 ? "末" : "${item.paymentDay}日";
-          final offsetStr = item.paymentMonthOffset == 1 ? "翌月" : "翌々月";
-          subtitle = "締め: $closeStr / 払い: $offsetStr$payStr";
-        }
-
         return ListTile(
           key: ValueKey(item.id),
           leading: Container(
@@ -4508,10 +3914,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
             ),
             child: Icon(item.displayIcon, color: item.color, size: 20),
           ),
-          title: Text(item.label, overflow: TextOverflow.ellipsis, maxLines: 1),
-          subtitle: subtitle.isNotEmpty
-              ? Text(subtitle, style: const TextStyle(fontSize: 11))
-              : null,
+          title: Text(item.label, overflow: TextOverflow.ellipsis),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -4534,6 +3937,1615 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       },
     );
   }
+}
+
+```
+
+
+--- FILE: lib/screens/gacha/bonus_tab.dart ---
+```dart
+import 'package:flutter/material.dart';
+import 'dart:math'; // アニメーション用
+import '../../repositories/transaction_repository.dart';
+import '../../models/transaction_item.dart';
+// ▼▼ 追加: モデルとデータをインポート ▼▼
+import '../../models/bonus_item.dart';
+import '../../data/bonus_data.dart';
+
+class BonusTab extends StatefulWidget {
+  const BonusTab({super.key});
+
+  @override
+  State<BonusTab> createState() => _BonusTabState();
+}
+
+class _BonusTabState extends State<BonusTab>
+    with AutomaticKeepAliveClientMixin {
+  final TransactionRepository _txnRepository = TransactionRepository();
+  int _inputDays = 0;
+  bool _isLoading = true;
+
+  // ※ ここにあった _bonusList 定義は削除し、BonusData.list を使用します
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBonusData();
+  }
+
+  Future<void> _loadBonusData() async {
+    await _txnRepository.getAllTransactions();
+    final days = _txnRepository.getUniqueInputDaysCount();
+
+    if (mounted) {
+      setState(() {
+        _inputDays = days;
+        _isLoading = false;
+      });
+    }
+  }
+
+  // ▼▼ dev: デバッグ用チート機能 ▼▼
+  Future<void> _devCheat() async {
+    final dummyDate = DateTime(2000, 1, 1).add(Duration(days: _inputDays));
+    final dummyItem = TransactionItem(
+      amount: 100,
+      expense: 'ボーナス確認用',
+      payment: 'デバッグ',
+      date: dummyDate,
+      memo: 'Dev:InputCountUp',
+    );
+
+    await _txnRepository.addTransaction(dummyItem);
+    await _loadBonusData();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Dev: 日数+1 (現在: $_inputDays日)'),
+          duration: const Duration(milliseconds: 300),
+        ),
+      );
+    }
+  }
+
+  // ▼▼ 詳細ダイアログを表示 ▼▼
+  void _showBonusDetailDialog(BonusItem item) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "MISSION CLEAR!!",
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: item.color,
+                  fontStyle: FontStyle.italic,
+                  shadows: [
+                    Shadow(
+                      color: item.color.withOpacity(0.3),
+                      offset: const Offset(2, 2),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey.shade100,
+                  border: Border.all(
+                    color: item.color.withOpacity(0.5),
+                    width: 4,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: item.color.withOpacity(0.2),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Icon(item.icon, size: 60, color: item.color),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                item.title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                "達成日数: ${item.targetDays}日",
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                width: double.maxFinite,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      Text(
+                        item.description,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 15,
+                          height: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Divider(
+                        color: item.color.withOpacity(0.2),
+                        indent: 40,
+                        endIndent: 40,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: item.color,
+                  foregroundColor: Colors.white,
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text(
+                  '閉じる',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.blue.shade50,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // --- 現在のステータス表示 ---
+            GestureDetector(
+              onTap: _devCheat,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue.shade400, Colors.blue.shade700],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      "累計入力日数",
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          "$_inputDays",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 48,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          "日",
+                          style: TextStyle(color: Colors.white, fontSize: 18),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      "青いパネルをタップで日数進行(Dev)",
+                      style: TextStyle(color: Colors.white54, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // --- ボーナス一覧 ---
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "入力ボーナス",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // ▼▼ 修正: BonusData.list を使用 ▼▼
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: BonusData.list.length,
+              itemBuilder: (context, index) {
+                final item = BonusData.list[index];
+                final bool isReached = _inputDays >= item.targetDays;
+
+                return _FlipBonusCard(
+                  item: item,
+                  isReached: isReached,
+                  onTap: isReached ? () => _showBonusDetailDialog(item) : null,
+                );
+              },
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// フリップアニメーションを行うカードウィジェット
+class _FlipBonusCard extends StatelessWidget {
+  final BonusItem item;
+  final bool isReached;
+  final VoidCallback? onTap;
+
+  const _FlipBonusCard({
+    required this.item,
+    required this.isReached,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 800),
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final rotateAnim = Tween(begin: pi, end: 0.0).animate(animation);
+        return AnimatedBuilder(
+          animation: rotateAnim,
+          child: child,
+          builder: (context, child) {
+            final isBack = child!.key == const ValueKey('front');
+            final angle = isBack
+                ? min(rotateAnim.value, pi / 2)
+                : rotateAnim.value;
+
+            return Transform(
+              transform: Matrix4.rotationY(angle)..setEntry(3, 2, 0.001),
+              alignment: Alignment.center,
+              child: child,
+            );
+          },
+        );
+      },
+      layoutBuilder: (widget, list) =>
+          Stack(children: [if (widget != null) widget, ...list]),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInBack.flipped,
+      child: isReached ? _buildRewardCard() : _buildLockedCard(),
+    );
+  }
+
+  Widget _buildLockedCard() {
+    return Container(
+      key: const ValueKey('front'),
+      margin: const EdgeInsets.only(bottom: 12),
+      width: double.infinity,
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 20),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.lock, color: Colors.grey),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "入力 ${item.targetDays} 日達成",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                    fontSize: 16,
+                  ),
+                ),
+                const Text(
+                  "？？？",
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              "未達成",
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRewardCard() {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        key: const ValueKey('back'),
+        margin: const EdgeInsets.only(bottom: 12),
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: item.color.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(color: item.color.withOpacity(0.3), width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: item.color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(item.icon, color: item.color, size: 32),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    item.title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    item.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: Colors.grey.shade400),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+```
+
+
+--- FILE: lib/screens/gacha/gacha_game_tab.dart ---
+```dart
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+// ▼▼▼ 追加: チュートリアルと保存用のライブラリ ▼▼▼
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+// ▲▲▲ 追加ここまで ▲▲▲
+import '../../repositories/gacha_repository.dart';
+import '../../models/gacha_item.dart';
+
+class GachaGameTab extends StatefulWidget {
+  const GachaGameTab({super.key});
+
+  @override
+  State<GachaGameTab> createState() => _GachaGameTabState();
+}
+
+class _GachaGameTabState extends State<GachaGameTab>
+    with AutomaticKeepAliveClientMixin {
+  final GachaRepository _repository = GachaRepository();
+  int _credits = 0;
+  Map<String, int> _itemCounts = {};
+  List<GachaItem> _allItems = [];
+  bool _isLoading = true;
+
+  static const int _maxLevel = 10;
+  static const int _costPerSpin = 1;
+
+  // ▼▼▼ 追加: チュートリアル用のキーとフラグ ▼▼▼
+  final GlobalKey _ticketKey = GlobalKey(); // チケット表示場所の目印
+  final GlobalKey _spinButtonKey = GlobalKey(); // ガチャボタンの目印
+  bool _pendingTutorialPhase2 = false; // 「結果画面の後に続きを表示する」フラグ
+  // ▲▲▲ 追加ここまで ▲▲▲
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    // ここでの _checkTutorialPhase1 呼び出しは削除し、_loadData 内で行います
+    _loadData();
+  }
+
+  // ▼▼▼ 追加: チュートリアル Phase 1 (導入〜回すまで) ▼▼▼
+  Future<void> _checkTutorialPhase1() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isShown = prefs.getBool('is_gacha_tutorial_shown_v1') ?? false;
+
+    // まだ表示しておらず、かつチケットがある(初回ボーナス等)場合のみ実行
+    if (!isShown && mounted && _credits > 0) {
+      _showTutorialPhase1();
+      // Phase1が終わったら、ガチャを回した後にPhase2を表示するよう予約
+      _pendingTutorialPhase2 = true;
+    }
+  }
+
+  // チュートリアル完了フラグを保存するヘルパー
+  Future<void> _completeTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_gacha_tutorial_shown_v1', true);
+    _pendingTutorialPhase2 = false;
+  }
+
+  void _showTutorialPhase1() {
+    TutorialCoachMark(
+      targets: [
+        // 1. ガチャタブ全体の導入
+        TargetFocus(
+          identify: "gacha_intro",
+          keyTarget: null, // 画面全体
+          alignSkip: Alignment.topRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.star, size: 60, color: Colors.orange),
+                    SizedBox(height: 20),
+                    Text(
+                      "ようこそ、ガチャ画面へ！",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 24,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "ここでは、入力やボーナスで手に入れたチケットで\n個性豊かなキャラクターを集めることができます。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+        // 2. チケットの説明
+        TargetFocus(
+          identify: "ticket_info",
+          keyTarget: _ticketKey, // チケット部分をハイライト
+          alignSkip: Alignment.bottomRight,
+          shape: ShapeLightFocus.RRect,
+          radius: 12,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      "ガチャチケット",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "チケットは本来、支出を入力することで\n1日5枚まで手に入ります。\n\n今回はお試し用のチケットが3枚あるので\n早速使ってみましょう！",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+        // 3. ガチャボタンへ誘導
+        TargetFocus(
+          identify: "spin_button",
+          keyTarget: _spinButtonKey, // ボタン部分をハイライト
+          alignSkip: Alignment.topRight,
+          shape: ShapeLightFocus.RRect,
+          radius: 4,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Text(
+                      "さあ、回してみよう！",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Icon(Icons.arrow_downward, color: Colors.white, size: 40),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ],
+      colorShadow: Colors.black,
+      textSkip: "スキップ",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onSkip: () {
+        // 非同期処理を待たずに呼び出す
+        _completeTutorial();
+        return true;
+      },
+    ).show(context: context);
+  }
+  // ▲▲▲ 追加ここまで ▲▲▲
+
+  // ▼▼▼ 追加: チュートリアル Phase 2 (結果画面後の解説) ▼▼▼
+  Future<void> _showTutorialPhase2() async {
+    if (!mounted) return;
+
+    // 完了フラグを保存
+    await _completeTutorial();
+
+    TutorialCoachMark(
+      targets: [
+        TargetFocus(
+          identify: "gacha_explain_1",
+          keyTarget: null,
+          alignSkip: Alignment.topRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 60,
+                      color: Colors.yellowAccent,
+                    ),
+                    SizedBox(height: 20),
+                    Text(
+                      "進化とコレクション",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 22,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "ガチャで同じキャラクターが出ると\nどんどん進化して見た目が豪華になります。\n\n詳細画面のテキストも変化していくので\n暇な時に読んでみてください。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+        TargetFocus(
+          identify: "gacha_explain_2",
+          keyTarget: null,
+          alignSkip: Alignment.topRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(
+                      Icons.category,
+                      size: 60,
+                      color: Colors.lightBlueAccent,
+                    ),
+                    SizedBox(height: 20),
+                    Text(
+                      "アイコンとして使う",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 22,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "手に入れたキャラクターは\n「設定 > カテゴリ管理」から\n費目のアイコンとして設定できます。\n\nコンプリート目指して頑張ってください！",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ],
+      colorShadow: Colors.black,
+      textSkip: "完了",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+    ).show(context: context);
+  }
+  // ▲▲▲ 追加ここまで ▲▲▲
+
+  Future<void> _loadData() async {
+    // ▼▼▼ 修正: データ取得前にボーナス付与を確実に実行 ▼▼▼
+    // これにより「初回でチケットが反映されていない」問題を防止します
+    await _repository.checkInitialBonus();
+
+    final credits = await _repository.getCredits();
+    final counts = await _repository.getItemCounts();
+    final items = await _repository.getItems();
+
+    if (mounted) {
+      setState(() {
+        _credits = credits;
+        _itemCounts = Map.from(counts);
+        _allItems = items;
+        _isLoading = false;
+      });
+
+      // ▼▼▼ 修正: データ読み込み＆画面更新が終わった後にチュートリアルをチェック ▼▼▼
+      // UIの描画完了を待つために addPostFrameCallback を使用
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkTutorialPhase1();
+      });
+    }
+  }
+
+  void _showRateDialog() {
+    final availableItems = _allItems.where((item) {
+      final int count = _itemCounts[item.id] ?? 0;
+      final int level = item.getStage(count);
+      return level < _maxLevel;
+    }).toList();
+
+    final int totalAvailable = availableItems.length;
+
+    if (totalAvailable == 0) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("提供割合"),
+          content: const Text("全てのキャラクターが最大レベルです。\n排出対象はありません。"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("閉じる"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final double rate = 100.0 / totalAvailable;
+    final String rateString = rate.toStringAsFixed(2);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            "提供割合",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "現在の排出確率",
+                          style: TextStyle(fontSize: 12, color: Colors.brown),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Text("全キャラ均等"),
+                            const Spacer(),
+                            Text(
+                              "$rateString %",
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "【仕様について】",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "・Lv.10(最大)に到達したキャラクターは排出されなくなります。\n・排出確率は、残りの排出対象キャラクター間で均等に分配されます。",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "排出対象一覧 ($totalAvailable種)",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const Divider(),
+                  ...availableItems.map((item) {
+                    final int count = _itemCounts[item.id] ?? 0;
+                    final int level = item.getStage(count);
+                    final bool isUnobtained = count == 0;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isUnobtained
+                                  ? Colors.grey.shade200
+                                  : Colors.grey.shade100,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              item.iconData,
+                              size: 20,
+                              color: isUnobtained
+                                  ? Colors.grey.shade400
+                                  : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              item.baseName,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: isUnobtained
+                                    ? Colors.black54
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isUnobtained
+                                  ? Colors.red.shade50
+                                  : Colors.blueGrey.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isUnobtained
+                                    ? Colors.red.shade200
+                                    : Colors.transparent,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              isUnobtained ? "未所持" : "現在 Lv.$level",
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isUnobtained
+                                    ? Colors.red
+                                    : Colors.blueGrey.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("閉じる"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _spinGacha() async {
+    if (_credits < _costPerSpin) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final item = await _repository.drawItem();
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (!mounted) return;
+    Navigator.pop(context); // ローディングを閉じる
+
+    if (item == null) {
+      _showCompleteDialog();
+      return;
+    }
+
+    final success = await _repository.consumeCredits(_costPerSpin);
+    if (!success) return;
+
+    final newCount = await _repository.unlockItem(item.id);
+    await _loadData();
+
+    if (mounted) {
+      // ▼▼▼ 変更: awaitを追加してダイアログが閉じるのを待つ ▼▼▼
+      await _showResultDialog(item, newCount);
+
+      // ▼▼▼ 追加: チュートリアル Phase 2 の実行 ▼▼▼
+      if (_pendingTutorialPhase2) {
+        _pendingTutorialPhase2 = false;
+        _showTutorialPhase2();
+      }
+      // ▲▲▲ 追加ここまで ▲▲▲
+    }
+  }
+
+  void _showCompleteDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("コンプリート！"),
+        content: const Text(
+          "全てのキャラクターが最大レベルに到達しました！\nこれ以上ガチャを引くことはできません。\n\n次回のアップデートをお楽しみに！",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHistoryDialog(GachaItem item, int maxLevel) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Text(
+                      "No.${item.id}",
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "${item.baseName}の進化記録",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: maxLevel > _maxLevel ? _maxLevel : maxLevel,
+                    itemBuilder: (context, index) {
+                      final level = index + 1;
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: item.getColor(level).withOpacity(0.5),
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(
+                            item.iconData,
+                            color: item.getColor(level),
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(
+                          item.getName(level),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          item.getDescription(level),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: Text(
+                          "Lv.$level",
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("閉じる"),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ▼▼▼ 変更: Future<void>を返すように変更（awaitで待つため） ▼▼▼
+  Future<void> _showResultDialog(GachaItem item, int count) {
+    final int level = item.getStage(count);
+    final bool isNew = count == 1;
+    final bool isMax = level == _maxLevel;
+
+    String title = "LEVEL UP!!";
+    Color titleColor = Colors.orange;
+
+    if (isNew) {
+      title = "NEW GET!!";
+      titleColor = Colors.redAccent;
+    } else if (isMax) {
+      title = "MAX EVOLUTION!!";
+      titleColor = Colors.purpleAccent;
+    }
+
+    // showDialogの戻り値（Future）をそのまま返す
+    return showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: titleColor,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 30),
+              GestureDetector(
+                onTap: () => _showHistoryDialog(item, level),
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.grey.shade100,
+                    border: Border.all(
+                      color: item.getColor(count).withOpacity(0.5),
+                      width: 4,
+                    ),
+                  ),
+                  child: Icon(
+                    item.iconData,
+                    size: 60,
+                    color: item.getColor(count),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                item.getName(count),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                "No.${item.id}",
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 5),
+
+              Text(
+                "Lv.$level / $_maxLevel",
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueGrey,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              Container(
+                constraints: const BoxConstraints(maxHeight: 80), // 高さを制限
+                width: double.maxFinite, // 横幅を確保して中央揃えを維持
+                child: SingleChildScrollView(
+                  child: Text(
+                    item.getDescription(count),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              if (!isMax) ...[
+                LinearProgressIndicator(
+                  value: level / _maxLevel,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey.shade200,
+                  color: item.getColor(count),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  "あと ${_maxLevel - level}枚で最大進化",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              OutlinedButton.icon(
+                onPressed: () => _showHistoryDialog(item, level),
+                icon: const Icon(Icons.history_edu),
+                label: const Text("進化の記録を見る"),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('閉じる'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final int spins = _credits;
+    final int maxLevelItems = _itemCounts.entries
+        .where((e) => e.value >= _maxLevel)
+        .length;
+    final int totalItems = _allItems.length;
+    final double completeRate = totalItems > 0 ? maxLevelItems / totalItems : 0;
+    final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
+
+    return Scaffold(
+      backgroundColor: Colors.yellow.shade50,
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(30),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    // ▼▼▼ 追加: キーを設定（チュートリアルでここを指すため） ▼▼▼
+                    key: _spinButtonKey,
+                    // ▲▲▲ 追加ここまで ▲▲▲
+                    onPressed: spins > 0 ? _spinGacha : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isAllComplete
+                          ? Colors.grey
+                          : Colors.orange,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade300,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: spins > 0 ? 4 : 0,
+                    ),
+                    child: Text(
+                      isAllComplete
+                          ? "コンプリート済み"
+                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "入力をするとチケットが貰えます"),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "※ガチャは完全無料です。課金要素はありません。",
+                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // 左側：チケット所持数表示
+                      Container(
+                        // ▼▼▼ 追加: キーを設定（チュートリアルでここを指すため） ▼▼▼
+                        key: _ticketKey,
+                        // ▲▲▲ 追加ここまで ▲▲▲
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.confirmation_number,
+                              size: 16,
+                              color: Colors.orange.shade800,
+                            ),
+                            const SizedBox(width: 4),
+                            const Text(
+                              "×",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.brown,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              "$_credits",
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.brown,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // 右側：提供割合ボタン
+                      if (!isAllComplete)
+                        TextButton.icon(
+                          onPressed: _showRateDialog,
+                          icon: const Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          label: const Text(
+                            "提供割合",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 0),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.8,
+                ),
+                itemCount: _allItems.length,
+                itemBuilder: (context, index) {
+                  final item = _allItems[index];
+                  final int count = _itemCounts[item.id] ?? 0;
+                  final int level = item.getStage(count);
+                  final bool isUnlocked = count > 0;
+                  final Color itemColor = item.getColor(count);
+
+                  return GestureDetector(
+                    onTap: isUnlocked
+                        ? () => _showResultDialog(item, count)
+                        : null,
+                    // デバッグモード(kDebugMode)の時だけロングプレスで強制アンロック
+                    onLongPress: kDebugMode
+                        ? () async {
+                            final newCount = await _repository.unlockItem(
+                              item.id,
+                            );
+                            await _loadData();
+                            if (mounted) {
+                              _showResultDialog(item, newCount);
+                            }
+                          }
+                        : null,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: isUnlocked
+                              ? itemColor.withOpacity(0.5)
+                              : Colors.grey.shade200,
+                          width: level == _maxLevel ? 3 : 1.5,
+                        ),
+                        boxShadow: [
+                          if (isUnlocked)
+                            BoxShadow(
+                              color: itemColor.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                        ],
+                      ),
+                      child: Stack(
+                        children: [
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Center(
+                                  child: isUnlocked
+                                      ? Icon(
+                                          item.iconData,
+                                          size: 40,
+                                          color: itemColor,
+                                        )
+                                      : Icon(
+                                          Icons.lock,
+                                          size: 30,
+                                          color: Colors.grey.shade300,
+                                        ),
+                                ),
+                              ),
+                              if (isUnlocked)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        "Lv.$level",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: itemColor,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(2),
+                                        child: LinearProgressIndicator(
+                                          value: level / _maxLevel,
+                                          minHeight: 4,
+                                          backgroundColor: Colors.grey.shade100,
+                                          color: itemColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                const Text(
+                                  "???",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              const SizedBox(height: 10),
+                            ],
+                          ),
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Text(
+                              "No.${item.id}",
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isUnlocked
+                                    ? Colors.grey.shade500
+                                    : Colors.grey.shade300,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+```
+
+
+--- FILE: lib/data/bonus_data.dart ---
+```dart
+import 'package:flutter/material.dart';
+import '../models/bonus_item.dart';
+
+/// ボーナスのマスターデータ定義
+class BonusData {
+  static const List<BonusItem> list = [
+    BonusItem(
+      targetDays: 3,
+      icon: Icons.save,
+      color: Colors.green,
+      title: "芽生えの精霊",
+      description: "家計簿生活の第一歩。\n小さな芽が出てきました。データ使えてるかい？",
+    ),
+    BonusItem(
+      targetDays: 7,
+      icon: Icons.directions_walk,
+      color: Colors.orange,
+      title: "ウォーキングマン",
+      description: "継続は力なり。\n毎日コツコツ歩き続けよう。",
+    ),
+    BonusItem(
+      targetDays: 14,
+      icon: Icons.rowing,
+      color: Colors.blue,
+      title: "ボート漕ぎの達人",
+      description: "荒波もなんのその。\n流れに乗って進め。",
+    ),
+    BonusItem(
+      targetDays: 21,
+      icon: Icons.flight_takeoff,
+      color: Colors.indigo,
+      title: "ジェットパイロット",
+      description: "習慣が板についてきた。\n空高く舞い上がれ。",
+    ),
+    BonusItem(
+      targetDays: 30,
+      icon: Icons.diamond,
+      color: Colors.cyan,
+      title: "クリスタルガーディアン",
+      description: "1ヶ月の継続の証。\n硬い意志は宝石の輝き。",
+    ),
+    BonusItem(
+      targetDays: 50,
+      icon: Icons.rocket_launch,
+      color: Colors.redAccent,
+      title: "マーズボイジャー",
+      description: "とどまることを知らない。\n目指すは遥か彼方。",
+    ),
+    BonusItem(
+      targetDays: 100,
+      icon: Icons.auto_awesome,
+      color: Colors.amber,
+      title: "伝説の記録者",
+      description: "百日の記録を刻みし者。\nその背中には後光が差す。",
+    ),
+    BonusItem(
+      targetDays: 365,
+      icon: Icons.castle,
+      color: Colors.purple,
+      title: "一年城の王",
+      description: "四季を巡り辿り着いた。\nここはあなたの城。",
+    ),
+  ];
 }
 
 ```
@@ -4717,9 +5729,9 @@ class GachaData {
         // Lv3
         "順調に育ってきた。質感はちょっといい店で出てくる、あのトロットロのチーズフォンデュ。パンに絡めたら最高に美味しそうだけど、絶対食べちゃダメだよ。",
         // Lv4
-        "色が淡いピンク（または緑）に。この頃から急に「癒し」を振りまき始める。疲れた人を片っ端から包み込んで癒してくれるけど、MPを消費している自覚はないらしい。",
+        "色が淡い緑に。この頃から急に「癒し」を振りまき始める。疲れた人を片っ端から包み込んで癒してくれるけど、MPを消費している自覚はないらしい。",
         // Lv5
-        "なぜか急に世界最弱レベルにまで弱体化してしまった。色が『あの青』になったせいかな。原点回帰というか、初期村の周辺に生息してそうな安心感があるね。",
+        "なぜか急に世界最弱レベルにまで弱体化してしまった。なんだろ、色のせいかな。原点回帰というか、初期村の周辺に生息してそうな安心感があるね。",
         // Lv6
         "見た目は弱そうだけど、サイズだけは一人前。韓国料理屋で鉄板の上にドバドバ流し込まれる、あの暴力的な量のチーズくらいには成長した。重い。",
         // Lv7
