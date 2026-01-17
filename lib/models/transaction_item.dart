@@ -31,10 +31,13 @@ class TransactionItem {
 
   factory TransactionItem.fromJson(Map<String, dynamic> json) {
     return TransactionItem(
+      // IDがない場合は現在のタイムスタンプ＋ランダム値などで代用するが、
+      // 基本は保存されたIDを使う。
       id:
           json['id'] as String? ??
-          DateTime.now().microsecondsSinceEpoch.toString() +
-              (json['date_iso'] as String),
+          // フォールバック: IDがない古いデータ用の救済措置
+          (DateTime.now().microsecondsSinceEpoch.toString() +
+              (json['date_iso'] as String)),
       amount: json['amount'] as int,
       expense: json['expense'] as String,
       payment: json['payment'] as String,
@@ -47,6 +50,7 @@ class TransactionItem {
   }
 
   TransactionItem copyWith({
+    String? id, // IDもcopyできるようにしておくと編集時に便利です
     int? amount,
     String? expense,
     String? payment,
@@ -55,7 +59,7 @@ class TransactionItem {
     String? memo,
   }) {
     return TransactionItem(
-      id: id,
+      id: id ?? this.id,
       amount: amount ?? this.amount,
       expense: expense ?? this.expense,
       payment: payment ?? this.payment,

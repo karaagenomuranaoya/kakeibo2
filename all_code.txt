@@ -126,6 +126,9 @@ linter:
 
 --- FILE: lib/main.dart ---
 ```dart
+//_countsKeyは消さないこと
+//アプリ名：あつめる家計簿 - 連続入力で続く支出管理
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // 日本語対応用に追加推奨
 import 'screens/main_screen.dart'; // InputScreenではなくMainScreen
@@ -315,7 +318,7 @@ class AppDateUtils {
 ```dart
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart'; // kDebugModeを使うために必要
+// import 'package:flutter/foundation.dart'; // kDebugModeを使わなくなるので削除またはコメントアウト
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/gacha_item.dart';
 import '../data/gacha_data.dart';
@@ -324,12 +327,20 @@ class GachaRepository {
   static const String _creditKey = 'gacha_credits';
   static const String _countsKey = 'gacha_counts_v2';
 
+  // 初回ボーナス付与フラグ
+  static const String _initialBonusKey = 'gacha_initial_bonus_done';
+
   // 日次制限用のキー
   static const String _dailyCountKey = 'gacha_daily_count';
   static const String _lastDateKey = 'gacha_last_input_date';
-  static const int _dailyLimit = 15; // 1日15回（ガチャ5回分）
+
+  // 1日5回（ガチャ5回分）
+  static const int _dailyLimit = 5;
 
   Map<String, int> _counts = {};
+
+  // ... (getItems, getItemCounts, _loadCounts, _saveCounts, unlockItem, drawItem は変更なしのため省略) ...
+  // ※実装時は省略せず、元のコードを維持してください
 
   Future<List<GachaItem>> getItems() async {
     return GachaData.monsters;
@@ -364,7 +375,6 @@ class GachaRepository {
     return current;
   }
 
-  /// ガチャを引く
   Future<GachaItem?> drawItem() async {
     await getItemCounts();
     final List<GachaItem> allItems = GachaData.monsters;
@@ -374,9 +384,7 @@ class GachaRepository {
       return count < 10;
     }).toList();
 
-    if (candidates.isEmpty) {
-      return null;
-    }
+    if (candidates.isEmpty) return null;
 
     int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
     int randomValue = Random().nextInt(totalWeight);
@@ -394,46 +402,54 @@ class GachaRepository {
     return prefs.getInt(_creditKey) ?? 0;
   }
 
-  // 入力時の加算（戻り値を (現在の合計, 加算されたか) に変更）
+  // ▼▼ 追加: 初回起動時に3ポイント付与する処理 ▼▼
+  Future<void> checkInitialBonus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isDone = prefs.getBool(_initialBonusKey) ?? false;
+
+    if (!isDone) {
+      // まだ付与していなければ
+      int current = prefs.getInt(_creditKey) ?? 0;
+      await prefs.setInt(_creditKey, current + 3);
+      await prefs.setBool(_initialBonusKey, true);
+    }
+  }
+
+  // 入力時の加算
   Future<(int total, bool added)> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
     int currentTotal = prefs.getInt(_creditKey) ?? 0;
 
-    // --- 日次制限チェック ---
-    if (!kDebugMode) {
-      final now = DateTime.now();
-      final todayStr = "${now.year}-${now.month}-${now.day}";
-      final lastDate = prefs.getString(_lastDateKey);
+    // ▼▼ 変更: kDebugModeの判定を削除し、常に日次制限チェックを行う ▼▼
+    // これにより、開発環境でも「無限入力」ができなくなり、本番と同じ挙動になります
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month}-${now.day}";
+    final lastDate = prefs.getString(_lastDateKey);
 
-      // 日付が変わっていればリセット
-      if (lastDate != todayStr) {
-        await prefs.setString(_lastDateKey, todayStr);
-        await prefs.setInt(_dailyCountKey, 0);
-      }
-
-      final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
-
-      // 上限チェック (15回以上なら加算せずリターン)
-      if (dailyCount >= _dailyLimit) {
-        return (currentTotal, false);
-      }
-
-      // 回数をインクリメント
-      await prefs.setInt(_dailyCountKey, dailyCount + 1);
+    // 日付が変わっていればリセット
+    if (lastDate != todayStr) {
+      await prefs.setString(_lastDateKey, todayStr);
+      await prefs.setInt(_dailyCountKey, 0);
     }
-    // -----------------------
 
-    // 加算処理
-    if (kDebugMode) {
-      currentTotal += 10000;
-    } else {
-      currentTotal++;
+    final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
+
+    // 上限チェック (5回以上なら加算せずリターン)
+    if (dailyCount >= _dailyLimit) {
+      return (currentTotal, false);
     }
+
+    // 回数をインクリメント
+    await prefs.setInt(_dailyCountKey, dailyCount + 1);
+
+    // ▼▼ 変更: 10000ポイント付与ロジックを削除し、常に+1 ▼▼
+    currentTotal++;
 
     await prefs.setInt(_creditKey, currentTotal);
     return (currentTotal, true);
   }
 
+  // ... (consumeCredits は変更なし) ...
   Future<bool> consumeCredits(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;
@@ -555,7 +571,7 @@ class TransactionRepository {
     bool forceReload = false,
   }) async {
     if (_memoryCache != null && !forceReload) {
-      return List.from(_memoryCache!); // 外部で変更されないようコピーを返す
+      return List.from(_memoryCache!);
     }
 
     final prefs = await SharedPreferences.getInstance();
@@ -570,22 +586,20 @@ class TransactionRepository {
       final List<dynamic> jsonList = json.decode(jsonString);
       final list = jsonList.map((e) => TransactionItem.fromJson(e)).toList();
 
-      // 日付順（新しい順）にソートしておく
+      // 日付順（新しい順）にソート
       list.sort((a, b) => b.date.compareTo(a.date));
 
       _memoryCache = list;
       return list;
     } catch (e) {
-      // パースエラー時は空で復帰
       return [];
     }
   }
 
   /// 追加処理
   Future<void> addTransaction(TransactionItem item) async {
-    await getAllTransactions(); // キャッシュ初期化確認
+    await getAllTransactions();
     _memoryCache!.insert(0, item);
-    // 日付順を維持するためにソート（挿入位置によっては不要だが念のため）
     _memoryCache!.sort((a, b) => b.date.compareTo(a.date));
     await _saveToPrefs();
   }
@@ -616,6 +630,68 @@ class TransactionRepository {
       _memoryCache!.map((e) => e.toJson()).toList(),
     );
     await prefs.setString(_key, jsonString);
+  }
+
+  // --- ⬇️ ここから追加機能：日数カウントロジック ---
+
+  /// ユニークな入力日数を取得する
+  /// (1日に複数回入力しても「1日」としてカウント)
+  int getUniqueInputDaysCount() {
+    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
+
+    // Setを使って重複する日付を除去する
+    final uniqueDates = _memoryCache!.map((item) {
+      // 時間情報(HH:mm:ss)を切り捨てて、年月日だけにする
+      return DateTime(item.date.year, item.date.month, item.date.day);
+    }).toSet();
+
+    return uniqueDates.length;
+  }
+
+  /// 継続中の入力日数を取得する（オプション機能：連続記録用）
+  /// 今日から遡って何日連続で入力しているか
+  int getCurrentStreak() {
+    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
+
+    // 日付のみのリストを作成して降順ソート
+    final sortedDates =
+        _memoryCache!
+            .map((item) {
+              return DateTime(item.date.year, item.date.month, item.date.day);
+            })
+            .toSet()
+            .toList()
+          ..sort((a, b) => b.compareTo(a)); // 新しい順
+
+    if (sortedDates.isEmpty) return 0;
+
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+
+    int streak = 0;
+    // 最新の入力が今日、または昨日でない場合はストリーク途切れとみなす場合などの判定
+    // ここでは単純にリストを遡る
+
+    DateTime checkDate = sortedDates.first;
+
+    // もし最新入力が今日より未来なら（入力ミスなど）、カウント対象にするか要検討ですが
+    // 一旦、最新の日付を基準にカウントを開始します
+
+    // ※ シンプルにするため、最新の日付から「1日ずつ差があるか」をチェック
+    for (int i = 0; i < sortedDates.length - 1; i++) {
+      final current = sortedDates[i];
+      final next = sortedDates[i + 1];
+
+      final diff = current.difference(next).inDays;
+      if (diff == 1) {
+        streak++;
+      } else {
+        break; // 連続が途切れたら終了
+      }
+    }
+
+    // 最初の1日分を加算
+    return streak + 1;
   }
 }
 
@@ -657,10 +733,13 @@ class TransactionItem {
 
   factory TransactionItem.fromJson(Map<String, dynamic> json) {
     return TransactionItem(
+      // IDがない場合は現在のタイムスタンプ＋ランダム値などで代用するが、
+      // 基本は保存されたIDを使う。
       id:
           json['id'] as String? ??
-          DateTime.now().microsecondsSinceEpoch.toString() +
-              (json['date_iso'] as String),
+          // フォールバック: IDがない古いデータ用の救済措置
+          (DateTime.now().microsecondsSinceEpoch.toString() +
+              (json['date_iso'] as String)),
       amount: json['amount'] as int,
       expense: json['expense'] as String,
       payment: json['payment'] as String,
@@ -673,6 +752,7 @@ class TransactionItem {
   }
 
   TransactionItem copyWith({
+    String? id, // IDもcopyできるようにしておくと編集時に便利です
     int? amount,
     String? expense,
     String? payment,
@@ -681,7 +761,7 @@ class TransactionItem {
     String? memo,
   }) {
     return TransactionItem(
-      id: id,
+      id: id ?? this.id,
       amount: amount ?? this.amount,
       expense: expense ?? this.expense,
       payment: payment ?? this.payment,
@@ -1569,7 +1649,7 @@ class _HistoryPageState extends State<_HistoryPage> {
 
 --- FILE: lib/screens/gacha_screen.dart ---
 ```dart
-import 'package:flutter/foundation.dart'; // ▼▼ kDebugModeのために追加 ▼▼
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../repositories/gacha_repository.dart';
 import '../models/gacha_item.dart';
@@ -1589,6 +1669,8 @@ class _GachaScreenState extends State<GachaScreen> {
   bool _isLoading = true;
 
   static const int _maxLevel = 10;
+  // ▼▼ 変更: 1回あたりの消費ポイントを1に変更 ▼▼
+  static const int _costPerSpin = 1;
 
   @override
   void initState() {
@@ -1596,8 +1678,10 @@ class _GachaScreenState extends State<GachaScreen> {
     _loadData();
   }
 
+  // ... _showRateDialog などのメソッドは変更なしのため省略 ...
   void _showRateDialog() {
-    // まだMAXレベルに達していないアイテムを抽出
+    // 省略（元のコードのまま）
+    // もしコード全体が必要であれば再度提示しますが、ここは変更ありません
     final availableItems = _allItems.where((item) {
       final int count = _itemCounts[item.id] ?? 0;
       final int level = item.getStage(count);
@@ -1606,7 +1690,6 @@ class _GachaScreenState extends State<GachaScreen> {
 
     final int totalAvailable = availableItems.length;
 
-    // コンプリート済みの場合
     if (totalAvailable == 0) {
       showDialog(
         context: context,
@@ -1624,7 +1707,6 @@ class _GachaScreenState extends State<GachaScreen> {
       return;
     }
 
-    // 確率計算
     final double rate = 100.0 / totalAvailable;
     final String rateString = rate.toStringAsFixed(2);
 
@@ -1697,22 +1779,16 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ),
                   const Divider(),
-
-                  // ▼▼▼ ここからリスト表示 ▼▼▼
                   ...availableItems.map((item) {
                     final int count = _itemCounts[item.id] ?? 0;
                     final int level = item.getStage(count);
-
-                    // ▼ 未所持かどうかの判定
                     final bool isUnobtained = count == 0;
-
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         children: [
-                          // アイコン
                           Container(
-                            width: 36, // 少し大きく
+                            width: 36,
                             height: 36,
                             decoration: BoxDecoration(
                               color: isUnobtained
@@ -1723,37 +1799,30 @@ class _GachaScreenState extends State<GachaScreen> {
                             child: Icon(
                               item.iconData,
                               size: 20,
-                              // 未所持ならアイコンを少し薄くする
                               color: isUnobtained
                                   ? Colors.grey.shade400
                                   : Colors.grey,
                             ),
                           ),
                           const SizedBox(width: 12),
-
-                          // キャラ名 (審査のため未所持でも名前は出す)
                           Expanded(
                             child: Text(
                               item.baseName,
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
-                                // 未所持なら文字色を少し薄くして「まだ持ってない感」を出す
                                 color: isUnobtained
                                     ? Colors.black54
                                     : Colors.black87,
                               ),
                             ),
                           ),
-
-                          // ▼ 現在の状態表示 (未所持 or Lv表示)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              // 未所持なら赤系、所持済みなら青系
                               color: isUnobtained
                                   ? Colors.red.shade50
                                   : Colors.blueGrey.shade50,
@@ -1811,41 +1880,31 @@ class _GachaScreenState extends State<GachaScreen> {
   }
 
   Future<void> _spinGacha() async {
-    if (_credits < 3) return;
+    // ▼▼ 変更: コスト判定を1に変更 ▼▼
+    if (_credits < _costPerSpin) return;
 
-    // ローディング表示
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    // 抽選処理 (まだ消費しない)
     final item = await _repository.drawItem();
-
-    // 演出のため少し待つ
     await Future.delayed(const Duration(seconds: 1));
 
     if (!mounted) return;
-    Navigator.pop(context); // ローディングを閉じる
+    Navigator.pop(context);
 
-    // コンプリート済みの場合
     if (item == null) {
       _showCompleteDialog();
       return;
     }
 
-    // 消費処理
-    final success = await _repository.consumeCredits(3);
-    if (!success) {
-      // 万が一消費できなかった場合
-      return;
-    }
+    // ▼▼ 変更: 消費ポイントを1に変更 ▼▼
+    final success = await _repository.consumeCredits(_costPerSpin);
+    if (!success) return;
 
-    // 保存処理
     final newCount = await _repository.unlockItem(item.id);
-
-    // 画面更新
     await _loadData();
 
     if (mounted) {
@@ -1853,6 +1912,8 @@ class _GachaScreenState extends State<GachaScreen> {
     }
   }
 
+  // _showCompleteDialog, _showHistoryDialog, _showResultDialog は変更なしのため省略
+  // 省略したメソッドも必要であれば統合しますが、ここではロジックに関わるbuildメソッドを中心に記述します。
   void _showCompleteDialog() {
     showDialog(
       context: context,
@@ -2047,11 +2108,21 @@ class _GachaScreenState extends State<GachaScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                item.getDescription(count),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
+
+              // ▼▼ 修正: テキストエリアをスクロール可能に変更 ▼▼
+              Container(
+                constraints: const BoxConstraints(maxHeight: 80), // 高さを制限
+                width: double.maxFinite, // 横幅を確保して中央揃えを維持
+                child: SingleChildScrollView(
+                  child: Text(
+                    item.getDescription(count),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
+                ),
               ),
+
+              // ▲▲ 修正ここまで ▲▲
               const SizedBox(height: 20),
 
               if (!isMax) ...[
@@ -2093,15 +2164,14 @@ class _GachaScreenState extends State<GachaScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final int spins = _credits ~/ 3;
-    final double progress = (_credits % 3) / 3.0;
+    // ▼▼ 変更: 1pt = 1回なので、spins = _credits そのまま ▼▼
+    final int spins = _credits;
 
     final int maxLevelItems = _itemCounts.entries
         .where((e) => e.value >= _maxLevel)
         .length;
     final int totalItems = _allItems.length;
     final double completeRate = totalItems > 0 ? maxLevelItems / totalItems : 0;
-    // 全コンプリート判定
     final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
 
     return Scaffold(
@@ -2132,7 +2202,7 @@ class _GachaScreenState extends State<GachaScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          "クレジット",
+                          "ガチャチケット", // クレジットよりチケットの方がしっくりくるかも
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                         Row(
@@ -2146,7 +2216,7 @@ class _GachaScreenState extends State<GachaScreen> {
                               ),
                             ),
                             const Text(
-                              " pt",
+                              " 枚",
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey,
@@ -2174,15 +2244,10 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 15),
-                LinearProgressIndicator(
-                  value: spins > 0 ? 1.0 : progress,
-                  backgroundColor: Colors.grey.shade200,
-                  color: Colors.orange,
-                  minHeight: 8,
-                  borderRadius: BorderRadius.circular(4),
-                ),
+
+                // ▼▼ 変更: 中途半端なプログレスバーを削除（1入力1ポイントなので不要） ▼▼
                 const SizedBox(height: 20),
+
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -2199,9 +2264,7 @@ class _GachaScreenState extends State<GachaScreen> {
                     child: Text(
                       isAllComplete
                           ? "コンプリート済み"
-                          : (spins > 0
-                                ? "ガチャを回す (3pt)"
-                                : "あと ${3 - (_credits % 3)} 回入力でガチャ"),
+                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "入力をするとチケットが貰えます"),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -2209,8 +2272,22 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ),
                 ),
-                // ▼▼▼ 追加: 提供割合ボタン ▼▼▼
-                if (!isAllComplete) // コンプリート後は表示不要なら隠す
+                // ▼▼ 追加: 無料であることの明記 & 提供割合ボタン ▼▼
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // 左側：無料注釈
+                      const Text(
+                        "※ガチャは完全無料です。課金要素はありません。",
+                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                // ▲▲ 追加ここまで ▲▲
+                if (!isAllComplete)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Align(
@@ -2238,10 +2315,10 @@ class _GachaScreenState extends State<GachaScreen> {
                       ),
                     ),
                   ),
-                // ▲▲▲ 追加ここまで ▲▲▲
               ],
             ),
           ),
+          // リスト部分は変更なし
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -2264,7 +2341,6 @@ class _GachaScreenState extends State<GachaScreen> {
                     onTap: isUnlocked
                         ? () => _showResultDialog(item, count)
                         : null,
-                    // ▼▼ 修正: kDebugModeの時だけ有効にする ▼▼
                     onLongPress: kDebugMode
                         ? () async {
                             final newCount = await _repository.unlockItem(
@@ -2390,6 +2466,8 @@ class _GachaScreenState extends State<GachaScreen> {
 ```dart
 import 'package:flutter/material.dart';
 import '../repositories/settings_repository.dart';
+// ▼▼ 追加: リポジトリのインポート ▼▼
+import '../repositories/gacha_repository.dart';
 import '../widgets/app_drawer.dart';
 import 'input_tab.dart';
 import 'monthly_report_screen.dart';
@@ -2401,24 +2479,27 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-// ▼▼ 修正箇所: SingleTickerProviderStateMixin を TickerProviderStateMixin に変更 ▼▼
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
+  // ▼▼ 追加 ▼▼
+  final GachaRepository _gachaRepository = GachaRepository();
 
   int _dataVersion = 0;
   bool _isTabBarVisible = true;
-  bool _isGachaEnabled = true; // ガチャの有効状態（デフォルトON）
-  bool _isLoading = true; // 設定読み込み中フラグ
+  bool _isGachaEnabled = true;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    // 初期化時は仮でコントローラーを作成し、すぐに設定を読み込む
     _tabController = TabController(length: 3, vsync: this);
     _loadSettings();
+    // ▼▼ 追加: 初回ボーナスチェックを実行 ▼▼
+    _gachaRepository.checkInitialBonus();
   }
 
+  // ... 以下、変更なし ...
   Future<void> _loadSettings() async {
     try {
       final enabled = await _settingsRepository.loadGachaEnabled();
@@ -2426,7 +2507,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         setState(() {
           _isGachaEnabled = enabled;
           _isLoading = false;
-          // 設定に合わせてコントローラーを作り直す
           _setupTabController();
         });
       }
@@ -2435,14 +2515,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          // エラー時もデフォルト設定で続行
         });
       }
     }
   }
 
   void _setupTabController() {
-    // 現在のインデックスを保持（範囲外になる場合は0に戻す）
     int newIndex = _tabController.index;
     int length = _isGachaEnabled ? 3 : 2;
     if (newIndex >= length) newIndex = 0;
@@ -2473,9 +2551,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // ドロワーや設定画面からの戻りでデータをリフレッシュ
   void _refreshData() async {
-    // ガチャ設定が変わっている可能性があるので再読み込み
     await _loadSettings();
     setState(() {
       _dataVersion++;
@@ -2492,7 +2568,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // 読み込み中はローディングを表示
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -2515,16 +2590,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           controller: _tabController,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            // 1. 入力タブ
             InputTab(
               dataVersion: _dataVersion,
               onTabBarVisibilityChanged: _setTabBarVisible,
             ),
-
-            // 2. レポートタブ
             const MonthlyHistoryScreen(),
-
-            // 3. ガチャタブ (有効な場合のみ)
             if (_isGachaEnabled) const GachaScreen(),
           ],
         ),
@@ -2547,7 +2617,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   selectedIcon: Icon(Icons.calendar_month),
                   label: 'レポート',
                 ),
-                // ガチャが有効な場合のみ表示
                 if (_isGachaEnabled)
                   const NavigationDestination(
                     icon: Icon(Icons.star_outline, color: Colors.orange),
@@ -3440,14 +3509,14 @@ class DeveloperTipsScreen extends StatelessWidget {
     _TipItem(
       title: 'ご挨拶',
       content:
-          'どうも。開発者のからくりです。「次へ家計簿」をダウンロードいただきありがとうございます。\n\nこのアプリは従来の家計簿アプリと比べ、シンプルなのに「なんで今までなかったんだろう」という機能を詰め込みました。\n\nこの独り言に使い方のtipsが置いてあるので、よかったらご覧ください。',
+          'どうも。開発者の「からくり」と申します。「あつめる家計簿」をダウンロードいただきありがとうございます。\n\nこのアプリは従来の家計簿アプリと比べ、シンプルなのに「なんで今までなかったんだろう」という機能を詰め込みました。\n\nこの独り言に使い方のtipsが置いてあるので、よかったらご覧ください。',
       icon: Icons.waving_hand,
       color: Colors.blue,
     ),
     _TipItem(
-      title: '変な名前、次へ家計簿',
+      title: 'キーボードへのこだわり',
       content:
-          '「次へ」はこのアプリの命です。多くのアプリが1回入力をするたびにキーボードがすとんと降りてしまいます。これでは連続入力の手間が倍増です。\n\nそこで、キーボードの右下に「次へ」ボタンを設置し、保存して次の入力をスムーズに再開することができます。\n\n次の入力へスムーズに、次の未来にまっすぐと。\n\nってのはちょっとかっこつけすぎですかね笑\n次へ家計簿、末長くよろしくお願いいたします。',
+          '開発の中で特にこだわったのがキーボード。自分が長く使うならどんなのがいいか、悩みに悩んでたどりつきました。\n\n保存して次へ進むのか、キーボードを閉じのかの選択機能に加えて、直前の入力の取り消し、税率の計算、限られたスペースにちょっとしたこだわりを詰め込みました。\n\n皆様の手に馴染めばいいのですが。',
       icon: Icons.keyboard_return,
       color: Colors.indigo,
     ),
@@ -3478,16 +3547,15 @@ class DeveloperTipsScreen extends StatelessWidget {
       color: Colors.orange,
     ),
     _TipItem(
-      title: '気づいていますか？取り消し機能',
-      content:
-          '費目を入力したあと、あ、間違えたと思ったら取り消し機能の出番です。入力画面の下の方にある取り消しボタンで、前回の入力をなかったことにできます。地味に便利。',
+      title: '取り消し機能',
+      content: '費目を入力したあと、あ、間違えたと思ったら取り消し機能の出番です。前回の入力をなかったことにできます。地味に便利。',
       icon: Icons.undo,
       color: Colors.redAccent,
     ),
     _TipItem(
       title: 'まさかのガチャ機能',
       content:
-          '本当におまけ機能ですが、3回支出を入力するとガチャが回せます。キャラクターは100種類程度、2段階進化という謎のこだわりが見えるので、暇があればぜひお試しください。\n\nそんなのいらないよ、という方は、設定からガチャのタブ項目を消すことも可能です。',
+          'おまけ機能として、1日5回まで、支出を入力するとガチャが回せます。キャラクターは20種、10段階進化という謎のこだわりが見えるので、暇があればぜひお試しください。\n\nそんなのいらないよ、という方は、設定からガチャの項目を消すことも可能です。',
       icon: Icons.star,
       color: Colors.amber,
     ),
@@ -4593,7 +4661,7 @@ class GachaData {
         // Lv6
         "ある日のこと。思い出したようにペンギンごっこをしていると、突然卵にヒビが入った。みるみる割れていき光が溢れる。",
         // Lv7
-        "出てきたのは...犬？手の平くらいちっちゃい犬がちょこんと卵かの中から見上げている。犬って卵から生まれるんだっけ？でも..とってもかわいい。",
+        "出てきたのは...犬？手の平くらいちっちゃい犬がちょこんと卵の中から見上げている。犬って卵から生まれるんだっけ？でも..とってもかわいい。",
         // Lv8
         "「なあんだ。犬か。犬はダメだよ。捨ててきちゃいなさい。」ひどい、何度言ってもママは聞く耳を持ってくれない。でも大丈夫だよ、私が君を守るからね。",
         // Lv9
@@ -4643,25 +4711,25 @@ class GachaData {
       baseName: 'スライム',
       descriptions: [
         // Lv1
-        "出た、スライム。なんかいきなりいっぱい強くなれそうな見た目。",
+        "RPGの歴史はここから始まったと言っても過言じゃない。この質感と色、なんだか急激にレベルアップして強くなれそうな予感がしない？。",
         // Lv2
-        "まだ見た目は小さい。丸い容器に6つ入ったチーズのうちの1個くらいかな。",
+        "サイズ感はまだ控えめ。丸い容器に6個入ったあのポーションタイプのチーズ1個分くらいかな。一口でいけそうだけど、食べちゃダメだよ。",
         // Lv3
-        "だんだん大きくなってきた。ちょっといい店で食べるチーズフォンデュくらいかな。",
+        "順調に育ってきた。質感はちょっといい店で出てくる、あのトロットロのチーズフォンデュ。パンに絡めたら最高に美味しそうだけど、絶対食べちゃダメだよ。",
         // Lv4
-        "急に癒し系になった。好きな人を片っ端から癒してあげられる。",
+        "色が淡いピンク（または緑）に。この頃から急に「癒し」を振りまき始める。疲れた人を片っ端から包み込んで癒してくれるけど、MPを消費している自覚はないらしい。",
         // Lv5
-        "急に世界最弱急に弱体化されてしまった。なんだろう。色が関係あるのかな。",
+        "なぜか急に世界最弱レベルにまで弱体化してしまった。色が『あの青』になったせいかな。原点回帰というか、初期村の周辺に生息してそうな安心感があるね。",
         // Lv6
-        "まだ弱そう。でもだいぶでかい。今韓国料理屋で出てくるたっぷりのチーズくらいかな。",
+        "見た目は弱そうだけど、サイズだけは一人前。韓国料理屋で鉄板の上にドバドバ流し込まれる、あの暴力的な量のチーズくらいには成長した。重い。",
         // Lv7
-        "これも弱そう。でも今までは結構シャバシャバだったけど、だんだんもったりとしてきた。",
+        "今まではシャバシャバした液体っぽかったけど、だんだん「もったり」と粘り気が出てきた。物理攻撃が通りにくそうな、嫌な弾力。そろそろ本気を出してきたか…？",
         // Lv8
-        "毒属性になった。相手にしたら相当手強いだろう。",
+        "全身が毒々しい色に。この粘体に触れるだけで装備が腐食しそうな勢い。相手にしたら相当手ごわいし、何より後の洗濯が大変そうだ。",
         // Lv9
-        "火属性になった。その粘体から放出される豪炎は全てを焼き尽くす。",
+        "ついに発火。放出される豪炎は全てを焼き尽くし、周囲の温度を50度くらい上げちゃう。もうスライムっていうか、生きている溶岩（マグマ）だね。",
         // Lv10
-        "おめでとう。これで君も億万長者。",
+        "最後はやっぱり「成金」の輝き！この黄金の粘体を一目見れば、誰もが欲望の眼差しを向けるはず。おめでとう。これを売れば君も夢の億万長者だ！",
       ],
     ),
 
@@ -4706,7 +4774,7 @@ class GachaData {
         // Lv2
         "いつだって、私の大事な時には風が吹いていた。そう、本当にいつだって。",
         // Lv3
-        "産まれた時。大急ぎで病院に駆けつけた父が車のドアを開けると、あまりの強風でドアが開いてしまい隣の車にぶつけてしまったのだ。隣の人がいい人で許してくれて、無事立ち会えて良かったよ本当に。",
+        "産まれた時。大急ぎで病院に駆けつけた父が車のドアを開けると、あまりの強風でドアが開いて隣の車にぶつけてしまったのだ。隣の人がいい人で許してくれて、無事立ち会えて良かったよ本当に。",
         // Lv4
         "幼稚園の入園式。ぽかぽか天気にそよ風が吹いていてほんとに気持ちいい道だった。道はね。いざ幼稚園に着いたらママと離れるのが嫌すぎて泣いていたらしい。大きくなってからも何度聞かされたか。",
         // Lv5
@@ -4750,13 +4818,9 @@ class GachaData {
         // Lv9
         "とうとう電気を解約した。我が家は今やオールサンちゃん化だ。寝ている時でもどの電化製品にも完璧に電気を送り届けてくれるサンちゃん。しかし、この寝姿よ。ふふ、姿仕事してるとは思わないよなあ。いつもありがとね。",
         // Lv10
-        "「ぜひ！ぜひうちに来ていただきたく！」サンちゃんの評判は広まり、最近できた「サンちゃん発電所」で彼は日本の30％もの電気を1人、いや、1鳥で賄っている。最初は心配だったけど、やりがいもあるみたいだし楽しそうだ。家に帰ってきて仕事のことをピーチクパーチク話すサンちゃんは便利だけど、それ以上に大切な僕らの家族だ。",
+        "「ぜひ！ぜひうちに来ていただきたく！」サンちゃんの評判は広まり、最近できた「サンちゃん発電所」で彼は日本の30％もの電気を1人、いや、1羽で賄っている。最初は心配だったけど、やりがいもあるみたいだし楽しそうだ。家に帰ってきて仕事のことをピーチクパーチク話すサンちゃんは便利だけど、それ以上に大切な僕らの家族だ。",
       ],
     ),
-
-    // -------------------------------------------------------
-    // No.11 アイスゴーレム
-    // -------------------------------------------------------
     GachaItem(
       id: '10',
       rarity: 1,
@@ -4787,9 +4851,6 @@ class GachaData {
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.12 太陽神
-    // -------------------------------------------------------
     GachaItem(
       id: '11',
       rarity: 1,
@@ -4820,288 +4881,231 @@ class GachaData {
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.13 闇の魔人
-    // -------------------------------------------------------
     GachaItem(
-      id: '13',
-      rarity: 4,
+      id: '12',
+      rarity: 1,
       weight: 20,
       iconData: Icons.dark_mode,
-      baseName: '闇の魔人',
+      baseName: '闇の魔神',
       descriptions: [
-        // Lv1
-        "あ",
-        // Lv2
-        "あ",
-        // Lv3
-        "あ",
-        // Lv4
-        "あ",
-        // Lv5
-        "あ",
-        // Lv6
-        "あ",
-        // Lv7
-        "あ",
-        // Lv8
-        "あ",
-        // Lv9
-        "あ",
-        // Lv10
-        "あ",
+        // Lv1: 導入。存在の定義
+        "闇の魔神だ。悪魔ではない。根源的な恐怖とはまた別の存在。",
+        // Lv2: 背景。人間たちの愚かな論争
+        "ある王国では「光の天使」と「闇の魔神」のどちらが慈悲深いか、数百年も神学的論争が続いていた。",
+        // Lv3: 転。偽の希望の提示
+        "100年前、発掘された聖碑にはこうあった。『光と闇はかつて一つの魂であり、互いを慈しみ合う半身であった』と。",
+        // Lv4: 偽の教典の内容
+        "『光が欠ければ闇が、闇が欠ければ光が、その輪郭を失う。ゆえに汝ら、対立を捨て、共存の道を歩め』",
+        // Lv5: 偽の教典がもたらした結果
+        "民はこの言葉に涙し、手を取り合った。だが、わずか数年後には「どちらがより厚く共存を信じているか」で殺し合いを始めた。",
+        // Lv6: 人間の本質の嘲笑
+        "平和のための言葉さえ、人間という種族にかかれば、隣人の喉笛を掻き切るための立派な凶器になる。",
+        // Lv7: 核心。作者の正体
+        "あの聖碑を、あたかも数千年前のものに見えるよう細工し、地下に埋めたのは誰だと思う？",
+        // Lv8: 目的の開示
+        "素敵だと思わないか？純粋な憎しみよりも、汚された希望から生まれる絶望の方が、はるかに芳醇で良質な闇を育む。",
+        // Lv9: 光の天使の現状
+        "今や私はかつてないほどに強大だ。最も、私の「愛しき半身」は、地下深くで光を奪われ、干からびた苗木のようになっているのだがね。。",
+        // Lv10: 結末。永遠の呪い
+        "私こそが闇の魔神。おい、光よ。まだ死ぬなよ。お前が消えれば私の存在（かたち）も消えてしまう。貴様はただ、私のために永遠に『生きて』さえいればいいのだ。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.14 トゲトゲスライム
-    // -------------------------------------------------------
     GachaItem(
-      id: '14',
-      rarity: 2,
+      id: '13',
+      rarity: 1,
       weight: 20,
       iconData: Icons.coronavirus,
       baseName: 'トゲトゲスライム',
       descriptions: [
         // Lv1
-        "あ",
+        "「スライムにトゲを付けただけで新種」なんて、そんなの許したら無限にモンスター作れちゃうじゃん…。と、最初は誰もが疑った。",
         // Lv2
-        "あ",
+        "ところがどっこい。よく調べてみると、既存のスライムとは全く別の進化系統を辿ってきた、独立したモンスターであることが判明したんだ。",
         // Lv3
-        "あ",
+        "原始的な単細胞生物に近い普通のスライムとは対照的に、こいつは脊椎動物に近い複雑な遺伝子コードを持っている。見た目以上にハイテクなやつ。",
         // Lv4
-        "あ",
+        "一説によれば、厳しい環境に適応しようとしたハリネズミが、柔軟性を求めて「とろみ」を帯び、最終的に粘体へと至った姿らしい。逆・進化論だね。",
         // Lv5
-        "あ",
+        "哺乳類に近い知能を持つため、普通のスライムよりずっと賢い。ただ、その分だけ警戒心も非常に強く、めったに人に懐くことはないんだ。",
         // Lv6
-        "あ",
+        "全身のトゲは細胞の一部が硬質化したもので、筋肉のように自在に動かせる。状況に合わせてトゲの角度を微調整し、空気抵抗すら制御するらしい。",
         // Lv7
-        "あ",
+        "高い社会性を持っていて、群れの中では大人が子供に「正しいトゲの出し方」を教えているような、微笑ましい教育的仕草も観測されているよ。",
         // Lv8
-        "あ",
+        "粘体の柔軟性と硬いトゲを組み合わせ、全身を「巨大なモーニングスター」に変形させて突撃する。その破壊力は石壁をも粉砕するほど。",
         // Lv9
-        "あ",
+        "かつて一匹のトゲトゲスライムがドラゴンの喉に飛び込み、内部からトゲを突き立てて仕留めたという「英雄」の記録が、古文書に記されている。",
         // Lv10
-        "あ",
+        "極限まで研ぎ澄まされたそのトゲは、もはや物理的な鋭さを超え、見る者の心に突き刺さるような威圧感を放つ。それは一種の芸術品に近い。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.15 アメーバ
-    // -------------------------------------------------------
     GachaItem(
-      id: '15',
+      id: '14',
       rarity: 1,
       weight: 20,
       iconData: Icons.bubble_chart,
       baseName: 'アメーバ',
       descriptions: [
         // Lv1
-        "あ",
+        "アメーバは、細胞質を流動させて体の一部を突き出すことができるんだ。これが「仮足（かそく）」。そこに体全体を移動させることでゆっくり進む。僕がこたつでだらだらしてる時にちょっと遠くのリモコンを取るときにそっくり。",
         // Lv2
-        "あ",
+        "アメーバは特定の動物ってわけじゃないんだ。単細胞で生活する原生生物の総称なんだよね。この単細胞め！",
         // Lv3
-        "あ",
+        "「アメーバ」はギリシャ語で「変化」を意味する言葉が語源なんだ。その名の通り、決まった形を持たず、刻々と姿を変えるのが最大の特徴だね。",
         // Lv4
-        "あ",
+        "体はたった一つの細胞だけど、中にはちゃんと『核』が入ってるんだ。これがアメーバの司令塔。脳みそが一つどころか、体そのものが一つの細胞なんだから、究極のミニマリストと言っても過言じゃないね。",
         // Lv5
-        "あ",
+        "体の中に「収縮胞」というポンプを持っていて、余分な水分を外に汲み出しているんだ。これがないと、浸透圧で水が入り込みすぎちゃって破裂する。常に全力で排水作業中。お疲れ様です。",
         // Lv6
-        "あ",
+        "餌（細菌や他の単細胞生物）を見つけると、仮足で包み込むようにして取り込む。これが「食作用（ファゴサイトーシス）」だね。名前かっこ良すぎでしょ。",
         // Lv7
-        "あ",
+        "増える時は「分裂」という方法をとるよ。ある日突然、体が真ん中から分かれて2人になるんだ。恋人も友達もいらない、自分がいればいい。究極の自己完結型ライフスタイルだね。",
         // Lv8
-        "あ",
+        "環境が厳しくなると「シスト」っていう硬い殻を作って休眠状態に入るんだ。乾燥しても平気。嫌なことがあったら殻に閉じこもる。アメーバ流のメンタルケア術だね。",
         // Lv9
-        "あ",
+        "実は僕たちの体の中にも、アメーバみたいに動く細胞がいるんだ。白血球の一部が仮足を使って体内をパトロールし、バイキンを食べて守ってくれている。サンキュー、体内アメーバ。",
         // Lv10
-        "あ",
+        "「オオアメーバ」の中には、数ミリの大きさになって肉眼で見えるやつもいるんだ。単細胞なのに目視できるって、もはや細胞の限界突破だよね。まさにアメーバ界のレジェンド！",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.16 大ネズミ
-    // -------------------------------------------------------
     GachaItem(
-      id: '16',
+      id: '15',
       rarity: 1,
       weight: 20,
       iconData: Icons.pest_control_rodent,
       baseName: '大ネズミ',
       descriptions: [
-        // Lv1
-        "あ",
-        // Lv2
-        "あ",
-        // Lv3
-        "あ",
-        // Lv4
-        "あ",
-        // Lv5
-        "あ",
-        // Lv6
-        "あ",
-        // Lv7
-        "あ",
-        // Lv8
-        "あ",
-        // Lv9
-        "あ",
-        // Lv10
-        "あ",
+        // Lv1: 起点
+        "かつて、ある埋め立て地の荒野に一人、夜の雨に濡れながら立つ男がいた。彼の手には、一束の設計図と消えかかった火が握られていた。",
+        // Lv2: 過去
+        "幼少期、彼の世界に色彩はなかった。空腹を紛らわすために地面に描いたネズミの絵。それが、石を投げられた彼に寄り添う唯一の友だった。",
+        // Lv3: 誓い
+        "「あいつらに、俺と同じ思いはさせない」。その日のパンにすらありつけず喘ぐ子供に、彼は明日を信じるための『魔法』を届けることを、孤独な夜に誓ったのだ。",
+        // Lv4: 苦難
+        "銀行屋の冷笑を浴び、裏切りに遭い、一度はすべてを失った。それでも泥まみれの手で、彼は地図にない王国の輪郭を描き続けた。",
+        // Lv5: 覚悟
+        "「夢を見るには、金がいる。だが、夢を守るには……魂を売る覚悟がいるんだ」。彼は自らを『王』ではなく、夢の門番へと変えていった。",
+        // Lv6: 奇跡
+        "誰もが不可能と罵った。しかし、ただの埋立地であったその場所に、彼は一夜にして巨大な城を打ち立てた。それは、絶望を知る男が作った、唯一のユートピアだった。",
+        // Lv7: 聖域
+        "今、彼の前では眩いネオンが踊っている。子供たちが屈託なく笑い合える場所。その笑顔を守るためなら、彼はどんなに辛い仕事も厭わなかった。",
+        // Lv8: 影の軍勢
+        "誰かが耳の形を少しでも変えれば、どこからともなく『黒塗りの法務部』がやってくる。それは、彼が作り上げた夢の聖域を汚させないための、冷徹な防衛線。",
+        // Lv9: 誇り
+        "背後で鳴り響くパレードの音楽。彼は一度も振り返らない。自分が光の届かない路地裏を歩き続けることで、子供たちの太陽を守れると知っているからだ。",
+        // Lv10: 伝説
+        "「夢を叶える方法はたった一つ。叶うまで、死ぬ気で足掻き続けること」。夜の闇に消えていく彼のシルエットは、今も世界で最も愛されている。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.17 ラビット
-    // -------------------------------------------------------
     GachaItem(
-      id: '17',
+      id: '16',
       rarity: 1,
       weight: 20,
       iconData: Icons.cruelty_free,
       baseName: 'ラビット',
       descriptions: [
-        // Lv1
-        "あ",
-        // Lv2
-        "あ",
-        // Lv3
-        "あ",
-        // Lv4
-        "あ",
-        // Lv5
-        "あ",
-        // Lv6
-        "あ",
-        // Lv7
-        "あ",
-        // Lv8
-        "あ",
-        // Lv9
-        "あ",
-        // Lv10
-        "あ",
+        // Lv1: 伝説の始まり
+        "世界で最も有名な、蝶ネクタイをしたうさぎ。紳士のためのバイブルとして、ある種の伝説を打ち立てた。",
+        // Lv2: スタイルの確立
+        "かつては野を駆けるだけの平凡な一羽だった。しかし、一人の男から蝶ネクタイを贈られた日、彼は『野生』を捨て『洗練』を選んだ。",
+        // Lv3: 社交界へのデビュー
+        "夜の社交場に現れた彼は、極上のカクテルと気の利いたジョークで、退屈していた大人たちを瞬く間に虜にしてしまった。",
+        // Lv4: ライフスタイルの提案
+        "彼が語る「自由と快楽」の哲学は、やがて一冊の雑誌となった。それは単なる娯楽を超え、若者たちの新たなバイブルとして熱狂的に受け入れられた。",
+        // Lv5: バニーたちの登場
+        "彼の周りには、いつしか耳をつけた給仕たちが集まった。彼女たちのスタイルは、世界中のナイトクラブを象徴するアイコンへと進化していく。",
+        // Lv6: 巨大な邸宅「ラビット・マンション」
+        "彼は巨大な邸宅を建て、毎夜豪華なパーティを開いた。そこは自由を愛する者だけが招待される、地上最後の楽園と呼ばれた。",
+        // Lv7: 思想家としての顔
+        "単なる遊び人だと思ったら大間違いだ。蝶ネクタイの裏側には、権力に抗い、個人の自由を追求する鋭い知性が隠されている。",
+        // Lv8: 世界を席巻するロゴマーク
+        "彼のシルエットは、国境を越えてあらゆる製品に刻まれるようになった。もはやうさぎではなく、一つの『生き様』を指すブランドとなったのだ。",
+        // Lv9: 逆境と勝利
+        "保守的な者たちからは「不道徳」と指弾されたこともある。だが彼は、不敵な笑みを浮かべながら「人生を楽しむ権利」を法廷で勝ち取ってみせた。",
+        // Lv10: 永遠のポップアイコン
+        "蝶ネクタイを締め直し、彼は今夜も夜の街へ消えていく。伝説の最終章にはこう記されている。「人生は短すぎる、楽しまなければ損だ」と。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.18 ハッピーバード
-    // -------------------------------------------------------
     GachaItem(
-      id: '18',
-      rarity: 2,
+      id: '17',
+      rarity: 1,
       weight: 20,
       iconData: Icons.flutter_dash,
       baseName: 'ハッピーバード',
       descriptions: [
         // Lv1
-        "あ",
+        "ハッピーなバードって...ええ...君はそれでいいの？人生に満足できてるわけ？「野暮なこと聞かないでくださいよ。毎日毎日ハッピーでしょうがないんです。」うわ！喋った！",
         // Lv2
-        "あ",
+        "今日は道端に落ちていたひまわりの種を食べた。うますぎて失神しかけた。明日も生きてみようと思う。これぞハッピー。",
         // Lv3
-        "あ",
+        "水たまりに映る自分と目が合った。あまりに幸せそうな顔をしていたので、思わず水面にハイタッチ（着水）した。全身びしょ濡れだが、それすらも心地いい。",
         // Lv4
-        "あ",
+        "通行人に「ただの鳥だな」と言われた。…「ただの」！？つまり私は、この素晴らしい世界の普遍的な一部になれたということか！最高だ！ハッピーすぎて羽が数枚抜けた。",
         // Lv5
-        "あ",
+        "「幸せの秘訣？それは、空を飛んでいる時に口を開けて、たまに飛び込んでくる虫を”ラッキーおやつ”と思うことですよ」彼は悟りを開き始めた。瞳の輝きが尋常ではない。",
         // Lv6
-        "あ",
+        "ついに存在自体が発光し始めた。夜道では街灯代わりに重宝されるが、本人は「自分の光で自分の影が見えて、友達が増えたみたいでハッピーです！」と供述している。怖い。",
         // Lv7
-        "あ",
+        "彼の周りには、不機嫌なカラスや悩めるハトが集まるようになった。彼が一言「ハッピー？」と問いかけるだけで、全鳥類が円になって踊り出す。もはや一種の宗教である。",
         // Lv8
-        "あ",
+        "「ハッピー将軍」の異名を持ち、戦場に放てば敵味方関係なくお花見が始まってしまうという平和の最終兵器。本人は「みんなで宴会できてハッピー！」としか思っていない。",
         // Lv9
-        "あ",
+        "絶望に打ちひしがれた者の前に現れ、無言でどこからか持ってきたフライドポテトを差し出す。その一口が、数多の絶望を救ってきた。英雄としての自覚は、相変わらずゼロだ。",
         // Lv10
-        "あ",
+        "伝説へ。彼はついに概念となった。ふとした瞬間に感じる「あ、今日なんかいい日だな」という感覚、それこそが彼なのだ。今、あなたの肩で彼が囁いている。「ハッピーですか？」",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.19 キラービー
-    // -------------------------------------------------------
     GachaItem(
-      id: '19',
-      rarity: 2,
+      id: '18',
+      rarity: 1,
       weight: 20,
       iconData: Icons.hive,
       baseName: 'キラービー',
       descriptions: [
         // Lv1
-        "あ",
+        "簡単に言えばスズメバチのことだ。大型で攻撃性が高く、日本では毎年多くの被害が出ている。おー怖い。",
         // Lv2
-        "あ",
+        "実は「スズメバチ」という名前は、巣の模様がスズメの羽の模様に似ていることから名付けられたという説があるぞ。",
         // Lv3
-        "あ",
+        "あの恐ろしい毒針は、実は産卵管が変化したもの。つまり、人を刺してくるスズメバチはすべてメスの働き蜂なんだ。",
         // Lv4
-        "あ",
+        "ミツバチと違って、針に返しがついていない。つまり、一度刺しても針が抜けず、死ぬまで何度も連続で刺してくるわけだ。最悪だな。",
         // Lv5
-        "あ",
+        "彼らの武器は「毒のカクテル」。神経毒やタンパク質分解酵素など、複数の毒が混ざっており、アナフィラキシーショックを引き起こす。",
         // Lv6
-        "あ",
+        "スズメバチがカチカチと顎を鳴らしていたら、それは最終警告だ。彼らのテリトリーに侵入したあなたへの、死のカウントダウンと言える。",
         // Lv7
-        "あ",
+        "興奮したハチは「警報フェロモン」を空中へ撒き散らす。これが周囲の仲間に伝わると、一斉に集団攻撃を仕掛けてくる仕組みだ。",
         // Lv8
-        "あ",
+        "幼虫は肉食だが、成虫は液状の食べ物しか摂取できない。狩った昆虫を肉団子にして幼虫に与え、代わりに幼虫から栄養液をもらって生きている。",
         // Lv9
-        "あ",
+        "冬を越せるのは新女王蜂だけ。秋に生まれたオスは交尾を終えると死に、働き蜂も冬の寒さで全滅する。巣は一年限りの使い捨てなのだ。",
         // Lv10
-        "あ",
+        "世界最大のオオスズメバチは、時速40kmで飛行し、一日に100km移動することもある。もはや空飛ぶ殺戮兵器。出会ったら静かに離れよう。",
       ],
     ),
 
-    // -------------------------------------------------------
-    // No.20 鋼鉄ビートル
-    // -------------------------------------------------------
     GachaItem(
-      id: '20',
-      rarity: 3,
-      weight: 20,
-      iconData: Icons.bug_report,
-      baseName: '鋼鉄ビートル',
-      descriptions: [
-        // Lv1
-        "あ",
-        // Lv2
-        "あ",
-        // Lv3
-        "あ",
-        // Lv4
-        "あ",
-        // Lv5
-        "あ",
-        // Lv6
-        "あ",
-        // Lv7
-        "あ",
-        // Lv8
-        "あ",
-        // Lv9
-        "あ",
-        // Lv10
-        "あ",
-      ],
-    ),
-
-    // -------------------------------------------------------
-    // No.20 優勝トロフィー
-    // -------------------------------------------------------
-    GachaItem(
-      id: '20',
+      id: '19',
       rarity: 5,
       weight: 20,
       iconData: Icons.emoji_events,
       baseName: '優勝トロフィー',
       descriptions: [
         // Lv1
-        "大切な人と抱えた、思い出のトロフィーなんです。そう言って彼女はお題ヤカに笑った。",
+        "大切な人と抱えた、思い出のトロフィーなんです。そう言って彼女は穏やかに笑った。",
         // Lv2
         "足が遅すぎる選手権で優勝しちゃったトロフィー。",
         // Lv3
         "陸上部に入って1年間無欠席だった皆勤賞トロフィー。",
         // Lv4
-        "憧れの先輩が優勝した時に「触ってみろよ」って言ってくれた時のトロフィー。",
+        "憧れの先輩が優勝した時に「そんなに見るなら触ってみろよ」って言ってくれた時のトロフィー。",
         // Lv5
         "新人戦でいよいよって時にフライングで失格になり、溢れた涙にどこか似ているトロフィー。",
         // Lv6
@@ -5113,7 +5117,37 @@ class GachaData {
         // Lv9
         "後になって聞いた。先輩は私が入部する前の新人戦でフライングで失格になったらしい。掃除もきっとそれで...涙が溢れる。私も先輩みたいになれるかな...",
         // Lv10
-        "月日は流れる。舞台はオリンピック、女子100m走。優勝したのは小柄な日本人女性。駆け寄る先輩。「触ってみる？」あの夏の匂いを差し出した金ピカのトロフィー。",
+        "月日は流れる。舞台はオリンピック、女子100m走。優勝したのは小柄な日本人女性。駆け寄るあなた。「触ってみますか？」あの夏の匂いを差し出した金ピカのトロフィー。",
+      ],
+    ),
+
+    GachaItem(
+      id: '20',
+      rarity: 5,
+      weight: 20,
+      iconData: Icons.tsunami,
+      baseName: 'リヴァイアサン',
+      descriptions: [
+        // Lv1: 自然状態の地獄
+        "世界はかつて、善悪も法も存在しない「自然状態」にあった。そこにあるのは剥き出しの欲望だけであり、隣人は全て、明日の自分の命を脅かす略奪者であった。",
+        // Lv2: 万人の万人に対する戦い
+        "「万人の万人に対する戦い」という名の地獄。人々は絶え間ない死の恐怖に怯え、その生活は孤独で、貧しく、残酷で、そしてあまりにも短く、惨めなものでしかなかった。",
+        // Lv3: 理性の叫び
+        "地を這う無力な人間たちは、理性という名の火を灯した。彼らは悟ったのだ。誰もが全てを奪う権利を持つ限り、誰もが全てを失い続けるという悲劇的な矛盾を。",
+        // Lv4: 権利の譲渡
+        "平和を渇望した人々は、歴史上最も重い決断を下す。自らを守るために振るっていた武器を捨て、己が持つ「暴力という名の自由」を一つの王座に預けることを誓った。",
+        // Lv5: 人工の神の誕生
+        "数多の人間の意志を束ね、一つの巨大な「人工の神（コモンウェルス）」が産声を上げる。それがリヴァイアサン。無数の鱗の一枚一枚は、自由を差し出した民衆の魂である。",
+        // Lv6: 剣と錫杖の主
+        "リヴァイアサンは、右手に秩序を強制する「剣」を、左手に教えを導く「錫杖」を携えて現れた。この巨獣の圧倒的な力の前に、かつての無秩序な暴力は全て塵へと化した。",
+        // Lv7: 恐怖による平和
+        "人々が手に入れた「平和」の正体は、リヴァイアサンが与える「恐怖」であった。法を破ればこの巨獣に呑み込まれるという根源的な畏怖こそが、人々の絆を繋ぎ止める鎖となる。",
+        // Lv8: 地上の絶対者
+        "天界の神々すらも、この地上においてはリヴァイアサンの影に道を譲る。国家という名のこの怪物は、誰にも裁かれず、誰にも依存せず、ただ冷徹に秩序のみを体現する。",
+        // Lv9: 深淵に潜む監視者
+        "もしも民が契約を忘れ、再び欲望に走るならば、リヴァイアサンは深海から浮上し全てを無に帰すだろう。文明の静寂は、この巨獣がまどろむ深淵の底に辛うじて保たれている。",
+        // Lv10: 永遠なる契約の化身
+        "リヴァイアサンとは、私たちが平和を願う限り消えることのない「必要悪」の化身である。孤独な死から逃れるため、人類は永遠にこの巨大な影に従属することを自ら選んだのだ。",
       ],
     ),
   ];
@@ -5236,11 +5270,11 @@ import '../utils/simple_calculator.dart';
 
 /// 保存処理の結果をまとめたクラス
 class InputServiceResult {
-  final bool success; // 成功したか
-  final String message; // 表示するメッセージ
-  final Color messageColor; // メッセージの色
-  final String? formattedAmount; // 計算後の金額文字列（UI更新用）
-  final String? savedId; // 保存されたデータのID（Undo用）
+  final bool success;
+  final String message;
+  final Color messageColor;
+  final String? formattedAmount;
+  final String? savedId;
 
   InputServiceResult({
     required this.success,
@@ -5255,16 +5289,15 @@ class InputService {
   final TransactionRepository _transactionRepo = TransactionRepository();
   final GachaRepository _gachaRepo = GachaRepository();
 
-  /// データを保存するメインの処理
   Future<InputServiceResult> registerTransaction({
-    required String rawAmount, // 入力された金額（数式の可能性あり）
-    required String memo, // メモ
-    required DateTime date, // 選ばれた日付
-    required CategoryTag expenseTag, // 選ばれた費目
-    required bool isCardPayment, // カード払いモードか
-    required CategoryTag? cardTag, // 選ばれたカード（あれば）
-    required bool showCardOnInput, // 設定：カード入力を表示しているか
-    required bool isGachaEnabled, // 設定：ガチャが有効か
+    required String rawAmount,
+    required String memo,
+    required DateTime date,
+    required CategoryTag expenseTag,
+    required bool isCardPayment,
+    required CategoryTag? cardTag,
+    required bool showCardOnInput,
+    required bool isGachaEnabled,
   }) async {
     // 1. 計算とバリデーション
     final calculatedText = SimpleCalculator.calculate(rawAmount);
@@ -5290,15 +5323,11 @@ class InputService {
     String paymentMethod = '';
     DateTime? paymentDate;
 
-    // 設定でカードが隠されている場合は、強制的に現金扱いにするかどうか
-    // ※元のロジックに従い、UIで隠していてもisCardPaymentがtrueならカード扱いにします
     final bool shouldUseCard = showCardOnInput && isCardPayment;
 
     if (shouldUseCard) {
       if (cardTag != null) {
         paymentMethod = cardTag.label;
-
-        // 締め日・支払日の計算
         if (cardTag.closingDay != null && cardTag.paymentDay != null) {
           int monthsToAdd = cardTag.paymentMonthOffset;
           if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
@@ -5309,7 +5338,7 @@ class InputService {
           int targetDay = cardTag.paymentDay!;
 
           paymentDate = (targetDay == 99)
-              ? DateTime(targetYear, targetMonth + 1, 0) // 末日
+              ? DateTime(targetYear, targetMonth + 1, 0)
               : DateTime(targetYear, targetMonth, targetDay);
         }
       } else {
@@ -5342,18 +5371,15 @@ class InputService {
 
       if (isGachaEnabled) {
         final result = await _gachaRepo.addCredit();
-        final int currentCredits = result.$1;
+        // final int currentCredits = result.$1; // 未使用のためコメントアウト
         final bool isAdded = result.$2;
 
         if (isAdded) {
-          if (currentCredits % 3 == 0) {
-            msg = 'ガチャが回せます！';
-            color = Colors.orange;
-          } else {
-            msg = '保存しました';
-          }
+          // ▼▼ 変更: 1入力1ガチャなので、加算＝ガチャ権利獲得 ▼▼
+          msg = 'ガチャチケット獲得！';
+          color = Colors.orange;
         } else {
-          msg = '保存しました（本日のポイント上限）';
+          msg = '保存しました（本日の上限到達）';
           color = Colors.grey;
         }
       } else if (paymentDate != null) {
@@ -5376,12 +5402,10 @@ class InputService {
     }
   }
 
-  /// 削除（取り消し）処理
   Future<void> deleteTransaction(String id) async {
     await _transactionRepo.deleteTransaction(id);
   }
 
-  /// 取り消し対象のアイテムを取得
   Future<TransactionItem?> getTransaction(String id) async {
     final allItems = await _transactionRepo.getAllTransactions();
     try {
@@ -7284,6 +7308,7 @@ class InputControlPanel extends StatelessWidget {
 --- FILE: .vscode/settings.json ---
 ```
 {
-    "commentTranslate.hover.enabled": false
+    "commentTranslate.hover.enabled": false,
+    "cmake.sourceDirectory": "/Users/nomuranaoya/projects/kakeibo2/linux"
 }
 ```
