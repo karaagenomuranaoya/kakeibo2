@@ -3,6 +3,9 @@ import '../../models/category_tag.dart';
 import '../../models/gacha_item.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/gacha_repository.dart';
+import '../../repositories/transaction_repository.dart';
+import '../../models/bonus_item.dart';
+import '../../data/bonus_data.dart';
 
 class CategoryManageScreen extends StatefulWidget {
   const CategoryManageScreen({super.key});
@@ -16,35 +19,35 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
   final GachaRepository _gachaRepository = GachaRepository();
+  final TransactionRepository _transactionRepository = TransactionRepository();
 
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
 
-  // ガチャデータ用
+  // ガチャ・ボーナスデータ用
   List<GachaItem> _gachaItems = [];
   Map<String, int> _gachaCounts = {};
+  int _totalDays = 0;
 
   bool _isLoading = true;
 
   // 標準アイコンリスト
   final List<IconData> _standardIcons = [
-    // 基本・デフォルト系
-    Icons.restaurant, // 食費
-    Icons.shopping_bag, // 日用品
-    Icons.train, // 交通費
-    Icons.wine_bar, // 交際費
-    Icons.sports_esports, // 趣味
-    Icons.checkroom, // 美容・衣服
-    Icons.medical_services, // 医療
-    Icons.menu_book, // 教育・本
-    Icons.home, // 住居・光熱
-    Icons.wifi, // 通信
-    Icons.directions_car, // 車
-    Icons.movie, // 映画
-    Icons.attach_money, // 給料
-    Icons.credit_card, // カード
-    Icons.payment, // 決済
-    // その他便利系
+    Icons.restaurant,
+    Icons.shopping_bag,
+    Icons.train,
+    Icons.wine_bar,
+    Icons.sports_esports,
+    Icons.checkroom,
+    Icons.medical_services,
+    Icons.menu_book,
+    Icons.home,
+    Icons.wifi,
+    Icons.directions_car,
+    Icons.movie,
+    Icons.attach_money,
+    Icons.credit_card,
+    Icons.payment,
     Icons.shopping_cart,
     Icons.school,
     Icons.phone_iphone,
@@ -79,9 +82,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   Future<void> _loadData() async {
     final expenses = await _settingsRepository.loadExpenseTags();
     final cards = await _settingsRepository.loadCardTags();
-
     final gachaItems = await _gachaRepository.getItems();
     final gachaCounts = await _gachaRepository.getItemCounts();
+
+    // 取引データからユニークな入力日数を取得
+    await _transactionRepository.getAllTransactions();
+    final days = _transactionRepository.getUniqueInputDaysCount();
 
     if (mounted) {
       setState(() {
@@ -89,6 +95,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
         _cardList = cards;
         _gachaItems = gachaItems;
         _gachaCounts = gachaCounts;
+        _totalDays = days;
         _isLoading = false;
       });
     }
@@ -99,7 +106,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     await _settingsRepository.saveCardTags(_cardList);
   }
 
-  // スタイル（色/レベル）選択ダイアログを表示するメソッド
+  // ガチャアイテム用のスタイル選択ダイアログ（これは残す）
   Future<void> _showStyleSelectionDialog({
     required BuildContext context,
     required GachaItem item,
@@ -137,37 +144,17 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           color: Colors.white,
                           shape: BoxShape.circle,
                           border: Border.all(color: color, width: 2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: color.withOpacity(0.2),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
                         ),
                         child: Icon(item.iconData, color: color, size: 28),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        "Lv.$level",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
+                      Text("Lv.$level", style: const TextStyle(fontSize: 10)),
                     ],
                   ),
                 );
               }),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('キャンセル'),
-            ),
-          ],
         );
       },
     );
@@ -181,15 +168,11 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     final TextEditingController nameController = TextEditingController(
       text: item?.label ?? '',
     );
-
     Color selectedColor =
         item?.color ?? (isExpense ? Colors.orange : Colors.blue);
-
-    // 初期アイコンの設定
     IconData selectedIcon =
         item?.displayIcon ?? (isExpense ? Icons.category : Icons.credit_card);
 
-    // --- カード設定用の変数 ---
     bool isClosingMode = (item?.closingDay != null);
     int closingDay = item?.closingDay ?? 99;
     int paymentDay = item?.paymentDay ?? 27;
@@ -241,22 +224,16 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // --- 1. 名称入力 ---
                       TextField(
                         controller: nameController,
                         decoration: const InputDecoration(labelText: '名称'),
-                        autofocus: false,
                         onChanged: (_) => setStateDialog(() {}),
                       ),
                       const SizedBox(height: 20),
-
-                      // --- 2. プレビュー (修正箇所) ---
+                      // プレビュー
                       Row(
                         children: [
                           const Text("プレビュー: "),
-                          const SizedBox(width: 10),
-                          // ▼▼▼ プレビューも「選択時」のデザインに合わせる ▼▼▼
-                          // 背景: 固有色, 文字・アイコン: 白, 形状: 角丸10, 枠線なし
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -275,29 +252,22 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                   size: 18,
                                 ),
                                 const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    nameController.text.isEmpty
-                                        ? "名称"
-                                        : nameController.text,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
+                                Text(
+                                  nameController.text.isEmpty
+                                      ? "名称"
+                                      : nameController.text,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          // ▲▲▲ 修正ここまで ▲▲▲
                         ],
                       ),
                       const SizedBox(height: 20),
-
-                      // --- 3. 標準アイコン選択 ---
+                      // 標準アイコン
                       const Text(
                         'アイコンを選択',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -317,9 +287,8 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           final icon = _standardIcons[idx];
                           final isSelected = selectedIcon == icon;
                           return InkWell(
-                            onTap: () {
-                              setStateDialog(() => selectedIcon = icon);
-                            },
+                            onTap: () =>
+                                setStateDialog(() => selectedIcon = icon),
                             child: Container(
                               decoration: BoxDecoration(
                                 color: isSelected
@@ -340,8 +309,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                         },
                       ),
                       const SizedBox(height: 20),
-
-                      // --- 4. 色の調整 ---
+                      // 色調整
                       const Text(
                         '色を調整',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -376,54 +344,27 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                         }).toList(),
                       ),
                       const SizedBox(height: 30),
-
-                      // --- 5. 獲得済みキャラを使用 ---
+                      // ガチャキャラセクション
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          border: Border.symmetric(
-                            horizontal: BorderSide(
-                              color: Colors.orange.shade200,
-                              width: 2,
+                        decoration: BoxDecoration(color: Colors.orange.shade50),
+                        child: const Center(
+                          child: Text(
+                            "獲得済みキャラを使用",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepOrange,
                             ),
                           ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.auto_awesome, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text(
-                              "獲得済みキャラを使用",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            Icon(Icons.auto_awesome, color: Colors.orange),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "※キャラをタップして、使用するレベル（色）を選択できます。",
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                       const SizedBox(height: 15),
-
-                      // --- 6. 獲得済みキャラ選択 ---
                       if (_gachaCounts.values.every((c) => c == 0))
                         const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(10),
-                            child: Text(
-                              "まだキャラクターがいません\nガチャを回してゲットしよう！",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                          child: Text(
+                            "ガチャを回してゲットしよう！",
+                            style: TextStyle(color: Colors.grey),
                           ),
                         )
                       else
@@ -445,21 +386,18 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                 .toList();
                             final item = unlockedItems[idx];
                             final count = _gachaCounts[item.id] ?? 0;
-                            final currentColor = item.getColor(count);
                             final isSelected = selectedIcon == item.iconData;
-
                             return InkWell(
                               onTap: () async {
                                 await _showStyleSelectionDialog(
                                   context: context,
                                   item: item,
                                   currentCount: count,
-                                  onColorSelected: (color) {
-                                    setStateDialog(() {
-                                      selectedIcon = item.iconData;
-                                      selectedColor = color;
-                                    });
-                                  },
+                                  onColorSelected: (color) =>
+                                      setStateDialog(() {
+                                        selectedIcon = item.iconData;
+                                        selectedColor = color;
+                                      }),
                                 );
                               },
                               child: Container(
@@ -473,13 +411,84 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                     width: isSelected ? 3 : 1,
                                   ),
                                 ),
-                                child: Icon(item.iconData, color: currentColor),
+                                child: Icon(
+                                  item.iconData,
+                                  color: item.getColor(count),
+                                ),
                               ),
                             );
                           },
                         ),
-
-                      // --- カード設定 ---
+                      const SizedBox(height: 30),
+                      // 継続ボーナスセクション
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(color: Colors.blue.shade50),
+                        child: const Center(
+                          child: Text(
+                            "継続ボーナス特典",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (BonusData.list.every(
+                        (item) => _totalDays < item.targetDays,
+                      ))
+                        const Center(
+                          child: Text(
+                            "継続日数に応じて解放されます！",
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        )
+                      else
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 5,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                              ),
+                          itemCount: BonusData.list
+                              .where((i) => _totalDays >= i.targetDays)
+                              .length,
+                          itemBuilder: (context, idx) {
+                            final unlockedBonuses = BonusData.list
+                                .where((i) => _totalDays >= i.targetDays)
+                                .toList();
+                            final item = unlockedBonuses[idx];
+                            final isSelected = selectedIcon == item.icon;
+                            return InkWell(
+                              onTap: () {
+                                // ★ここを修正：ダイアログなしで即座に反映
+                                setStateDialog(() {
+                                  selectedIcon = item.icon;
+                                  selectedColor = item.color;
+                                });
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? Colors.blueAccent
+                                        : Colors.grey.shade300,
+                                    width: isSelected ? 3 : 1,
+                                  ),
+                                ),
+                                child: Icon(item.icon, color: item.color),
+                              ),
+                            );
+                          },
+                        ),
+                      // カード設定
                       if (!isExpense) ...[
                         const Divider(height: 30),
                         Row(
@@ -491,14 +500,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                             const Spacer(),
                             Switch(
                               value: isClosingMode,
-                              onChanged: (val) {
-                                setStateDialog(() => isClosingMode = val);
-                              },
+                              onChanged: (val) =>
+                                  setStateDialog(() => isClosingMode = val),
                             ),
                           ],
                         ),
                         if (isClosingMode) ...[
-                          const SizedBox(height: 10),
                           Row(
                             children: [
                               const Text('締め: '),
@@ -518,24 +525,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              const Text('支払月: '),
-                              DropdownButton<int>(
-                                value: paymentOffset,
-                                items: const [
-                                  DropdownMenuItem(value: 1, child: Text('翌月')),
-                                  DropdownMenuItem(
-                                    value: 2,
-                                    child: Text('翌々月'),
-                                  ),
-                                ],
-                                onChanged: (val) =>
-                                    setStateDialog(() => paymentOffset = val!),
-                              ),
-                            ],
-                          ),
                         ],
                       ],
                     ],
@@ -550,7 +539,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                 ElevatedButton(
                   onPressed: () async {
                     if (nameController.text.isEmpty) return;
-
                     final newTag = CategoryTag(
                       id: item?.id,
                       label: nameController.text,
@@ -567,20 +555,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                           : null,
                       paymentMonthOffset: paymentOffset,
                     );
-
                     setState(() {
-                      if (isExpense) {
-                        if (item == null) {
-                          _expenseList.add(newTag);
-                        } else {
-                          _expenseList[index] = newTag;
-                        }
+                      final list = isExpense ? _expenseList : _cardList;
+                      if (item == null) {
+                        list.add(newTag);
                       } else {
-                        if (item == null) {
-                          _cardList.add(newTag);
-                        } else {
-                          _cardList[index] = newTag;
-                        }
+                        list[index] = newTag;
                       }
                     });
                     await _saveCurrentList();
@@ -609,10 +589,8 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('カテゴリ・カード管理'),
@@ -629,10 +607,8 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
         children: [_buildList(isExpense: true), _buildList(isExpense: false)],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          final isExpense = _tabController.index == 0;
-          _showEditDialog(isExpense: isExpense, index: -1);
-        },
+        onPressed: () =>
+            _showEditDialog(isExpense: _tabController.index == 0, index: -1),
         child: const Icon(Icons.add),
       ),
     );
@@ -640,15 +616,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   Widget _buildList({required bool isExpense}) {
     final list = isExpense ? _expenseList : _cardList;
-
     return ReorderableListView.builder(
       itemCount: list.length,
       padding: const EdgeInsets.only(bottom: 80),
       onReorder: (oldIndex, newIndex) async {
         setState(() {
-          if (oldIndex < newIndex) {
-            newIndex -= 1;
-          }
+          if (oldIndex < newIndex) newIndex -= 1;
           final item = list.removeAt(oldIndex);
           list.insert(newIndex, item);
         });
@@ -656,14 +629,6 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       },
       itemBuilder: (context, index) {
         final item = list[index];
-        String subtitle = "";
-        if (!isExpense && item.closingDay != null) {
-          final closeStr = item.closingDay == 99 ? "末" : "${item.closingDay}日";
-          final payStr = item.paymentDay == 99 ? "末" : "${item.paymentDay}日";
-          final offsetStr = item.paymentMonthOffset == 1 ? "翌月" : "翌々月";
-          subtitle = "締め: $closeStr / 払い: $offsetStr$payStr";
-        }
-
         return ListTile(
           key: ValueKey(item.id),
           leading: Container(
@@ -678,10 +643,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
             ),
             child: Icon(item.displayIcon, color: item.color, size: 20),
           ),
-          title: Text(item.label, overflow: TextOverflow.ellipsis, maxLines: 1),
-          subtitle: subtitle.isNotEmpty
-              ? Text(subtitle, style: const TextStyle(fontSize: 11))
-              : null,
+          title: Text(item.label, overflow: TextOverflow.ellipsis),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

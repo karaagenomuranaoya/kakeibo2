@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// ▼▼ 追加: ライブラリのインポート ▼▼
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+
 import '../models/category_tag.dart';
-// ▼ 今回作成したサービスをインポート
 import '../services/input_service.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
@@ -37,7 +39,7 @@ class _InputTabState extends State<InputTab>
   final FocusNode _memoFocusNode = FocusNode();
 
   // --- Services & Repositories ---
-  final InputService _inputService = InputService(); // New!
+  final InputService _inputService = InputService();
   final SettingsRepository _settingsRepository = SettingsRepository();
 
   // --- State ---
@@ -64,6 +66,11 @@ class _InputTabState extends State<InputTab>
   Timer? _flashTimer;
 
   static const double _keyboardHeight = 312.0;
+
+  // ▼▼ 追加: チュートリアル用のキー ▼▼
+  final GlobalKey _paymentKey = GlobalKey();
+  final GlobalKey _categoryKey = GlobalKey();
+  TutorialCoachMark? _tutorialCoachMark;
 
   @override
   bool get wantKeepAlive => true;
@@ -159,7 +166,123 @@ class _InputTabState extends State<InputTab>
         _isCardPayment = savedIsCard;
         _isLoading = false;
       });
+
+      // ▼▼ 追加: ロード完了後にチュートリアルチェック ▼▼
+      // 画面描画が終わるのを待ってから実行
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkTutorial();
+      });
     }
+  }
+
+  // ▼▼ 追加: チュートリアル表示ロジック ▼▼
+  Future<void> _checkTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isShown = prefs.getBool('is_input_tutorial_shown_v1') ?? false;
+
+    if (!isShown && mounted) {
+      _showTutorial();
+      await prefs.setBool('is_input_tutorial_shown_v1', true);
+    }
+  }
+
+  void _showTutorial() {
+    // ターゲットの作成
+    List<TargetFocus> targets = [];
+
+    // 1. 支払い方法選択（表示されている場合のみ）
+    if (_showCardOnInput && _paymentKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "payment_selector",
+          keyTarget: _paymentKey,
+          alignSkip: Alignment.topRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      "支払い方法の選択",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "左右にスワイプして「カード」や「現金（記録なし）」を切り替えられます。\n\n長押しすると、そのカードの利用明細へジャンプします。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+          shape: ShapeLightFocus.RRect,
+          radius: 10,
+        ),
+      );
+    }
+
+    // 2. カテゴリ選択
+    if (_categoryKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "category_selector",
+          keyTarget: _categoryKey,
+          alignSkip: Alignment.topRight,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top, // 上側に表示
+              builder: (context, controller) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      "支出の記録",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "ここをタップすると入力完了です。\n\n長押しすると、その費目の履歴へジャンプします。",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+          shape: ShapeLightFocus.RRect,
+          radius: 10,
+        ),
+      );
+    }
+
+    if (targets.isEmpty) return;
+
+    _tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "スキップ",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {},
+      onClickTarget: (target) {},
+      onClickOverlay: (target) {},
+      onSkip: () {
+        return true;
+      },
+    )..show(context: context);
   }
 
   // --- User Actions ---
@@ -236,7 +359,7 @@ class _InputTabState extends State<InputTab>
     );
   }
 
-  // --- Save Logic (大幅に簡略化！) ---
+  // --- Save Logic ---
   Future<void> _saveData({bool keepKeyboard = false}) async {
     if (_isLoading) return;
 
@@ -257,7 +380,6 @@ class _InputTabState extends State<InputTab>
       selectedCardTag = _cardList[_selectedCardIndex];
     }
 
-    // ★ サービスに処理を委譲
     final result = await _inputService.registerTransaction(
       rawAmount: _amountController.text,
       memo: _memoController.text.trim(),
@@ -269,14 +391,12 @@ class _InputTabState extends State<InputTab>
       isGachaEnabled: _isGachaEnabled,
     );
 
-    // 結果に応じたUI更新
     if (result.success) {
       // 成功時
       if (result.formattedAmount != null) {
         _amountController.text = result.formattedAmount!;
       }
 
-      // UI状態の保存（これはUIの責任）
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('last_expense_index', _selectedExpenseIndex);
       if (_showCardOnInput && _isCardPayment) {
@@ -296,7 +416,7 @@ class _InputTabState extends State<InputTab>
         _showFlashMessage(result.message, result.messageColor);
       }
     } else {
-      // 失敗時（バリデーションエラーなど）
+      // 失敗時
       if (mounted) {
         _showFlashMessage(result.message, result.messageColor);
       }
@@ -306,7 +426,6 @@ class _InputTabState extends State<InputTab>
   Future<void> _undoLastInput() async {
     if (_lastInputId == null) return;
 
-    // 削除対象の情報を取得
     final targetItem = await _inputService.getTransaction(_lastInputId!);
     if (targetItem == null) {
       setState(() => _lastInputId = null);
@@ -333,7 +452,6 @@ class _InputTabState extends State<InputTab>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              // ★ 削除処理もサービスに委譲
               await _inputService.deleteTransaction(_lastInputId!);
               if (mounted) {
                 setState(() => _lastInputId = null);
@@ -399,6 +517,8 @@ class _InputTabState extends State<InputTab>
 
                   if (_showCardOnInput)
                     GestureDetector(
+                      // ▼▼ 追加: PaymentSelectorにKeyを設定 ▼▼
+                      key: _paymentKey,
                       onTap: () {},
                       child: PaymentSelector(
                         isCardPayment: _isCardPayment,
@@ -413,6 +533,8 @@ class _InputTabState extends State<InputTab>
                     const SizedBox(height: 24),
 
                   CategorySelector(
+                    // ▼▼ 追加: CategorySelectorにKeyを設定 ▼▼
+                    key: _categoryKey,
                     tags: _expenseList,
                     selectedIndex: _selectedExpenseIndex,
                     onSelected: _changeExpenseIndex,
