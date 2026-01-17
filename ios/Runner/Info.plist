@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -12,14 +14,10 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
-	
-	<!-- ▼▼ 追加: 日本語ローカライズ設定 ▼▼ -->
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>ja</string>
 	</array>
-	<!-- ▲▲ 追加ここまで ▲▲ -->
-
 	<key>CFBundleName</key>
 	<string>flutter_application_1</string>
 	<key>CFBundlePackageType</key>
@@ -32,13 +30,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
-	
-	<!-- ▼▼ 変更: 縦画面（Portrait）のみに制限 ▼▼ -->
-	<!-- これにより、横画面にした際のレイアウト崩れによる審査リジェクトを防げます -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -48,14 +45,6 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
-	<!-- ▲▲ 変更ここまで ▲▲ -->
-
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	
-	<!-- ▼▼ 追加: ステータスバーの表示設定（必要であれば） ▼▼ -->
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
 </dict>

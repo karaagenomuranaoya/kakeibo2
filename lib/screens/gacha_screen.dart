@@ -457,11 +457,21 @@ class _GachaScreenState extends State<GachaScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                item.getDescription(count),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
+
+              // ▼▼ 修正: テキストエリアをスクロール可能に変更 ▼▼
+              Container(
+                constraints: const BoxConstraints(maxHeight: 80), // 高さを制限
+                width: double.maxFinite, // 横幅を確保して中央揃えを維持
+                child: SingleChildScrollView(
+                  child: Text(
+                    item.getDescription(count),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
+                ),
               ),
+
+              // ▲▲ 修正ここまで ▲▲
               const SizedBox(height: 20),
 
               if (!isMax) ...[
@@ -611,6 +621,21 @@ class _GachaScreenState extends State<GachaScreen> {
                     ),
                   ),
                 ),
+                // ▼▼ 追加: 無料であることの明記 & 提供割合ボタン ▼▼
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // 左側：無料注釈
+                      const Text(
+                        "※ガチャは完全無料です。課金要素はありません。",
+                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                // ▲▲ 追加ここまで ▲▲
                 if (!isAllComplete)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),

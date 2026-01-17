@@ -1,3 +1,6 @@
+//_countsKeyは消さないこと
+//アプリ名：あつめる家計簿 - 連続入力で続く支出管理
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // 日本語対応用に追加推奨
 import 'screens/main_screen.dart'; // InputScreenではなくMainScreen
