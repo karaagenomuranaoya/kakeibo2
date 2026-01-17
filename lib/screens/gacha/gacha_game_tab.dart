@@ -5,6 +5,12 @@ import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import '../../repositories/gacha_repository.dart';
 import '../../models/gacha_item.dart';
 
+// ▼▼▼ 新規作成したダイアログをインポート ▼▼▼
+import 'dialogs/gacha_rate_dialog.dart';
+import 'dialogs/gacha_result_dialog.dart';
+import 'dialogs/gacha_complete_dialog.dart';
+// ▲▲▲ インポートここまで ▲▲▲
+
 class GachaGameTab extends StatefulWidget {
   const GachaGameTab({super.key});
 
@@ -23,13 +29,11 @@ class _GachaGameTabState extends State<GachaGameTab>
   static const int _maxLevel = 10;
   static const int _costPerSpin = 1;
 
-  final GlobalKey _ticketKey = GlobalKey(); // チケット表示場所の目印
-  final GlobalKey _spinButtonKey = GlobalKey(); // ガチャボタンの目印
-  // ▼▼▼ 追加: ヘッダー（上部エリア）全体の目印 ▼▼▼
+  final GlobalKey _ticketKey = GlobalKey();
+  final GlobalKey _spinButtonKey = GlobalKey();
   final GlobalKey _headerKey = GlobalKey();
-  // ▲▲▲ 追加ここまで ▲▲▲
 
-  bool _pendingTutorialPhase2 = false; // 「結果画面の後に続きを表示する」フラグ
+  bool _pendingTutorialPhase2 = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -40,15 +44,13 @@ class _GachaGameTabState extends State<GachaGameTab>
     _loadData();
   }
 
-  // ▼▼▼ チュートリアル Phase 1 (導入〜回すまで) ▼▼▼
+  // --- チュートリアル関連メソッド (変更なし) ---
   Future<void> _checkTutorialPhase1() async {
     final prefs = await SharedPreferences.getInstance();
     final bool isShown = prefs.getBool('is_gacha_tutorial_shown_v1') ?? false;
 
-    // まだ表示しておらず、かつチケットがある(初回ボーナス等)場合のみ実行
     if (!isShown && mounted && _credits > 0) {
       _showTutorialPhase1();
-      // Phase1が終わったら、ガチャを回した後にPhase2を表示するよう予約
       _pendingTutorialPhase2 = true;
     }
   }
@@ -56,19 +58,16 @@ class _GachaGameTabState extends State<GachaGameTab>
   Future<void> _completeTutorial() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_gacha_tutorial_shown_v1', true);
-    // _pendingTutorialPhase2 = false; // ← 削除（Phase 2の予約フラグは消さない）
   }
 
   void _showTutorialPhase1() {
     TutorialCoachMark(
       targets: [
-        // 1. ガチャタブ全体の導入
         TargetFocus(
           identify: "gacha_intro",
-          // ▼▼▼ 修正: null ではなくヘッダーを指定してエラー回避 ▼▼▼
           keyTarget: _headerKey,
           alignSkip: Alignment.topRight,
-          shape: ShapeLightFocus.RRect, // ヘッダーの形に合わせて四角く光らせる
+          shape: ShapeLightFocus.RRect,
           radius: 12,
           contents: [
             TargetContent(
@@ -103,10 +102,9 @@ class _GachaGameTabState extends State<GachaGameTab>
             ),
           ],
         ),
-        // 2. チケットの説明
         TargetFocus(
           identify: "ticket_info",
-          keyTarget: _ticketKey, // チケット部分をハイライト
+          keyTarget: _ticketKey,
           alignSkip: Alignment.bottomRight,
           shape: ShapeLightFocus.RRect,
           radius: 12,
@@ -137,10 +135,9 @@ class _GachaGameTabState extends State<GachaGameTab>
             ),
           ],
         ),
-        // 3. ガチャボタンへ誘導
         TargetFocus(
           identify: "spin_button",
-          keyTarget: _spinButtonKey, // ボタン部分をハイライト
+          keyTarget: _spinButtonKey,
           alignSkip: Alignment.topRight,
           shape: ShapeLightFocus.RRect,
           radius: 4,
@@ -173,28 +170,22 @@ class _GachaGameTabState extends State<GachaGameTab>
       textSkip: "スキップ",
       paddingFocus: 10,
       opacityShadow: 0.8,
-      // ▼▼▼ 追加: 最後まで見終わった時も保存する ▼▼▼
-      onFinish: () => _completeTutorial(),
-      // ▲▲▲ 追加ここまで ▲▲▲
       onSkip: () {
         _completeTutorial();
         return true;
       },
+      onFinish: () => _completeTutorial(),
     ).show(context: context);
   }
-  // ▲▲▲ Phase 1 ここまで ▲▲▲
 
-  // ▼▼▼ チュートリアル Phase 2 (結果画面後の解説) ▼▼▼
   Future<void> _showTutorialPhase2() async {
     if (!mounted) return;
     await _completeTutorial();
 
     TutorialCoachMark(
       targets: [
-        // 1. 進化とテキストについて
         TargetFocus(
           identify: "gacha_explain_evolution",
-          // ▼▼▼ 修正: null ではなくヘッダーを指定 ▼▼▼
           keyTarget: _headerKey,
           alignSkip: Alignment.topRight,
           shape: ShapeLightFocus.RRect,
@@ -231,10 +222,8 @@ class _GachaGameTabState extends State<GachaGameTab>
             ),
           ],
         ),
-        // 2. アイコン利用について
         TargetFocus(
           identify: "gacha_explain_icon",
-          // ▼▼▼ 修正: null ではなくヘッダーを指定 ▼▼▼
           keyTarget: _headerKey,
           alignSkip: Alignment.topRight,
           shape: ShapeLightFocus.RRect,
@@ -278,12 +267,10 @@ class _GachaGameTabState extends State<GachaGameTab>
       opacityShadow: 0.8,
     ).show(context: context);
   }
-  // ▲▲▲ Phase 2 ここまで ▲▲▲
+  // --- チュートリアルここまで ---
 
   Future<void> _loadData() async {
-    // データ取得前にボーナス付与を確実に実行
     await _repository.checkInitialBonus();
-
     final credits = await _repository.getCredits();
     final counts = await _repository.getItemCounts();
     final items = await _repository.getItems();
@@ -296,201 +283,24 @@ class _GachaGameTabState extends State<GachaGameTab>
         _isLoading = false;
       });
 
-      // UIの描画完了を待ってからチュートリアルチェック
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _checkTutorialPhase1();
       });
     }
   }
 
-  // （... _showRateDialog, _showCompleteDialog, _showHistoryDialog, _showResultDialog は変更なし ...）
+  // ▼▼▼ リファクタリング: メソッドの中身をシンプルに ▼▼▼
   void _showRateDialog() {
-    final availableItems = _allItems.where((item) {
-      final int count = _itemCounts[item.id] ?? 0;
-      final int level = item.getStage(count);
-      return level < _maxLevel;
-    }).toList();
-
-    final int totalAvailable = availableItems.length;
-
-    if (totalAvailable == 0) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text("提供割合"),
-          content: const Text("全てのキャラクターが最大レベルです。\n排出対象はありません。"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("閉じる"),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    final double rate = 100.0 / totalAvailable;
-    final String rateString = rate.toStringAsFixed(2);
-
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            "提供割合",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "現在の排出確率",
-                          style: TextStyle(fontSize: 12, color: Colors.brown),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Text("全キャラ均等"),
-                            const Spacer(),
-                            Text(
-                              "$rateString %",
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "【仕様について】",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    "・Lv.10(最大)に到達したキャラクターは排出されなくなります。\n・排出確率は、残りの排出対象キャラクター間で均等に分配されます。",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "排出対象一覧 ($totalAvailable種)",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const Divider(),
-                  ...availableItems.map((item) {
-                    final int count = _itemCounts[item.id] ?? 0;
-                    final int level = item.getStage(count);
-                    final bool isUnobtained = count == 0;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: isUnobtained
-                                  ? Colors.grey.shade200
-                                  : Colors.grey.shade100,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              item.iconData,
-                              size: 20,
-                              color: isUnobtained
-                                  ? Colors.grey.shade400
-                                  : Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              item.baseName,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: isUnobtained
-                                    ? Colors.black54
-                                    : Colors.black87,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isUnobtained
-                                  ? Colors.red.shade50
-                                  : Colors.blueGrey.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isUnobtained
-                                    ? Colors.red.shade200
-                                    : Colors.transparent,
-                                width: 1,
-                              ),
-                            ),
-                            child: Text(
-                              isUnobtained ? "未所持" : "現在 Lv.$level",
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isUnobtained
-                                    ? Colors.red
-                                    : Colors.blueGrey.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("閉じる"),
-            ),
-          ],
-        );
-      },
+      builder: (context) =>
+          GachaRateDialog(allItems: _allItems, itemCounts: _itemCounts),
     );
   }
 
   Future<void> _spinGacha() async {
-    // ▼▼▼ 追加: ボタンを押したら強制的に導入完了扱いにする ▼▼▼
     await _completeTutorial();
-    // ▲▲▲ 追加ここまで ▲▲▲
+
     if (_credits < _costPerSpin) return;
 
     showDialog(
@@ -503,7 +313,7 @@ class _GachaGameTabState extends State<GachaGameTab>
     await Future.delayed(const Duration(seconds: 1));
 
     if (!mounted) return;
-    Navigator.pop(context); // ローディングを閉じる
+    Navigator.pop(context);
 
     if (item == null) {
       _showCompleteDialog();
@@ -517,258 +327,29 @@ class _GachaGameTabState extends State<GachaGameTab>
     await _loadData();
 
     if (mounted) {
-      // ダイアログが閉じるのを待つ
       await _showResultDialog(item, newCount);
 
-      // Phase 1 からの続きがあれば Phase 2 を実行
       if (_pendingTutorialPhase2) {
         _pendingTutorialPhase2 = false;
-        // 少し間を置いてから表示すると自然です
         await Future.delayed(const Duration(milliseconds: 300));
         _showTutorialPhase2();
       }
     }
   }
 
+  // ▼▼▼ リファクタリング: メソッドの中身をシンプルに ▼▼▼
   void _showCompleteDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("コンプリート！"),
-        content: const Text(
-          "全てのキャラクターが最大レベルに到達しました！\nこれ以上ガチャを引くことはできません。\n\n次回のアップデートをお楽しみに！",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
+      builder: (context) => const GachaCompleteDialog(),
     );
   }
 
-  void _showHistoryDialog(GachaItem item, int maxLevel) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Text(
-                      "No.${item.id}",
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      "${item.baseName}の進化記録",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Flexible(
-                child: SizedBox(
-                  width: double.maxFinite,
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: maxLevel > _maxLevel ? _maxLevel : maxLevel,
-                    itemBuilder: (context, index) {
-                      final level = index + 1;
-                      return ListTile(
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade50,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: item.getColor(level).withOpacity(0.5),
-                              width: 2,
-                            ),
-                          ),
-                          child: Icon(
-                            item.iconData,
-                            color: item.getColor(level),
-                            size: 20,
-                          ),
-                        ),
-                        title: Text(
-                          item.getName(level),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          item.getDescription(level),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        trailing: Text(
-                          "Lv.$level",
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("閉じる"),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
+  // ▼▼▼ リファクタリング: メソッドの中身をシンプルに ▼▼▼
   Future<void> _showResultDialog(GachaItem item, int count) {
-    final int level = item.getStage(count);
-    final bool isNew = count == 1;
-    final bool isMax = level == _maxLevel;
-
-    String title = "LEVEL UP!!";
-    Color titleColor = Colors.orange;
-
-    if (isNew) {
-      title = "NEW GET!!";
-      titleColor = Colors.redAccent;
-    } else if (isMax) {
-      title = "MAX EVOLUTION!!";
-      titleColor = Colors.purpleAccent;
-    }
-
     return showDialog(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 30),
-              GestureDetector(
-                onTap: () => _showHistoryDialog(item, level),
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.grey.shade100,
-                    border: Border.all(
-                      color: item.getColor(count).withOpacity(0.5),
-                      width: 4,
-                    ),
-                  ),
-                  child: Icon(
-                    item.iconData,
-                    size: 60,
-                    color: item.getColor(count),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                item.getName(count),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                "No.${item.id}",
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 5),
-
-              Text(
-                "Lv.$level / $_maxLevel",
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey,
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              Container(
-                constraints: const BoxConstraints(maxHeight: 80),
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Text(
-                    item.getDescription(count),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              if (!isMax) ...[
-                LinearProgressIndicator(
-                  value: level / _maxLevel,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey.shade200,
-                  color: item.getColor(count),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  "あと ${_maxLevel - level}枚で最大進化",
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 20),
-              ],
-
-              OutlinedButton.icon(
-                onPressed: () => _showHistoryDialog(item, level),
-                icon: const Icon(Icons.history_edu),
-                label: const Text("進化の記録を見る"),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('閉じる'),
-              ),
-            ],
-          ),
-        ),
-      ),
+      builder: (context) => GachaResultDialog(item: item, count: count),
     );
   }
 
@@ -792,7 +373,6 @@ class _GachaGameTabState extends State<GachaGameTab>
       body: Column(
         children: [
           Container(
-            // ▼▼▼ 追加: キーを設定してチュートリアルのターゲットにする ▼▼▼
             key: _headerKey,
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
             decoration: BoxDecoration(
@@ -835,7 +415,6 @@ class _GachaGameTabState extends State<GachaGameTab>
                     ),
                   ),
                 ),
-                // ... (以下のヘッダーコンテンツは変更なし) ...
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
                   child: Row(
@@ -854,7 +433,6 @@ class _GachaGameTabState extends State<GachaGameTab>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // 左側：チケット所持数表示
                       Container(
                         key: _ticketKey,
                         padding: const EdgeInsets.symmetric(
@@ -894,8 +472,6 @@ class _GachaGameTabState extends State<GachaGameTab>
                           ],
                         ),
                       ),
-
-                      // 右側：提供割合ボタン
                       if (!isAllComplete)
                         TextButton.icon(
                           onPressed: _showRateDialog,
@@ -946,7 +522,6 @@ class _GachaGameTabState extends State<GachaGameTab>
                     onTap: isUnlocked
                         ? () => _showResultDialog(item, count)
                         : null,
-                    // デバッグモード(kDebugMode)の時だけロングプレスで強制アンロック
                     onLongPress: kDebugMode
                         ? () async {
                             final newCount = await _repository.unlockItem(

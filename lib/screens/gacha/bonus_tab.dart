@@ -185,6 +185,9 @@ class _BonusTabState extends State<BonusTab>
     );
   }
 
+  // ... 前略 (imports, State定義など)
+
+  @override
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -199,7 +202,7 @@ class _BonusTabState extends State<BonusTab>
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // --- 現在のステータス表示 ---
+            // --- 現在のステータス表示（青いパネル） ---
             GestureDetector(
               onTap: _devCheat,
               child: Container(
@@ -272,7 +275,7 @@ class _BonusTabState extends State<BonusTab>
             ),
             const SizedBox(height: 12),
 
-            // ▼▼ 修正: BonusData.list を使用 ▼▼
+            // ▼▼ ListView内で _FlipBonusCard を呼び出し ▼▼
             ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -284,7 +287,8 @@ class _BonusTabState extends State<BonusTab>
                 return _FlipBonusCard(
                   item: item,
                   isReached: isReached,
-                  onTap: isReached ? () => _showBonusDetailDialog(item) : null,
+                  // めくり終わった後のタップ動作（詳細ダイアログ）
+                  onDetailTap: () => _showBonusDetailDialog(item),
                 );
               },
             ),
@@ -296,52 +300,114 @@ class _BonusTabState extends State<BonusTab>
   }
 }
 
-/// フリップアニメーションを行うカードウィジェット
-class _FlipBonusCard extends StatelessWidget {
+// ▼▼ 修正: _FlipBonusCard を StatefulWidget に変更し、タップ制御を追加 ▼▼
+
+class _FlipBonusCard extends StatefulWidget {
   final BonusItem item;
   final bool isReached;
-  final VoidCallback? onTap;
+  final VoidCallback? onDetailTap;
 
   const _FlipBonusCard({
+    super.key,
     required this.item,
     required this.isReached,
-    this.onTap,
+    this.onDetailTap,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 800),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        final rotateAnim = Tween(begin: pi, end: 0.0).animate(animation);
-        return AnimatedBuilder(
-          animation: rotateAnim,
-          child: child,
-          builder: (context, child) {
-            final isBack = child!.key == const ValueKey('front');
-            final angle = isBack
-                ? min(rotateAnim.value, pi / 2)
-                : rotateAnim.value;
+  State<_FlipBonusCard> createState() => _FlipBonusCardState();
+}
 
-            return Transform(
-              transform: Matrix4.rotationY(angle)..setEntry(3, 2, 0.001),
-              alignment: Alignment.center,
-              child: child,
-            );
-          },
-        );
-      },
-      layoutBuilder: (widget, list) =>
-          Stack(children: [if (widget != null) widget, ...list]),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeInBack.flipped,
-      child: isReached ? _buildRewardCard() : _buildLockedCard(),
+class _FlipBonusCardState extends State<_FlipBonusCard>
+    with AutomaticKeepAliveClientMixin {
+  bool _isRevealed = false;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  void _handleTap() {
+    if (!widget.isReached) return;
+    if (!_isRevealed) {
+      setState(() {
+        _isRevealed = true;
+      });
+    } else {
+      widget.onDetailTap?.call();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    if (!widget.isReached) {
+      return _buildLockedCard();
+    }
+
+    return GestureDetector(
+      onTap: _handleTap,
+      child: AnimatedSwitcher(
+        // ゆっくり重厚感を出すために 1000ms (1秒) に設定
+        duration: const Duration(milliseconds: 1000),
+        // デフォルトのレイアウトだと重なり順がアニメーション中に変わることがあるため固定
+        layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+          return Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          // バウンド(Back)させず、滑らかに加減速する easeInOut を採用
+          final anim = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeInOut,
+          );
+
+          return AnimatedBuilder(
+            animation: anim,
+            child: child,
+            builder: (context, child) {
+              final isBack = child!.key == const ValueKey('back');
+              final value = anim.value;
+
+              // ▼▼ 修正1: 角度計算（変更なし） ▼▼
+              double angle;
+              if (isBack) {
+                // 裏面: 90 -> 0度 (右奥から手前へ)
+                angle = (pi / 2) * (1.0 - value);
+              } else {
+                // 表面: 0 -> -90度 (手前から右奥へ)
+                angle = -(pi / 2) * (1.0 - value);
+              }
+
+              // ▼▼ 修正2: 真横になる瞬間だけ透明にする ▼▼
+              // value=1.0(正面) ~ value=0.0(真横)
+              // valueが0.15以下（角度が約75度〜90度）になったら急激に透明にする
+              // これにより「斜めの線」が出るタイミングを描画させない
+              final double opacity = (value < 0.15) ? (value / 0.15) : 1.0;
+
+              return Transform(
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001) // 遠近感
+                  ..rotateY(angle), // Y軸回転
+                alignment: Alignment.center,
+                child: child,
+              );
+            },
+          );
+        },
+        child: _isRevealed ? _buildRewardCard() : _buildReadyCard(),
+      ),
     );
   }
 
+  /// 未達成時のロックカード
   Widget _buildLockedCard() {
     return Container(
-      key: const ValueKey('front'),
+      // keyは重要ではないが、明示的に区別
       margin: const EdgeInsets.only(bottom: 12),
       width: double.infinity,
       height: 80,
@@ -369,7 +435,7 @@ class _FlipBonusCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "入力 ${item.targetDays} 日達成",
+                  "入力 ${widget.item.targetDays} 日達成",
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.grey,
@@ -404,68 +470,157 @@ class _FlipBonusCard extends StatelessWidget {
     );
   }
 
+  /// 達成済みだが、まだタップしていない状態のカード（表面）
+  Widget _buildReadyCard() {
+    return Container(
+      key: const ValueKey('front'), // アニメーション判定用キー
+      margin: const EdgeInsets.only(bottom: 12),
+      width: double.infinity,
+      height: 80, // ロック時と同じ高さ
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        // 達成感を出すためにボーダーの色を変える
+        border: Border.all(color: widget.item.color.withOpacity(0.8), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: widget.item.color.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 20),
+          // アイコン部分：ギフトボックスや「！」など
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: widget.item.color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.card_giftcard, // プレゼントアイコン
+              color: widget.item.color,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "MISSION CLEAR!",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: widget.item.color,
+                    fontSize: 16,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                Text(
+                  "タップして報酬を確認",
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          // 右側のバッジ
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: widget.item.color,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "OPEN",
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 4),
+                Icon(Icons.touch_app, size: 12, color: Colors.white),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// めくった後の報酬カード（裏面）
   Widget _buildRewardCard() {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        key: const ValueKey('back'),
-        margin: const EdgeInsets.only(bottom: 12),
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: item.color.withOpacity(0.2),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(color: item.color.withOpacity(0.3), width: 1.5),
+    return Container(
+      key: const ValueKey('back'), // アニメーション判定用キー
+      margin: const EdgeInsets.only(bottom: 12),
+      width: double.infinity,
+      // 中身が多い場合に備えて高さは柔軟に（元のコード準拠）
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: widget.item.color.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: widget.item.color.withOpacity(0.3),
+          width: 1.5,
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: item.color.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(item.icon, color: item.color, size: 32),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: widget.item.color.withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    item.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.black87,
-                    ),
+            child: Icon(widget.item.icon, color: widget.item.color, size: 32),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.item.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.black87,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      height: 1.4,
-                    ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.item.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    height: 1.4,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            Icon(Icons.chevron_right, color: Colors.grey.shade400),
-          ],
-        ),
+          ),
+          Icon(Icons.chevron_right, color: Colors.grey.shade400),
+        ],
       ),
     );
   }
