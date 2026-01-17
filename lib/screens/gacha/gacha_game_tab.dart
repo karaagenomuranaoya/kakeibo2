@@ -541,57 +541,6 @@ class _GachaGameTabState extends State<GachaGameTab>
             ),
             child: Column(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "ガチャチケット",
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              "$_credits",
-                              style: const TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Text(
-                              " 枚",
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text(
-                          "伝説到達率",
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        Text(
-                          "$maxLevelItems / $totalItems (${(completeRate * 100).toStringAsFixed(0)}%)",
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -628,34 +577,80 @@ class _GachaGameTabState extends State<GachaGameTab>
                     ],
                   ),
                 ),
-                if (!isAllComplete)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: _showRateDialog,
-                        icon: const Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: Colors.grey,
+                // ▼▼▼▼ ここから修正 ▼▼▼▼
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // 左右に配置
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // 左側：チケット所持数表示
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
                         ),
-                        label: const Text(
-                          "提供割合",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                            decoration: TextDecoration.underline,
-                          ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade200),
                         ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.confirmation_number, // チケットのアイコン
+                              size: 16,
+                              color: Colors.orange.shade800,
+                            ),
+                            const SizedBox(width: 4),
+                            const Text(
+                              "×",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.brown,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              "$_credits", // 変数 _credits を表示
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.brown,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
+
+                      // 右側：提供割合ボタン（コンプリート時は非表示）
+                      if (!isAllComplete)
+                        TextButton.icon(
+                          onPressed: _showRateDialog,
+                          icon: const Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          label: const Text(
+                            "提供割合",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 0),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                    ],
                   ),
+                ),
+                // ▲▲▲▲ 修正ここまで ▲▲▲▲
               ],
             ),
           ),
