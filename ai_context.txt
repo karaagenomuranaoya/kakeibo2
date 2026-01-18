@@ -56,6 +56,7 @@ This document provides the **Project Structure**, **Dependencies**, and **Core L
             summary_detail_screen.dart
             history_screen.dart
             gacha_screen.dart
+            history_monthly_page.dart
             main_screen.dart
             input_tab.dart
             monthly_report_screen.dart
