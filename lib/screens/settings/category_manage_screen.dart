@@ -3,9 +3,6 @@ import '../../models/category_tag.dart';
 import '../../models/gacha_item.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/gacha_repository.dart';
-import '../../repositories/transaction_repository.dart';
-import '../../models/bonus_item.dart';
-import '../../data/bonus_data.dart';
 
 class CategoryManageScreen extends StatefulWidget {
   const CategoryManageScreen({super.key});
@@ -19,15 +16,14 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
   final GachaRepository _gachaRepository = GachaRepository();
-  final TransactionRepository _transactionRepository = TransactionRepository();
+  // TransactionRepository はボーナス日数計算に使っていたため削除
 
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
 
-  // ガチャ・ボーナスデータ用
+  // ガチャデータ用
   List<GachaItem> _gachaItems = [];
   Map<String, int> _gachaCounts = {};
-  int _totalDays = 0;
 
   bool _isLoading = true;
 
@@ -85,17 +81,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     final gachaItems = await _gachaRepository.getItems();
     final gachaCounts = await _gachaRepository.getItemCounts();
 
-    // 取引データからユニークな入力日数を取得
-    await _transactionRepository.getAllTransactions();
-    final days = _transactionRepository.getUniqueInputDaysCount();
-
     if (mounted) {
       setState(() {
         _expenseList = expenses;
         _cardList = cards;
         _gachaItems = gachaItems;
         _gachaCounts = gachaCounts;
-        _totalDays = days;
         _isLoading = false;
       });
     }
@@ -106,55 +97,68 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     await _settingsRepository.saveCardTags(_cardList);
   }
 
-  // ガチャアイテム用のスタイル選択ダイアログ（これは残す）
+  // ガチャアイテム用のスタイル選択ダイアログ
   Future<void> _showStyleSelectionDialog({
     required BuildContext context,
     required GachaItem item,
     required int currentCount,
     required Function(Color) onColorSelected,
   }) async {
-    final int maxStage = item.getStage(currentCount);
+    // ▼▼▼ 修正箇所: getStage(最大10)ではなく、所持数(currentCount)をそのまま使う ▼▼▼
+    // これにより、Lv11以降も無限にリストアップされます。
+    final int maxLevel = currentCount;
 
     await showDialog(
       context: context,
       builder: (ctx) {
         return AlertDialog(
           title: Text('${item.baseName}のスタイル選択'),
-          content: SingleChildScrollView(
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              alignment: WrapAlignment.center,
-              children: List.generate(maxStage, (index) {
-                final level = index + 1;
-                final color = item.getColor(level);
+          // ▼▼▼ スクロール可能にするためにSizedBoxとSingleChildScrollViewでラップ ▼▼▼
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.center,
+                children: List.generate(maxLevel, (index) {
+                  final level = index + 1;
+                  // GachaItem側でLv11以降の色計算ロジックが実装されていれば、ここでその色が取得できます
+                  final color = item.getColor(level);
 
-                return GestureDetector(
-                  onTap: () {
-                    onColorSelected(color);
-                    Navigator.pop(ctx);
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: color, width: 2),
+                  return GestureDetector(
+                    onTap: () {
+                      onColorSelected(color);
+                      Navigator.pop(ctx);
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: color, width: 2),
+                          ),
+                          child: Icon(item.iconData, color: color, size: 28),
                         ),
-                        child: Icon(item.iconData, color: color, size: 28),
-                      ),
-                      const SizedBox(height: 4),
-                      Text("Lv.$level", style: const TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                );
-              }),
+                        const SizedBox(height: 4),
+                        Text("Lv.$level", style: const TextStyle(fontSize: 10)),
+                      ],
+                    ),
+                  );
+                }),
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("閉じる"),
+            ),
+          ],
         );
       },
     );
@@ -387,6 +391,10 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                             final item = unlockedItems[idx];
                             final count = _gachaCounts[item.id] ?? 0;
                             final isSelected = selectedIcon == item.iconData;
+
+                            // アイコンのプレビュー色（最新の状態）
+                            final previewColor = item.getColor(count);
+
                             return InkWell(
                               onTap: () async {
                                 await _showStyleSelectionDialog(
@@ -411,83 +419,14 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
                                     width: isSelected ? 3 : 1,
                                   ),
                                 ),
-                                child: Icon(
-                                  item.iconData,
-                                  color: item.getColor(count),
-                                ),
+                                child: Icon(item.iconData, color: previewColor),
                               ),
                             );
                           },
                         ),
+                      // ▼▼▼ ボーナスセクションを完全に削除しました ▼▼▼
                       const SizedBox(height: 30),
-                      // 継続ボーナスセクション
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(color: Colors.blue.shade50),
-                        child: const Center(
-                          child: Text(
-                            "継続ボーナス特典",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (BonusData.list.every(
-                        (item) => _totalDays < item.targetDays,
-                      ))
-                        const Center(
-                          child: Text(
-                            "継続日数に応じて解放されます！",
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                        )
-                      else
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 5,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                              ),
-                          itemCount: BonusData.list
-                              .where((i) => _totalDays >= i.targetDays)
-                              .length,
-                          itemBuilder: (context, idx) {
-                            final unlockedBonuses = BonusData.list
-                                .where((i) => _totalDays >= i.targetDays)
-                                .toList();
-                            final item = unlockedBonuses[idx];
-                            final isSelected = selectedIcon == item.icon;
-                            return InkWell(
-                              onTap: () {
-                                // ★ここを修正：ダイアログなしで即座に反映
-                                setStateDialog(() {
-                                  selectedIcon = item.icon;
-                                  selectedColor = item.color;
-                                });
-                              },
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? Colors.blueAccent
-                                        : Colors.grey.shade300,
-                                    width: isSelected ? 3 : 1,
-                                  ),
-                                ),
-                                child: Icon(item.icon, color: item.color),
-                              ),
-                            );
-                          },
-                        ),
+
                       // カード設定
                       if (!isExpense) ...[
                         const Divider(height: 30),
@@ -589,8 +528,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading)
+    if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('カテゴリ・カード管理'),

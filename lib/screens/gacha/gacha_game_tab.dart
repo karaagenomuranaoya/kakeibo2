@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import '../../repositories/gacha_repository.dart';
 import '../../models/gacha_item.dart';
 
@@ -29,7 +28,8 @@ class _GachaGameTabState extends State<GachaGameTab>
 
   final GlobalKey _ticketKey = GlobalKey();
   final GlobalKey _spinButtonKey = GlobalKey();
-  final GlobalKey _headerKey = GlobalKey();
+  final GlobalKey _topBarKey = GlobalKey();
+  final GlobalKey _gridKey = GlobalKey();
 
   bool _pendingTutorialPhase2 = false;
 
@@ -42,229 +42,181 @@ class _GachaGameTabState extends State<GachaGameTab>
     _loadData();
   }
 
-  // --- チュートリアル関連メソッド (省略: 変更なし) ---
+  // --- チュートリアル関連 ---
+  // ▼▼▼ キー名を元に戻しました ▼▼▼
+  static const String _tutorialKey = 'is_gacha_tutorial_shown';
+
   Future<void> _checkTutorialPhase1() async {
     final prefs = await SharedPreferences.getInstance();
-    final bool isShown = prefs.getBool('is_gacha_tutorial_shown_v1') ?? false;
+    final bool isShown = prefs.getBool(_tutorialKey) ?? false;
 
     if (!isShown && mounted && _credits > 0) {
-      _showTutorialPhase1();
+      // 画面の描画完了を少し待ってから表示
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _showTutorialPhase1();
+      });
       _pendingTutorialPhase2 = true;
     }
   }
 
   Future<void> _completeTutorial() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_gacha_tutorial_shown_v1', true);
+    await prefs.setBool(_tutorialKey, true);
   }
 
+  // 全画面チュートリアル (ガチャ前)
   void _showTutorialPhase1() {
-    TutorialCoachMark(
-      targets: [
-        TargetFocus(
-          identify: "gacha_intro",
-          keyTarget: _headerKey,
-          alignSkip: Alignment.topRight,
-          shape: ShapeLightFocus.RRect,
-          radius: 12,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              builder: (context, controller) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(
-                      Icons.collections_bookmark,
-                      size: 60,
-                      color: Colors.orange,
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Material(
+          type: MaterialType.transparency,
+          child: GestureDetector(
+            // 画面全体どこをタップしても閉じる
+            onTap: () async {
+              Navigator.pop(context);
+              await _completeTutorial();
+            },
+            child: Container(
+              color: Colors.black.withOpacity(0.85), // 背景を暗く
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.auto_awesome, size: 80, color: Colors.orange),
+                  SizedBox(height: 30),
+                  Text(
+                    "アイコンガチャへようこそ",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 26,
                     ),
-                    SizedBox(height: 20),
-                    Text(
-                      "コレクション画面へようこそ",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 24,
-                      ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 24),
+                  Text(
+                    "ここでは特別なアイコンが手に入る\nガチャを回すことができます。",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      height: 1.6,
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      "ここではガチャと入力日数ボーナスで\nキャラクターを集められます。",
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                      textAlign: TextAlign.center,
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    "チケットは入力で1日5枚まで\n手に入りますが\n今回はお試し用のチケットを\n用意しました。",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      height: 1.6,
                     ),
-                  ],
-                );
-              },
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 40),
+                  Text(
+                    "試しに回してみましょう",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orangeAccent,
+                      fontSize: 20,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 60),
+                  Text(
+                    "(画面をタップして閉じる)",
+                    style: TextStyle(color: Colors.white54, fontSize: 14),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-        TargetFocus(
-          identify: "ticket_info",
-          keyTarget: _ticketKey,
-          alignSkip: Alignment.bottomRight,
-          shape: ShapeLightFocus.RRect,
-          radius: 12,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              builder: (context, controller) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      "ガチャチケット",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 20,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      "チケットは本来、入力で1日5枚まで\n手に入るのですが...",
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-        TargetFocus(
-          identify: "spin_button",
-          keyTarget: _spinButtonKey,
-          alignSkip: Alignment.topRight,
-          shape: ShapeLightFocus.RRect,
-          radius: 4,
-          contents: [
-            TargetContent(
-              align: ContentAlign.top,
-              builder: (context, controller) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text(
-                      "今はお試し用のが3枚あるので、\n早速回してみましょう！",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 18,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: 10),
-                    Icon(Icons.arrow_downward, color: Colors.white, size: 40),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ],
-      colorShadow: Colors.black,
-      textSkip: "スキップ",
-      paddingFocus: 10,
-      opacityShadow: 0.8,
-      onSkip: () {
-        _completeTutorial();
-        return true;
+          ),
+        );
       },
-      onFinish: () => _completeTutorial(),
-    ).show(context: context);
+    );
   }
 
+  // 全画面チュートリアル (ガチャ後)
   Future<void> _showTutorialPhase2() async {
     if (!mounted) return;
     await _completeTutorial();
 
-    TutorialCoachMark(
-      targets: [
-        TargetFocus(
-          identify: "gacha_explain_evolution",
-          keyTarget: _headerKey,
-          alignSkip: Alignment.topRight,
-          shape: ShapeLightFocus.RRect,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              builder: (context, controller) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(
-                      Icons.auto_awesome,
-                      size: 60,
-                      color: Colors.yellowAccent,
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Material(
+          type: MaterialType.transparency,
+          child: GestureDetector(
+            onTap: () {
+              Navigator.pop(context);
+            },
+            child: Container(
+              color: Colors.black.withOpacity(0.85),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.grid_view, size: 80, color: Colors.white),
+                  SizedBox(height: 30),
+                  Text(
+                    "コレクション",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 26,
                     ),
-                    SizedBox(height: 20),
-                    Text(
-                      "進化とストーリー",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 22,
-                      ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 24),
+                  Text(
+                    "手に入れたアイコンはここに並びます。",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      height: 1.6,
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      "ガチャではさまざまなキャラクターが手に入ります。\n同じのが出ると進化してどんどん強くなっていきます。\n\n暇があれば詳細のテキストも読んでみてください。",
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                      textAlign: TextAlign.center,
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    "タップすると詳細が見られるほか、\nカテゴリを編集するときには\nアイコンとして使えます。\n同じものが出ると10段階で進化します。",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      height: 1.6,
                     ),
-                  ],
-                );
-              },
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 40),
+                  Text(
+                    "コンプリート目指して\n頑張ってくださいね",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orangeAccent,
+                      fontSize: 20,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 60),
+                  Text(
+                    "(画面をタップして閉じる)",
+                    style: TextStyle(color: Colors.white54, fontSize: 14),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-        TargetFocus(
-          identify: "gacha_explain_icon",
-          keyTarget: _headerKey,
-          alignSkip: Alignment.topRight,
-          shape: ShapeLightFocus.RRect,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              builder: (context, controller) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(
-                      Icons.category,
-                      size: 60,
-                      color: Colors.lightBlueAccent,
-                    ),
-                    SizedBox(height: 20),
-                    Text(
-                      "アイコンとして使う",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 22,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      "出たキャラクターは、\nカテゴリ編集画面でアイコンとして使えます。\n\nお気に入りのキャラで家計簿を彩ってください！",
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ],
-      colorShadow: Colors.black,
-      textSkip: "完了",
-      paddingFocus: 10,
-      opacityShadow: 0.8,
-    ).show(context: context);
+          ),
+        );
+      },
+    );
   }
+  // --- チュートリアルここまで ---
 
   Future<void> _loadData() async {
     await _repository.checkInitialBonus();
@@ -295,6 +247,7 @@ class _GachaGameTabState extends State<GachaGameTab>
   }
 
   Future<void> _spinGacha() async {
+    // 念のためチュートリアル完了フラグを保存
     await _completeTutorial();
 
     if (_credits < _costPerSpin) return;
@@ -305,28 +258,30 @@ class _GachaGameTabState extends State<GachaGameTab>
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    final item = await _repository.drawItem();
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final item = await _repository.drawItem();
+      await Future.delayed(const Duration(seconds: 1));
 
-    if (!mounted) return;
-    Navigator.pop(context);
+      if (!mounted) return;
+      Navigator.of(context).pop();
 
-    // Repositoryのロジック変更により、ここがnullになるのは「データが空」などの異常系のみ
-    if (item == null) {
-      return;
-    }
+      if (item == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("エラー: アイテムデータがありません")));
+        return;
+      }
 
-    final success = await _repository.consumeCredits(_costPerSpin);
-    if (!success) return;
+      final success = await _repository.consumeCredits(_costPerSpin);
+      if (!success) return;
 
-    final newCount = await _repository.unlockItem(item.id);
-    await _loadData(); // データを更新して isAllComplete などを再計算
+      final newCount = await _repository.unlockItem(item.id);
+      await _loadData();
 
-    if (mounted) {
+      if (!mounted) return;
+
       await _showResultDialog(item, newCount);
 
-      // ▼▼▼ 殿堂入りチェック ▼▼▼
-      // 今回のガチャでLv10になったキャラがいて、かつ全員Lv10以上になった場合
       if (newCount == _maxLevel) {
         final maxLevelItems = _itemCounts.entries
             .where((e) => e.value >= _maxLevel)
@@ -335,19 +290,25 @@ class _GachaGameTabState extends State<GachaGameTab>
             maxLevelItems == _allItems.length && _allItems.isNotEmpty;
 
         if (isAllComplete) {
-          // 少し待ってから殿堂入りダイアログを表示
           await Future.delayed(const Duration(milliseconds: 300));
           if (mounted) {
             _showCompleteDialog();
           }
         }
       }
-      // ▲▲▲ 殿堂入りチェックここまで ▲▲▲
 
+      // 初回ガチャ後のチュートリアル表示
       if (_pendingTutorialPhase2) {
         _pendingTutorialPhase2 = false;
-        await Future.delayed(const Duration(milliseconds: 300));
-        _showTutorialPhase2();
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          _showTutorialPhase2();
+        }
+      }
+    } catch (e) {
+      debugPrint("Gacha Error: $e");
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
       }
     }
   }
@@ -359,9 +320,10 @@ class _GachaGameTabState extends State<GachaGameTab>
     );
   }
 
-  Future<void> _showResultDialog(GachaItem item, int count) {
-    return showDialog(
+  Future<void> _showResultDialog(GachaItem item, int count) async {
+    await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => GachaResultDialog(item: item, count: count),
     );
   }
@@ -379,302 +341,276 @@ class _GachaGameTabState extends State<GachaGameTab>
         .where((e) => e.value >= _maxLevel)
         .length;
     final int totalItems = _allItems.length;
-    // 「全キャラLv10以上」かどうか。
-    // 新キャラ追加(count=0)時は false になり、通常モードに戻る。
     final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
 
     return Scaffold(
-      backgroundColor: Colors.yellow.shade50,
+      backgroundColor: Colors.white,
       body: Column(
         children: [
           Container(
-            key: _headerKey,
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+            key: _topBarKey,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(30),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
+              color: Colors.orange.shade50.withOpacity(0.5),
+              border: Border(bottom: BorderSide(color: Colors.orange.shade100)),
             ),
-            child: Column(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    key: _spinButtonKey,
-                    // 殿堂入りしていても回せるように null チェックを変更
-                    onPressed: spins > 0 ? _spinGacha : null,
-                    style: ElevatedButton.styleFrom(
-                      // 殿堂入りモードは特別な色（紫など）にする
-                      backgroundColor: isAllComplete
-                          ? Colors.deepPurple
-                          : Colors.orange,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade300,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      elevation: spins > 0 ? 4 : 0,
-                    ),
-                    child: Text(
-                      isAllComplete
-                          ? "ガチャを回す (殿堂入りモード)"
-                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "入力をするとチケットが貰えます"),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                Container(
+                  key: _ticketKey,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.orange.shade200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.orange.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        isAllComplete
-                            ? "※殿堂入りモード中！無限のカラーバリエーションを楽しめます"
-                            : "※ガチャは完全無料です。課金要素はありません。",
+                      Icon(
+                        Icons.confirmation_number,
+                        size: 18,
+                        color: Colors.orange.shade800,
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        "所持チケット:",
                         style: TextStyle(
-                          fontSize: 10,
-                          color: isAllComplete
-                              ? Colors.purple.shade700
-                              : Colors.grey,
-                          fontWeight: isAllComplete
-                              ? FontWeight.bold
-                              : FontWeight.normal,
+                          fontSize: 12,
+                          color: Colors.brown,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        "$spins枚",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepOrange,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        key: _ticketKey,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade200),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.confirmation_number,
-                              size: 16,
-                              color: Colors.orange.shade800,
-                            ),
-                            const SizedBox(width: 4),
-                            const Text(
-                              "×",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.brown,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              "$_credits",
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.brown,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: _showRateDialog,
-                        icon: const Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                        label: const Text(
-                          "提供割合",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    ],
+                TextButton.icon(
+                  onPressed: _showRateDialog,
+                  icon: const Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Colors.grey,
+                  ),
+                  label: const Text(
+                    "提供割合",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
                   ),
                 ),
               ],
             ),
           ),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 0.8,
-                ),
-                itemCount: _allItems.length,
-                itemBuilder: (context, index) {
-                  final item = _allItems[index];
-                  final int count = _itemCounts[item.id] ?? 0;
-                  final int level = item.getStage(count);
-                  final bool isUnlocked = count > 0;
-                  // Lv11以上は虹色に変化するロジックが適用された色が返ってくる
-                  final Color itemColor = item.getColor(count);
+            child: GridView.builder(
+              key: _gridKey,
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.8,
+              ),
+              itemCount: _allItems.length,
+              itemBuilder: (context, index) {
+                final item = _allItems[index];
+                final int count = _itemCounts[item.id] ?? 0;
+                final int level = item.getStage(count);
+                final bool isUnlocked = count > 0;
+                final Color itemColor = item.getColor(count);
+                final bool isOverLimit = count > _maxLevel;
 
-                  final bool isOverLimit = count > _maxLevel;
-
-                  return GestureDetector(
-                    onTap: isUnlocked
-                        ? () => _showResultDialog(item, count)
-                        : null,
-                    onLongPress: kDebugMode
-                        ? () async {
-                            final newCount = await _repository.unlockItem(
-                              item.id,
-                            );
-                            await _loadData();
-                            if (mounted) {
-                              _showResultDialog(item, newCount);
-                            }
-                          }
-                        : null,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                          color: isUnlocked
-                              ? itemColor.withOpacity(0.5)
-                              : Colors.grey.shade200,
-                          width: level == _maxLevel ? 3 : 1.5,
-                        ),
-                        boxShadow: [
-                          if (isUnlocked)
-                            BoxShadow(
-                              color: itemColor.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                        ],
+                return GestureDetector(
+                  onTap: isUnlocked
+                      ? () => _showResultDialog(item, count)
+                      : null,
+                  onLongPress: kDebugMode
+                      ? () async {
+                          final newCount = await _repository.unlockItem(
+                            item.id,
+                          );
+                          await _loadData();
+                          if (mounted) _showResultDialog(item, newCount);
+                        }
+                      : null,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isUnlocked
+                            ? itemColor.withOpacity(0.3)
+                            : Colors.grey.shade200,
+                        width: isUnlocked ? 2 : 1,
                       ),
-                      child: Stack(
-                        children: [
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Center(
-                                  child: isUnlocked
-                                      ? Icon(
-                                          item.iconData,
-                                          size: 40,
-                                          color: itemColor,
-                                        )
-                                      : Icon(
-                                          Icons.lock,
-                                          size: 30,
-                                          color: Colors.grey.shade300,
-                                        ),
+                      boxShadow: [
+                        if (isUnlocked)
+                          BoxShadow(
+                            color: itemColor.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Center(
+                                child: isUnlocked
+                                    ? Icon(
+                                        item.iconData,
+                                        size: 42,
+                                        color: itemColor,
+                                      )
+                                    : Icon(
+                                        Icons.lock_outline,
+                                        size: 32,
+                                        color: Colors.grey.shade300,
+                                      ),
+                              ),
+                            ),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isUnlocked
+                                    ? itemColor.withOpacity(0.1)
+                                    : Colors.grey.shade50,
+                                borderRadius: const BorderRadius.vertical(
+                                  bottom: Radius.circular(14),
                                 ),
                               ),
-                              if (isUnlocked)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    isUnlocked
+                                        ? (isOverLimit
+                                              ? "Lv.$count"
+                                              : "Lv.$level")
+                                        : "???",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: isUnlocked
+                                          ? itemColor
+                                          : Colors.grey,
+                                    ),
                                   ),
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        isOverLimit ? "Lv.$count" : "Lv.$level",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: itemColor,
-                                        ),
+                                  if (isUnlocked && !isOverLimit)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 2,
                                       ),
-                                      const SizedBox(height: 4),
-                                      ClipRRect(
+                                      child: ClipRRect(
                                         borderRadius: BorderRadius.circular(2),
                                         child: LinearProgressIndicator(
-                                          // Lv11以上はずっと満タン表示
-                                          value: isOverLimit
-                                              ? 1.0
-                                              : level / _maxLevel,
-                                          minHeight: 4,
-                                          backgroundColor: Colors.grey.shade100,
+                                          value: level / _maxLevel,
+                                          minHeight: 3,
+                                          backgroundColor: Colors.white,
                                           color: itemColor,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                )
-                              else
-                                const Text(
-                                  "???",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              const SizedBox(height: 10),
-                            ],
-                          ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (isOverLimit)
                           Positioned(
                             top: 8,
-                            left: 8,
-                            child: Text(
-                              "No.${item.id}",
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: isUnlocked
-                                    ? Colors.grey.shade500
-                                    : Colors.grey.shade300,
-                              ),
+                            right: 8,
+                            child: Icon(
+                              Icons.auto_awesome,
+                              size: 16,
+                              color: itemColor.withOpacity(0.8),
                             ),
                           ),
-                          // 殿堂入りバッジ（Lv11以上ならキラキラアイコンなどをつける）
-                          if (isOverLimit)
-                            Positioned(
-                              top: 5,
-                              right: 5,
-                              child: Icon(
-                                Icons.auto_awesome,
-                                size: 16,
-                                color: itemColor.withOpacity(0.6),
-                              ),
-                            ),
-                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -5),
+                ),
+              ],
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(30),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    key: _spinButtonKey,
+                    onPressed: spins > 0 ? _spinGacha : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isAllComplete
+                          ? Colors.deepPurple
+                          : Colors.orange,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade200,
+                      disabledForegroundColor: Colors.grey,
+                      elevation: spins > 0 ? 4 : 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                  );
-                },
-              ),
+                    child: Text(
+                      isAllComplete
+                          ? "殿堂入りガチャを回す"
+                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "チケットが足りません"),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "※入力をすると1日最大5枚までチケットを獲得できます",
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
             ),
           ),
         ],
