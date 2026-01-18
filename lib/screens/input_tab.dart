@@ -1,20 +1,16 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-// ▼▼ 追加: ライブラリのインポート ▼▼
-import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 
 import '../models/category_tag.dart';
-import '../services/input_service.dart';
-import '../repositories/settings_repository.dart';
 import '../widgets/category_selector.dart';
 import '../widgets/custom_number_keyboard.dart';
 import '../widgets/flash_message.dart';
 import '../widgets/input/amount_input_area.dart';
 import '../widgets/input/input_control_panel.dart';
 import '../widgets/input/payment_selector.dart';
-import 'settings/category_manage_screen.dart';
 import 'history_screen.dart';
+import 'input/input_tab_tutorial.dart';
+import 'input/input_tab_view_model.dart'; // Import ViewModel
+import 'settings/category_manage_screen.dart';
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
@@ -32,45 +28,14 @@ class InputTab extends StatefulWidget {
 
 class _InputTabState extends State<InputTab>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  // --- Controllers & FocusNodes ---
-  final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _memoController = TextEditingController();
-  final FocusNode _amountFocusNode = FocusNode();
-  final FocusNode _memoFocusNode = FocusNode();
+  // ロジックを保持するViewModel
+  late final InputTabViewModel _vm;
 
-  // --- Services & Repositories ---
-  final InputService _inputService = InputService();
-  final SettingsRepository _settingsRepository = SettingsRepository();
-
-  // --- State ---
-  List<CategoryTag> _expenseList = [];
-  List<CategoryTag> _cardList = [];
-  bool _isGachaEnabled = true;
-  bool _isCategoryLongPressEnabled = true;
-  bool _showCardOnInput = true;
-  bool _isLoading = true;
-
-  int _selectedExpenseIndex = 0;
-  DateTime _selectedDate = DateTime.now();
-
-  bool _isCardPayment = false;
-  int _selectedCardIndex = 0;
-
-  bool _showCustomKeyboard = false;
-  String? _lastInputId;
-
-  // --- フラッシュメッセージ用 State ---
-  bool _isFlashVisible = false;
-  String _flashMsg = '';
-  Color _flashColor = Colors.blue;
-  Timer? _flashTimer;
-
-  static const double _keyboardHeight = 312.0;
-
-  // ▼▼ 追加: チュートリアル用のキー ▼▼
+  // チュートリアル用のKey（View固有のものなのでここに残す）
   final GlobalKey _paymentKey = GlobalKey();
   final GlobalKey _categoryKey = GlobalKey();
-  TutorialCoachMark? _tutorialCoachMark;
+
+  static const double _keyboardHeight = 312.0;
 
   @override
   bool get wantKeepAlive => true;
@@ -79,503 +44,205 @@ class _InputTabState extends State<InputTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadAllData();
 
-    _amountFocusNode.addListener(_onAmountFocusChange);
-    _memoFocusNode.addListener(_onMemoFocusChange);
+    _vm = InputTabViewModel();
+    _vm.loadData().then((_) => _checkTutorial());
+
+    // キーボード表示状態の変化を監視してTabBar制御
+    _vm.addListener(_onVmStateChanged);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _amountFocusNode.removeListener(_onAmountFocusChange);
-    _memoFocusNode.removeListener(_onMemoFocusChange);
-    _flashTimer?.cancel();
-
-    _amountController.dispose();
-    _memoController.dispose();
-    _amountFocusNode.dispose();
-    _memoFocusNode.dispose();
+    _vm.removeListener(_onVmStateChanged);
+    _vm.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeMetrics() {
-    super.didChangeMetrics();
-    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
-    if (bottomInset > 0 && _showCustomKeyboard && !_amountFocusNode.hasFocus) {
-      setState(() => _showCustomKeyboard = false);
-    }
   }
 
   @override
   void didUpdateWidget(covariant InputTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.dataVersion != widget.dataVersion) {
-      _loadAllData();
+      _vm.loadData();
     }
   }
 
-  // --- Focus Handling ---
-  void _onAmountFocusChange() {
-    if (_amountFocusNode.hasFocus) {
-      setState(() => _showCustomKeyboard = true);
-      widget.onTabBarVisibilityChanged?.call(false);
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // システムキーボードが出たかどうかの判定
+    final bottomInset = View.of(context).viewInsets.bottom;
+    if (bottomInset > 0) {
+      _vm.onSystemKeyboardShown();
     }
   }
 
-  void _onMemoFocusChange() {
-    if (_memoFocusNode.hasFocus) {
-      setState(() => _showCustomKeyboard = false);
-    }
+  void _onVmStateChanged() {
+    // ViewModelの状態に応じてTabBarの表示/非表示を親に通知
+    // (カスタムキーボード表示中ならTabBarを隠す)
+    widget.onTabBarVisibilityChanged?.call(!_vm.showCustomKeyboard);
   }
 
-  void _closeKeyboard() {
-    _amountFocusNode.unfocus();
-    _memoFocusNode.unfocus();
-    setState(() => _showCustomKeyboard = false);
-    widget.onTabBarVisibilityChanged?.call(true);
-  }
-
-  // --- Data Loading ---
-  Future<void> _loadAllData() async {
-    final expenses = await _settingsRepository.loadExpenseTags();
-    final cards = await _settingsRepository.loadCardTags();
-    final gachaEnabled = await _settingsRepository.loadGachaEnabled();
-    final catLongPressEnabled = await _settingsRepository
-        .loadCategoryLongPressEnabled();
-    final showCard = await _settingsRepository.loadShowCardOnInput();
-
-    final prefs = await SharedPreferences.getInstance();
-
-    int savedExpenseIndex = prefs.getInt('last_expense_index') ?? 0;
-    if (savedExpenseIndex >= expenses.length) savedExpenseIndex = 0;
-    int savedCardIndex = prefs.getInt('last_card_index') ?? 0;
-    if (savedCardIndex >= cards.length) savedCardIndex = 0;
-    final savedIsCard = prefs.getBool('last_is_card') ?? false;
-
-    if (mounted) {
-      setState(() {
-        _expenseList = expenses;
-        _cardList = cards;
-        _isGachaEnabled = gachaEnabled;
-        _isCategoryLongPressEnabled = catLongPressEnabled;
-        _showCardOnInput = showCard;
-        _selectedExpenseIndex = savedExpenseIndex;
-        _selectedCardIndex = savedCardIndex;
-        _isCardPayment = savedIsCard;
-        _isLoading = false;
-      });
-
-      // ▼▼ 追加: ロード完了後にチュートリアルチェック ▼▼
-      // 画面描画が終わるのを待ってから実行
+  void _checkTutorial() {
+    if (!mounted || _vm.data == null) return;
+    if (_vm.data!.shouldShowTutorial) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _checkTutorial();
+        InputTabTutorial.show(
+          context,
+          paymentKey: _paymentKey,
+          categoryKey: _categoryKey,
+          showCardOnInput: _vm.data!.showCardOnInput,
+          onFinish: _vm.markTutorialAsShown,
+        );
       });
     }
   }
 
-  // ▼▼ 追加: チュートリアル表示ロジック ▼▼
-  Future<void> _checkTutorial() async {
-    final prefs = await SharedPreferences.getInstance();
-    final bool isShown = prefs.getBool('is_input_tutorial_shown_v1') ?? false;
-
-    if (!isShown && mounted) {
-      _showTutorial();
-      await prefs.setBool('is_input_tutorial_shown_v1', true);
-    }
-  }
-
-  void _showTutorial() {
-    // ターゲットの作成
-    List<TargetFocus> targets = [];
-
-    // 1. 支払い方法選択（表示されている場合のみ）
-    if (_showCardOnInput && _paymentKey.currentContext != null) {
-      targets.add(
-        TargetFocus(
-          identify: "payment_selector",
-          keyTarget: _paymentKey,
-          alignSkip: Alignment.topRight,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              builder: (context, controller) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      "支払い方法の選択",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 20,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      "左右にスワイプして「カード」や「現金（記録なし）」を切り替えられます。\n\n長押しすると、そのカードの利用明細へジャンプします。",
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-          shape: ShapeLightFocus.RRect,
-          radius: 10,
-        ),
-      );
-    }
-
-    // 2. カテゴリ選択
-    if (_categoryKey.currentContext != null) {
-      targets.add(
-        TargetFocus(
-          identify: "category_selector",
-          keyTarget: _categoryKey,
-          alignSkip: Alignment.topRight,
-          contents: [
-            TargetContent(
-              align: ContentAlign.top, // 上側に表示
-              builder: (context, controller) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      "支出の記録",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 20,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      "ここをタップすると入力完了です。\n\n長押しすると、その費目の履歴へジャンプします。",
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-          shape: ShapeLightFocus.RRect,
-          radius: 10,
-        ),
-      );
-    }
-
-    if (targets.isEmpty) return;
-
-    _tutorialCoachMark = TutorialCoachMark(
-      targets: targets,
-      colorShadow: Colors.black,
-      textSkip: "スキップ",
-      paddingFocus: 10,
-      opacityShadow: 0.8,
-      onFinish: () {},
-      onClickTarget: (target) {},
-      onClickOverlay: (target) {},
-      onSkip: () {
-        return true;
-      },
-    )..show(context: context);
-  }
-
-  // --- User Actions ---
-  Future<void> _pickDate() async {
-    _closeKeyboard();
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-    );
-    if (picked != null) setState(() => _selectedDate = picked);
-  }
-
-  Future<void> _changeExpenseIndex(int index) async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() => _selectedExpenseIndex = index);
-    await prefs.setInt('last_expense_index', index);
-  }
-
+  // --- Navigation Helpers ---
   void _onCategoryLongPress(int index) {
-    if (!_isCategoryLongPressEnabled) return;
-    if (index >= _expenseList.length) return;
+    if (!_vm.data!.isCategoryLongPressEnabled) return;
+    if (index >= _vm.data!.expenses.length) return;
 
-    _closeKeyboard();
-    final tag = _expenseList[index];
+    _vm.closeKeyboard();
+    final tag = _vm.data!.expenses[index];
+    _navigateToHistory(tag.label, 'expense', tag.color);
+  }
+
+  void _onCardLongPress(CategoryTag tag) {
+    _vm.closeKeyboard();
+    _navigateToHistory(tag.label, 'payment', tag.color);
+  }
+
+  void _navigateToHistory(String val, String key, Color color) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => HistoryScreen(
-          filterValue: tag.label,
-          filterKey: 'expense',
-          color: tag.color,
-        ),
+        builder: (context) =>
+            HistoryScreen(filterValue: val, filterKey: key, color: color),
       ),
     );
   }
 
-  Future<void> _toggleCardPayment(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() => _isCardPayment = value);
-    await prefs.setBool('last_is_card', value);
-  }
-
-  Future<void> _changeCardIndex(int index) async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() => _selectedCardIndex = index);
-    await prefs.setInt('last_card_index', index);
-  }
-
   Future<void> _openCategorySettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('last_expense_index', _selectedExpenseIndex);
+    // 現在の状態を保存
+    _vm.setExpenseIndex(_vm.selectedExpenseIndex);
 
     if (!mounted) return;
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const CategoryManageScreen()),
     );
-    await _loadAllData();
-  }
-
-  void _onCardLongPress(CategoryTag tag) {
-    _closeKeyboard();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => HistoryScreen(
-          filterValue: tag.label,
-          filterKey: 'payment',
-          color: tag.color,
-        ),
-      ),
-    );
-  }
-
-  // --- Save Logic ---
-  Future<void> _saveData({bool keepKeyboard = false}) async {
-    if (_isLoading) return;
-
-    if (_expenseList.isEmpty) {
-      _showFlashMessage('カテゴリがありません', Colors.redAccent);
-      return;
-    }
-    // インデックス範囲外ガード
-    if (_selectedExpenseIndex >= _expenseList.length) {
-      _selectedExpenseIndex = 0;
-    }
-
-    if (!keepKeyboard) _closeKeyboard();
-
-    // 選択されているカードタグの取得
-    CategoryTag? selectedCardTag;
-    if (_cardList.isNotEmpty && _selectedCardIndex < _cardList.length) {
-      selectedCardTag = _cardList[_selectedCardIndex];
-    }
-
-    final result = await _inputService.registerTransaction(
-      rawAmount: _amountController.text,
-      memo: _memoController.text.trim(),
-      date: _selectedDate,
-      expenseTag: _expenseList[_selectedExpenseIndex],
-      isCardPayment: _isCardPayment,
-      cardTag: selectedCardTag,
-      showCardOnInput: _showCardOnInput,
-      isGachaEnabled: _isGachaEnabled,
-    );
-
-    if (result.success) {
-      // 成功時
-      if (result.formattedAmount != null) {
-        _amountController.text = result.formattedAmount!;
-      }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('last_expense_index', _selectedExpenseIndex);
-      if (_showCardOnInput && _isCardPayment) {
-        await prefs.setInt('last_card_index', _selectedCardIndex);
-      }
-      await prefs.setBool('last_is_card', _isCardPayment);
-
-      setState(() {
-        _amountController.clear();
-        _memoController.clear();
-        _lastInputId = result.savedId;
-      });
-
-      if (keepKeyboard) _amountFocusNode.requestFocus();
-
-      if (mounted) {
-        _showFlashMessage(result.message, result.messageColor);
-      }
-    } else {
-      // 失敗時
-      if (mounted) {
-        _showFlashMessage(result.message, result.messageColor);
-      }
-    }
-  }
-
-  Future<void> _undoLastInput() async {
-    if (_lastInputId == null) return;
-
-    final targetItem = await _inputService.getTransaction(_lastInputId!);
-    if (targetItem == null) {
-      setState(() => _lastInputId = null);
-      return;
-    }
-
-    if (!mounted) return;
-    final weekDays = ["月", "火", "水", "木", "金", "土", "日"];
-    final weekStr = weekDays[targetItem.date.weekday - 1];
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('直前の入力を取り消しますか？'),
-        content: Text(
-          '¥${targetItem.amount} (${targetItem.expense})\n'
-          '日時: ${targetItem.date.month}/${targetItem.date.day} ($weekStr)',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _inputService.deleteTransaction(_lastInputId!);
-              if (mounted) {
-                setState(() => _lastInputId = null);
-                _showFlashMessage('入力を取り消しました', Colors.grey);
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('削除する'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showFlashMessage(String msg, Color color) {
-    _flashTimer?.cancel();
-    setState(() {
-      _flashMsg = msg;
-      _flashColor = color;
-      _isFlashVisible = true;
-    });
-
-    _flashTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        setState(() {
-          _isFlashVisible = false;
-        });
-      }
-    });
+    _vm.loadData();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
 
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final double additionalPadding = _showCustomKeyboard
-        ? _keyboardHeight
-        : bottomInset;
-    final double bottomPadding = 80 + additionalPadding;
+    // ViewModelの変更を監視して再描画
+    return AnimatedBuilder(
+      animation: _vm,
+      builder: (context, child) {
+        if (_vm.isLoading || _vm.data == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    return GestureDetector(
-      onTap: _closeKeyboard,
-      behavior: HitTestBehavior.opaque,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  AmountInputArea(
-                    selectedDate: _selectedDate,
-                    amountController: _amountController,
-                    amountFocusNode: _amountFocusNode,
-                    memoController: _memoController,
-                    memoFocusNode: _memoFocusNode,
-                    onDateTap: _pickDate,
-                    onAmountTap: () => _amountFocusNode.requestFocus(),
-                  ),
+        // レイアウト計算
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        final double additionalPadding = _vm.showCustomKeyboard
+            ? _keyboardHeight
+            : bottomInset;
+        final double bottomPadding = 80 + additionalPadding;
 
-                  if (_showCardOnInput)
-                    GestureDetector(
-                      // ▼▼ 追加: PaymentSelectorにKeyを設定 ▼▼
-                      key: _paymentKey,
-                      onTap: () {},
-                      child: PaymentSelector(
-                        isCardPayment: _isCardPayment,
-                        onToggle: _toggleCardPayment,
-                        cardList: _cardList,
-                        selectedCardIndex: _selectedCardIndex,
-                        onCardSelected: _changeCardIndex,
-                        onCardLongPress: _onCardLongPress,
+        return GestureDetector(
+          onTap: _vm.closeKeyboard,
+          behavior: HitTestBehavior.opaque,
+          child: Stack(
+            children: [
+              // メインコンテンツエリア
+              Positioned.fill(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
+                  child: Column(
+                    children: [
+                      AmountInputArea(
+                        selectedDate: _vm.selectedDate,
+                        amountController: _vm.amountController,
+                        amountFocusNode: _vm.amountFocusNode,
+                        memoController: _vm.memoController,
+                        memoFocusNode: _vm.memoFocusNode,
+                        onDateTap: () => _vm.pickDate(context),
+                        onAmountTap: () => _vm.amountFocusNode.requestFocus(),
                       ),
-                    )
-                  else
-                    const SizedBox(height: 24),
 
-                  CategorySelector(
-                    // ▼▼ 追加: CategorySelectorにKeyを設定 ▼▼
-                    key: _categoryKey,
-                    tags: _expenseList,
-                    selectedIndex: _selectedExpenseIndex,
-                    onSelected: _changeExpenseIndex,
-                    onLongPress: _isCategoryLongPressEnabled
-                        ? _onCategoryLongPress
+                      if (_vm.data!.showCardOnInput)
+                        GestureDetector(
+                          key: _paymentKey,
+                          onTap: () {}, // チュートリアル用のダミー
+                          child: PaymentSelector(
+                            isCardPayment: _vm.isCardPayment,
+                            onToggle: _vm.toggleCardPayment,
+                            cardList: _vm.data!.cards,
+                            selectedCardIndex: _vm.selectedCardIndex,
+                            onCardSelected: _vm.setCardIndex,
+                            onCardLongPress: _onCardLongPress,
+                          ),
+                        )
+                      else
+                        const SizedBox(height: 24),
+
+                      CategorySelector(
+                        key: _categoryKey,
+                        tags: _vm.data!.expenses,
+                        selectedIndex: _vm.selectedExpenseIndex,
+                        onSelected: _vm.setExpenseIndex,
+                        onLongPress: _vm.data!.isCategoryLongPressEnabled
+                            ? _onCategoryLongPress
+                            : null,
+                        onAddPressed: _openCategorySettings,
+                      ),
+                      const SizedBox(height: 20),
+
+                      InputControlPanel(
+                        onSave: () => _vm.saveData(keepKeyboard: false),
+                        onUndo: () => _vm.undoLastInput(context),
+                        showUndo: _vm.lastInputId != null,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // カスタムキーボード
+              if (_vm.showCustomKeyboard)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: _keyboardHeight,
+                  child: CustomNumberKeyboard(
+                    controller: _vm.amountController,
+                    onSubmitted: () => _vm.saveData(keepKeyboard: true),
+                    onSaveAndClose: () => _vm.saveData(keepKeyboard: false),
+                    onUndo: _vm.lastInputId != null
+                        ? () => _vm.undoLastInput(context)
                         : null,
-                    onAddPressed: _openCategorySettings,
+                    onClose: _vm.closeKeyboard,
+                    onChanged: (_) {},
                   ),
-                  const SizedBox(height: 20),
-                  InputControlPanel(
-                    onSave: () => _saveData(keepKeyboard: false),
-                    onUndo: _undoLastInput,
-                    showUndo: _lastInputId != null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_showCustomKeyboard)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: _keyboardHeight,
-              child: CustomNumberKeyboard(
-                controller: _amountController,
-                onSubmitted: () => _saveData(keepKeyboard: true),
-                onSaveAndClose: () => _saveData(keepKeyboard: false),
-                onUndo: _lastInputId != null ? _undoLastInput : null,
-                onClose: _closeKeyboard,
-                onChanged: (_) {},
-              ),
-            ),
+                ),
 
-          FlashMessage(
-            isVisible: _isFlashVisible,
-            message: _flashMsg,
-            color: _flashColor,
+              // フラッシュメッセージ
+              FlashMessage(
+                isVisible: _vm.isFlashVisible,
+                message: _vm.flashMsg,
+                color: _vm.flashColor,
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -1,11 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Added
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
+import '../repositories/settings_repository.dart'; // Added
 import '../utils/simple_calculator.dart';
 
-/// 保存処理の結果をまとめたクラス
+/// 初期表示に必要なデータをまとめたクラス
+class InputInitialData {
+  final List<CategoryTag> expenses;
+  final List<CategoryTag> cards;
+  final bool isGachaEnabled;
+  final bool isCategoryLongPressEnabled;
+  final bool showCardOnInput;
+  final int lastExpenseIndex;
+  final int lastCardIndex;
+  final bool lastIsCard;
+  final bool shouldShowTutorial;
+
+  InputInitialData({
+    required this.expenses,
+    required this.cards,
+    required this.isGachaEnabled,
+    required this.isCategoryLongPressEnabled,
+    required this.showCardOnInput,
+    required this.lastExpenseIndex,
+    required this.lastCardIndex,
+    required this.lastIsCard,
+    required this.shouldShowTutorial,
+  });
+}
+
 class InputServiceResult {
   final bool success;
   final String message;
@@ -25,6 +51,70 @@ class InputServiceResult {
 class InputService {
   final TransactionRepository _transactionRepo = TransactionRepository();
   final GachaRepository _gachaRepo = GachaRepository();
+  final SettingsRepository _settingsRepo = SettingsRepository(); // Added
+
+  // --- keys ---
+  static const String _keyLastExpenseIdx = 'last_expense_index';
+  static const String _keyLastCardIdx = 'last_card_index';
+  static const String _keyLastIsCard = 'last_is_card';
+  static const String _keyTutorialShown = 'is_input_tutorial_shown_v1';
+
+  /// 入力画面に必要な初期データを一括で取得する
+  Future<InputInitialData> loadInitialData() async {
+    final expenses = await _settingsRepo.loadExpenseTags();
+    final cards = await _settingsRepo.loadCardTags();
+    final gachaEnabled = await _settingsRepo.loadGachaEnabled();
+    final catLongPressEnabled = await _settingsRepo
+        .loadCategoryLongPressEnabled();
+    final showCard = await _settingsRepo.loadShowCardOnInput();
+
+    final prefs = await SharedPreferences.getInstance();
+
+    int savedExpenseIndex = prefs.getInt(_keyLastExpenseIdx) ?? 0;
+    if (savedExpenseIndex >= expenses.length) savedExpenseIndex = 0;
+
+    int savedCardIndex = prefs.getInt(_keyLastCardIdx) ?? 0;
+    if (savedCardIndex >= cards.length) savedCardIndex = 0;
+
+    final savedIsCard = prefs.getBool(_keyLastIsCard) ?? false;
+    final tutorialShown = prefs.getBool(_keyTutorialShown) ?? false;
+
+    return InputInitialData(
+      expenses: expenses,
+      cards: cards,
+      isGachaEnabled: gachaEnabled,
+      isCategoryLongPressEnabled: catLongPressEnabled,
+      showCardOnInput: showCard,
+      lastExpenseIndex: savedExpenseIndex,
+      lastCardIndex: savedCardIndex,
+      lastIsCard: savedIsCard,
+      shouldShowTutorial: !tutorialShown,
+    );
+  }
+
+  /// チュートリアル表示済みフラグを立てる
+  Future<void> markTutorialAsShown() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyTutorialShown, true);
+  }
+
+  /// 最後に選択した状態を保存する
+  Future<void> saveLastInputState({
+    int? expenseIndex,
+    int? cardIndex,
+    bool? isCard,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (expenseIndex != null) {
+      await prefs.setInt(_keyLastExpenseIdx, expenseIndex);
+    }
+    if (cardIndex != null) {
+      await prefs.setInt(_keyLastCardIdx, cardIndex);
+    }
+    if (isCard != null) {
+      await prefs.setBool(_keyLastIsCard, isCard);
+    }
+  }
 
   Future<InputServiceResult> registerTransaction({
     required String rawAmount,
@@ -108,11 +198,10 @@ class InputService {
 
       if (isGachaEnabled) {
         final result = await _gachaRepo.addCredit();
-        // final int currentCredits = result.$1; // 未使用のためコメントアウト
+        // final int currentCredits = result.$1;
         final bool isAdded = result.$2;
 
         if (isAdded) {
-          // ▼▼ 変更: 1入力1ガチャなので、加算＝ガチャ権利獲得 ▼▼
           msg = 'ガチャチケット獲得！';
           color = Colors.orange;
         } else {
