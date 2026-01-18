@@ -62,3 +62,4 @@ void main() {
     expect(list.length, 0, reason: '削除後は0件になるはず');
   });
 }
+//flutter test test/transaction_repository_test.dart

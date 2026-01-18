@@ -5,13 +5,15 @@ This is a **Household Account Book (Kakeibo) app combined with a Gacha game elem
 --- START OF CONTEXT ---
 ## Project Tree
 ```
-kakeibo2/
+atsumeru_kakeibo/
+    atsumeru_kakeibo.iml
     .metadata
     README.md
     pubspec.yaml
     .gitignore
     .flutter-plugins-dependencies
     analysis_options.yaml
+    flutter_application_1.iml
     lib/
         main.dart
         utils/
@@ -628,6 +630,8 @@ class SettingsRepository {
   static const String _gachaEnabledKey = 'gacha_enabled';
   static const String _categoryLongPressKey = 'category_long_press_enabled';
   static const String _showCardOnInputKey = 'show_card_on_input';
+  // ▼▼ 追加: バイブレーション設定のキー ▼▼
+  static const String _vibrationEnabledKey = 'vibration_enabled';
 
   // --- 費目リスト管理 ---
   Future<List<CategoryTag>> loadExpenseTags() async {
@@ -688,13 +692,24 @@ class SettingsRepository {
   // --- 入力画面でのカード表示設定 ---
   Future<bool> loadShowCardOnInput() async {
     final prefs = await SharedPreferences.getInstance();
-    // デフォルトは true (表示する)
     return prefs.getBool(_showCardOnInputKey) ?? true;
   }
 
   Future<void> saveShowCardOnInput(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showCardOnInputKey, enabled);
+  }
+
+  // ▼▼ 追加: バイブレーション設定の管理 ▼▼
+  Future<bool> loadVibrationEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    // デフォルトは true (振動する)
+    return prefs.getBool(_vibrationEnabledKey) ?? true;
+  }
+
+  Future<void> saveVibrationEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_vibrationEnabledKey, enabled);
   }
 }
 

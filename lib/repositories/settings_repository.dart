@@ -89,4 +89,16 @@ class SettingsRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_vibrationEnabledKey, enabled);
   }
+
+  /// 全てのチュートリアル済みフラグをリセット（false）にする
+  Future<void> resetTutorials() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 入力画面のキー
+    await prefs.setBool('is_input_tutorial_shown_v1', false);
+    // レポート画面のキー
+    await prefs.setBool('is_report_tutorial_shown_v1', false);
+    // ガチャ画面のキー
+    await prefs.setBool('is_gacha_tutorial_shown', false);
+  }
 }

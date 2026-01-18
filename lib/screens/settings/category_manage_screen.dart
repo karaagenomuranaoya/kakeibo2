@@ -3,6 +3,8 @@ import '../../models/category_tag.dart';
 import '../../models/gacha_item.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/gacha_repository.dart';
+// ▼ 作成したダイアログをインポート
+import 'dialogs/category_edit_dialog.dart';
 
 class CategoryManageScreen extends StatefulWidget {
   const CategoryManageScreen({super.key});
@@ -16,57 +18,15 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
   final GachaRepository _gachaRepository = GachaRepository();
-  // TransactionRepository はボーナス日数計算に使っていたため削除
 
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
 
-  // ガチャデータ用
+  // ガチャデータ
   List<GachaItem> _gachaItems = [];
   Map<String, int> _gachaCounts = {};
 
   bool _isLoading = true;
-
-  // 標準アイコンリスト
-  final List<IconData> _standardIcons = [
-    Icons.restaurant,
-    Icons.shopping_bag,
-    Icons.train,
-    Icons.wine_bar,
-    Icons.sports_esports,
-    Icons.checkroom,
-    Icons.medical_services,
-    Icons.menu_book,
-    Icons.home,
-    Icons.wifi,
-    Icons.directions_car,
-    Icons.movie,
-    Icons.attach_money,
-    Icons.credit_card,
-    Icons.payment,
-    Icons.shopping_cart,
-    Icons.school,
-    Icons.phone_iphone,
-    Icons.sports_soccer,
-    Icons.savings,
-    Icons.card_giftcard,
-    Icons.pets,
-    Icons.flight,
-    Icons.local_cafe,
-    Icons.local_bar,
-    Icons.work,
-    Icons.category,
-    Icons.star,
-    Icons.favorite,
-    Icons.account_balance_wallet,
-    Icons.coffee,
-    Icons.fastfood,
-    Icons.receipt_long,
-    Icons.local_grocery_store,
-    Icons.fitness_center,
-    Icons.music_note,
-    Icons.child_care,
-  ];
 
   @override
   void initState() {
@@ -97,422 +57,39 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     await _settingsRepository.saveCardTags(_cardList);
   }
 
-  // ガチャアイテム用のスタイル選択ダイアログ
-  Future<void> _showStyleSelectionDialog({
-    required BuildContext context,
-    required GachaItem item,
-    required int currentCount,
-    required Function(Color) onColorSelected,
-  }) async {
-    // ▼▼▼ 修正箇所: getStage(最大10)ではなく、所持数(currentCount)をそのまま使う ▼▼▼
-    // これにより、Lv11以降も無限にリストアップされます。
-    final int maxLevel = currentCount;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('${item.baseName}のスタイル選択'),
-          // ▼▼▼ スクロール可能にするためにSizedBoxとSingleChildScrollViewでラップ ▼▼▼
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                alignment: WrapAlignment.center,
-                children: List.generate(maxLevel, (index) {
-                  final level = index + 1;
-                  // GachaItem側でLv11以降の色計算ロジックが実装されていれば、ここでその色が取得できます
-                  final color = item.getColor(level);
-
-                  return GestureDetector(
-                    onTap: () {
-                      onColorSelected(color);
-                      Navigator.pop(ctx);
-                    },
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: color, width: 2),
-                          ),
-                          child: Icon(item.iconData, color: color, size: 28),
-                        ),
-                        const SizedBox(height: 4),
-                        Text("Lv.$level", style: const TextStyle(fontSize: 10)),
-                      ],
-                    ),
-                  );
-                }),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text("閉じる"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showEditDialog({
+  // 追加・編集ダイアログを開く
+  Future<void> _openEditDialog({
     required bool isExpense,
     CategoryTag? item,
     required int index,
-  }) {
-    final TextEditingController nameController = TextEditingController(
-      text: item?.label ?? '',
-    );
-    Color selectedColor =
-        item?.color ?? (isExpense ? Colors.orange : Colors.blue);
-    IconData selectedIcon =
-        item?.displayIcon ?? (isExpense ? Icons.category : Icons.credit_card);
-
-    bool isClosingMode = (item?.closingDay != null);
-    int closingDay = item?.closingDay ?? 99;
-    int paymentDay = item?.paymentDay ?? 27;
-    int paymentOffset = item?.paymentMonthOffset ?? 1;
-
-    final List<Color> colors = [
-      Colors.red,
-      Colors.pink,
-      Colors.purple,
-      Colors.deepPurple,
-      Colors.indigo,
-      Colors.blue,
-      Colors.lightBlue,
-      Colors.cyan,
-      Colors.teal,
-      Colors.green,
-      Colors.lightGreen,
-      Colors.lime,
-      Colors.yellow,
-      Colors.amber,
-      Colors.orange,
-      Colors.deepOrange,
-      Colors.brown,
-      Colors.grey,
-      Colors.blueGrey,
-      Colors.black,
-    ];
-
-    List<DropdownMenuItem<int>> getDayItems() {
-      final items = List.generate(
-        28,
-        (i) => i + 1,
-      ).map((i) => DropdownMenuItem(value: i, child: Text('$i日'))).toList();
-      items.add(const DropdownMenuItem(value: 99, child: Text('末日')));
-      return items;
-    }
-
-    showDialog(
+  }) async {
+    // 分割したダイアログウィジェットを呼び出す
+    final CategoryTag? result = await showDialog<CategoryTag>(
       context: context,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AlertDialog(
-              title: Text(item == null ? '新規追加' : '編集'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(labelText: '名称'),
-                        onChanged: (_) => setStateDialog(() {}),
-                      ),
-                      const SizedBox(height: 20),
-                      // プレビュー
-                      Row(
-                        children: [
-                          const Text("プレビュー: "),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: selectedColor,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  selectedIcon,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  nameController.text.isEmpty
-                                      ? "名称"
-                                      : nameController.text,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      // 標準アイコン
-                      const Text(
-                        'アイコンを選択',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 6,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                            ),
-                        itemCount: _standardIcons.length,
-                        itemBuilder: (context, idx) {
-                          final icon = _standardIcons[idx];
-                          final isSelected = selectedIcon == icon;
-                          return InkWell(
-                            onTap: () =>
-                                setStateDialog(() => selectedIcon = icon),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Colors.grey.shade300
-                                    : Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(8),
-                                border: isSelected
-                                    ? Border.all(color: Colors.blue, width: 2)
-                                    : null,
-                              ),
-                              child: Icon(
-                                icon,
-                                color: Colors.black54,
-                                size: 20,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      // 色調整
-                      const Text(
-                        '色を調整',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: colors.map((c) {
-                          return GestureDetector(
-                            onTap: () =>
-                                setStateDialog(() => selectedColor = c),
-                            child: Container(
-                              width: 30,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                color: c,
-                                shape: BoxShape.circle,
-                                border: selectedColor == c
-                                    ? Border.all(color: Colors.black, width: 2)
-                                    : null,
-                              ),
-                              child: selectedColor == c
-                                  ? const Icon(
-                                      Icons.check,
-                                      color: Colors.white,
-                                      size: 16,
-                                    )
-                                  : null,
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 30),
-                      // ガチャキャラセクション
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(color: Colors.orange.shade50),
-                        child: const Center(
-                          child: Text(
-                            "獲得済みキャラを使用",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.deepOrange,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      if (_gachaCounts.values.every((c) => c == 0))
-                        const Center(
-                          child: Text(
-                            "ガチャを回してゲットしよう！",
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        )
-                      else
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 5,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                              ),
-                          itemCount: _gachaItems
-                              .where((i) => (_gachaCounts[i.id] ?? 0) > 0)
-                              .length,
-                          itemBuilder: (context, idx) {
-                            final unlockedItems = _gachaItems
-                                .where((i) => (_gachaCounts[i.id] ?? 0) > 0)
-                                .toList();
-                            final item = unlockedItems[idx];
-                            final count = _gachaCounts[item.id] ?? 0;
-                            final isSelected = selectedIcon == item.iconData;
-
-                            // アイコンのプレビュー色（最新の状態）
-                            final previewColor = item.getColor(count);
-
-                            return InkWell(
-                              onTap: () async {
-                                await _showStyleSelectionDialog(
-                                  context: context,
-                                  item: item,
-                                  currentCount: count,
-                                  onColorSelected: (color) =>
-                                      setStateDialog(() {
-                                        selectedIcon = item.iconData;
-                                        selectedColor = color;
-                                      }),
-                                );
-                              },
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? Colors.redAccent
-                                        : Colors.grey.shade300,
-                                    width: isSelected ? 3 : 1,
-                                  ),
-                                ),
-                                child: Icon(item.iconData, color: previewColor),
-                              ),
-                            );
-                          },
-                        ),
-                      // ▼▼▼ ボーナスセクションを完全に削除しました ▼▼▼
-                      const SizedBox(height: 30),
-
-                      // カード設定
-                      if (!isExpense) ...[
-                        const Divider(height: 30),
-                        Row(
-                          children: [
-                            const Text(
-                              '締め日・支払日設定',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const Spacer(),
-                            Switch(
-                              value: isClosingMode,
-                              onChanged: (val) =>
-                                  setStateDialog(() => isClosingMode = val),
-                            ),
-                          ],
-                        ),
-                        if (isClosingMode) ...[
-                          Row(
-                            children: [
-                              const Text('締め: '),
-                              DropdownButton<int>(
-                                value: closingDay,
-                                items: getDayItems(),
-                                onChanged: (val) =>
-                                    setStateDialog(() => closingDay = val!),
-                              ),
-                              const SizedBox(width: 15),
-                              const Text('払い: '),
-                              DropdownButton<int>(
-                                value: paymentDay,
-                                items: getDayItems(),
-                                onChanged: (val) =>
-                                    setStateDialog(() => paymentDay = val!),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('キャンセル'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (nameController.text.isEmpty) return;
-                    final newTag = CategoryTag(
-                      id: item?.id,
-                      label: nameController.text,
-                      color: selectedColor,
-                      isCircle: isExpense,
-                      iconCodePoint: selectedIcon.codePoint,
-                      iconFontFamily: selectedIcon.fontFamily,
-                      iconFontPackage: selectedIcon.fontPackage,
-                      closingDay: (!isExpense && isClosingMode)
-                          ? closingDay
-                          : null,
-                      paymentDay: (!isExpense && isClosingMode)
-                          ? paymentDay
-                          : null,
-                      paymentMonthOffset: paymentOffset,
-                    );
-                    setState(() {
-                      final list = isExpense ? _expenseList : _cardList;
-                      if (item == null) {
-                        list.add(newTag);
-                      } else {
-                        list[index] = newTag;
-                      }
-                    });
-                    await _saveCurrentList();
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
+        return CategoryEditDialog(
+          isExpense: isExpense,
+          existingItem: item,
+          gachaItems: _gachaItems,
+          gachaCounts: _gachaCounts,
         );
       },
     );
+
+    // 保存ボタンが押されてデータが返ってきた場合のみ更新
+    if (result != null) {
+      setState(() {
+        final list = isExpense ? _expenseList : _cardList;
+        if (item == null) {
+          // 新規追加
+          list.add(result);
+        } else {
+          // 編集更新
+          list[index] = result;
+        }
+      });
+      await _saveCurrentList();
+    }
   }
 
   void _deleteItem(bool isExpense, int index) async {
@@ -547,8 +124,11 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
         children: [_buildList(isExpense: true), _buildList(isExpense: false)],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () =>
-            _showEditDialog(isExpense: _tabController.index == 0, index: -1),
+        onPressed: () => _openEditDialog(
+          isExpense: _tabController.index == 0,
+          index: -1,
+          item: null,
+        ),
         child: const Icon(Icons.add),
       ),
     );
@@ -589,7 +169,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
             children: [
               IconButton(
                 icon: const Icon(Icons.edit, color: Colors.grey),
-                onPressed: () => _showEditDialog(
+                onPressed: () => _openEditDialog(
                   isExpense: isExpense,
                   item: item,
                   index: index,

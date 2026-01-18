@@ -139,6 +139,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const Divider(),
 
+          // ▼▼ 追加: チュートリアルリセットボタン ▼▼
+          ListTile(
+            leading: const Icon(Icons.help_outline, color: Colors.indigo),
+            title: const Text('チュートリアルを再表示'),
+            subtitle: const Text('各画面の操作ガイドをもう一度見られるようにリセットします'),
+            onTap: () async {
+              // 確認ダイアログを表示
+              final bool? execute = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('確認'),
+                  content: const Text(
+                    'すべてのチュートリアルを未読状態に戻しますか？\n次回の各画面表示時にガイドが表示されます。',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('キャンセル'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('リセットする'),
+                    ),
+                  ],
+                ),
+              );
+
+              if (execute == true) {
+                await _repository.resetTutorials();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('チュートリアルをリセットしました'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+
+          // ▲▲ 追加ここまで ▲▲
+          const Divider(),
+
           // 管理人の独り言
           ListTile(
             leading: const Icon(Icons.tips_and_updates, color: Colors.blue),

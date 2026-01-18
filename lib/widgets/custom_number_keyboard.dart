@@ -4,10 +4,10 @@ import '../utils/simple_calculator.dart';
 
 class CustomNumberKeyboard extends StatefulWidget {
   final TextEditingController controller;
-  final VoidCallback onSubmitted; // 次へ
-  final VoidCallback? onSaveAndClose; // 保存して閉じる
+  final VoidCallback onSubmitted; // 「次へ」アクション
+  final VoidCallback? onSaveAndClose; // 「保存」アクション
   final VoidCallback? onUndo;
-  final VoidCallback onClose; // キーボードを閉じる
+  final VoidCallback onClose;
   final ValueChanged<String> onChanged;
   final int maxLength;
   final VoidCallback? onDebugCodeEntered;
@@ -21,7 +21,6 @@ class CustomNumberKeyboard extends StatefulWidget {
     required this.onClose,
     required this.onChanged,
     this.maxLength = 20,
-    // ▼▼ 追加 ▼▼
     this.onDebugCodeEntered,
   });
 
@@ -30,11 +29,8 @@ class CustomNumberKeyboard extends StatefulWidget {
 }
 
 class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
-  // 演算子かどうか判定
-  // ▼▼ 追加: 隠しコマンド判定用バッファ ▼▼
+  // ▼▼ 入力履歴（デバッグコマンド判定用） ▼▼
   final List<String> _inputHistory = [];
-  // 判定したいシーケンス: "12341234+-*//*-+"
-  // ※画面上のボタンラベルに合わせて *→x, /→÷ としています
   static const List<String> _debugSequence = [
     "1",
     "2",
@@ -54,42 +50,297 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     "+",
   ];
 
+  @override
+  Widget build(BuildContext context) {
+    const Color bgColor = Color(0xFFF2F2F7);
+
+    // 現在のテキスト状態判定
+    final String text = widget.controller.text;
+    final bool isMultiplyMode = text.isNotEmpty && text.endsWith("x");
+    final bool hasOperator = ["+", "-", "x", "÷"].any((o) => text.contains(o));
+
+    return GestureDetector(
+      onTap: () {}, // タップイベントの透過防止
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        color: bgColor,
+        width: double.infinity,
+        // ▼▼ 変更: 下部のパディングを増やして高さを確保 ▼▼
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).padding.bottom + 8,
+        ),
+        child: Column(
+          children: [
+            // --- ヘッダー部分 ---
+            _buildHeader(hasOperator),
+
+            // --- キーパッド部分 ---
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Column(
+                  children: [
+                    // 1段目: 7, 8, 9, ÷, AC
+                    Expanded(
+                      child: Row(
+                        children: [
+                          _buildNumberKey("7"),
+                          _buildNumberKey("8"),
+                          _buildNumberKey("9"),
+                          _buildNumberKey("÷", textColor: Colors.black87),
+                          _buildActionKey(
+                            "AC",
+                            _handleClear,
+                            textColor: Colors.black54,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 2段目: 4, 5, 6, x, Del
+                    Expanded(
+                      child: Row(
+                        children: [
+                          _buildNumberKey("4"),
+                          _buildNumberKey("5"),
+                          _buildNumberKey("6"),
+                          _buildNumberKey("x", textColor: Colors.black87),
+                          _buildActionKey(
+                            "Del",
+                            _handleDelete,
+                            textColor: Colors.deepOrange,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 3段目 (下半分)
+                    Expanded(
+                      flex: 2,
+                      child: Row(
+                        children: [
+                          // 左側の数字キーブロック
+                          Expanded(
+                            flex: 4,
+                            child: Column(
+                              children: [
+                                // 3段目上: 1, 2, 3, -
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      _buildNumberKey("1"),
+                                      _buildNumberKey("2"),
+                                      _buildNumberKey("3"),
+                                      _buildNumberKey(
+                                        "-",
+                                        textColor: Colors.black87,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // 3段目下: 0/Tax, 00/Tax, +
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      _buildNumberKey(
+                                        isMultiplyMode ? "1.1" : "0",
+                                        textColor: isMultiplyMode
+                                            ? Colors.orange
+                                            : Colors.black,
+                                      ),
+                                      _buildNumberKey(
+                                        isMultiplyMode ? "1.08" : "00",
+                                        flex: 2,
+                                        textColor: isMultiplyMode
+                                            ? Colors.orange
+                                            : Colors.black,
+                                      ),
+                                      _buildNumberKey(
+                                        "+",
+                                        textColor: Colors.black87,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // 右下のメインアクションボタン（保存 / ＝）
+                          _buildMainActionButton(hasOperator),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- ヘッダー構築 ---
+  Widget _buildHeader(bool hasOperator) {
+    return SizedBox(
+      // ▼▼ 変更: 高さを少し広げてタップしやすく ▼▼
+      height: 48,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // 左側: Undoボタン
+          if (widget.onUndo != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: TextButton.icon(
+                onPressed: widget.onUndo,
+                icon: const Icon(Icons.undo, size: 20),
+                label: const Text(
+                  '1つ戻す',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.black54,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            )
+          else
+            const SizedBox(),
+
+          // 右側: 次へ & 閉じる
+          Row(
+            children: [
+              // ▼▼ 変更: ヘッダーに「次へ」ボタンを配置（計算中でない場合） ▼▼
+              if (!hasOperator) ...[
+                TextButton.icon(
+                  onPressed: widget.onSubmitted,
+                  icon: const Icon(Icons.arrow_forward, size: 20),
+                  label: const Text(
+                    '次へ',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.blue.shade700,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(width: 1, height: 24, color: Colors.grey.shade300),
+                const SizedBox(width: 4),
+              ],
+
+              // 閉じるボタン
+              IconButton(
+                onPressed: widget.onClose,
+                icon: const Icon(Icons.keyboard_hide, color: Colors.grey),
+                tooltip: 'キーボードを閉じる',
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- メインアクションボタン（右下） ---
+  Widget _buildMainActionButton(bool hasOperator) {
+    // 計算中は「＝」、それ以外は「保存」
+    final bool isCalculateMode = hasOperator;
+    final String label = isCalculateMode ? "＝" : "保存";
+    final IconData icon = isCalculateMode
+        ? Icons.calculate
+        : Icons.check_circle_outline;
+    final Color color = isCalculateMode ? Colors.orange : Colors.blue;
+    final VoidCallback? onTap = isCalculateMode
+        ? _handleCalculate
+        : (widget.onSaveAndClose ?? widget.onSubmitted); // 保存がない場合は次へで代用
+
+    return Expanded(
+      flex: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: Material(
+          color: color,
+          elevation: 1,
+          borderRadius: BorderRadius.circular(12), // 少し丸みを増やす
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: Colors.white, size: 30),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- ヘルパーメソッド: キー生成 ---
+  Widget _buildNumberKey(
+    String label, {
+    int flex = 1,
+    Color textColor = Colors.black,
+  }) {
+    return _KeyboardKey(
+      label: label,
+      flex: flex,
+      textColor: textColor,
+      onTap: () => _handleTap(label),
+    );
+  }
+
+  Widget _buildActionKey(
+    String label,
+    VoidCallback onTap, {
+    Color textColor = Colors.black,
+  }) {
+    return _KeyboardKey(
+      label: label,
+      textColor: textColor,
+      onTap: onTap,
+      isBold: true,
+      fontSize: 18,
+    );
+  }
+
+  // --- ロジック部分 ---
+
   bool _isOperator(String value) {
     return ["+", "-", "x", "÷"].contains(value);
   }
 
-  // 文字列全体をフォーマット（カンマ区切り）し直す関数
-  // 修正：int.parse ではなく double.tryParse を使い、小数が来ても安全に処理するように変更
   String _formatExpression(String expression) {
     if (expression.isEmpty) return "";
-
     final formatter = NumberFormat("#,###");
     StringBuffer result = StringBuffer();
     String currentNum = "";
 
-    // バッファにある数値を処理して書き込むヘルパー関数
     void flushCurrentNum() {
       if (currentNum.isEmpty) return;
-
-      // カンマを除去して解析準備
       String cleanNum = currentNum.replaceAll(',', '');
-
-      // doubleとして解析を試みる
       double? val = double.tryParse(cleanNum);
-
-      // 数値として有効、かつ小数点が含まれていない場合のみカンマフォーマットする
-      // (入力中の "1." や小数の "1.08" などはフォーマットせずそのまま表示する)
       if (val != null && !cleanNum.contains('.')) {
-        // 整数部としてフォーマットできるか確認
         try {
-          // formatter.format(double) だと挙動により小数が丸められることがあるため
-          // 明示的に整数として扱う
           result.write(formatter.format(val.toInt()));
         } catch (_) {
           result.write(currentNum);
         }
       } else {
-        // 小数やパース不能な文字列はそのまま書き込む
         result.write(currentNum);
       }
       currentNum = "";
@@ -98,27 +349,22 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     for (int i = 0; i < expression.length; i++) {
       String char = expression[i];
       if (_isOperator(char)) {
-        // 演算子が来たら、溜まっていた数値を書き出す
         flushCurrentNum();
         result.write(char);
       } else {
         currentNum += char;
       }
     }
-    // ループ終了後に残っている数値を書き出す
     flushCurrentNum();
-
     return result.toString();
   }
 
-  void _handleTap(BuildContext context, String value) {
-    // ▼▼ 追加: 入力履歴の更新とパターンマッチング ▼▼
+  void _handleTap(String value) {
+    // デバッグコマンド判定
     _inputHistory.add(value);
     if (_inputHistory.length > _debugSequence.length) {
-      _inputHistory.removeAt(0); // 古い履歴を削除
+      _inputHistory.removeAt(0);
     }
-
-    // シーケンスが一致するか確認
     if (_inputHistory.length == _debugSequence.length) {
       bool isMatch = true;
       for (int i = 0; i < _debugSequence.length; i++) {
@@ -128,23 +374,17 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
         }
       }
       if (isMatch) {
-        // マッチしたら履歴をクリアしてコールバック発火
         _inputHistory.clear();
         widget.onDebugCodeEntered?.call();
-        return; // 入力自体は処理せずに抜ける（あるいは処理しても良いが、コマンドなので抜ける方が安全）
+        return;
       }
     }
-    // ▲▲ 追加ここまで ▲▲
 
     String text = widget.controller.text;
     final bool isInputOperator = _isOperator(value);
 
-    // 1桁目（テキストが空）の時に演算子が押されたら無視する
-    if (text.isEmpty && isInputOperator) {
-      return;
-    }
+    if (text.isEmpty && isInputOperator) return;
 
-    // 文字数制限チェック
     if (!isInputOperator && text.length >= widget.maxLength) {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,7 +396,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
       return;
     }
 
-    // 演算子の連続入力を防ぐ（末尾の演算子を置換する）
+    // 演算子の連続入力防止（置換）
     if (isInputOperator && text.isNotEmpty) {
       final lastChar = text[text.length - 1];
       if (_isOperator(lastChar)) {
@@ -169,7 +409,6 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     final selection = widget.controller.selection;
     int start = selection.start;
     int end = selection.end;
-
     if (start < 0) {
       start = text.length;
       end = text.length;
@@ -177,7 +416,6 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
 
     String newText = text.replaceRange(start, end, value);
     String formattedText = _formatExpression(newText);
-
     _updateController(formattedText);
   }
 
@@ -199,9 +437,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     } else {
       return;
     }
-
-    String formattedText = _formatExpression(rawText);
-    _updateController(formattedText);
+    _updateController(_formatExpression(rawText));
   }
 
   void _handleClear() {
@@ -216,7 +452,6 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     _updateController(formattedResult);
   }
 
-  // コントローラー更新とState更新をまとめたメソッド
   void _updateController(String newText) {
     widget.controller.value = TextEditingValue(
       text: newText,
@@ -225,279 +460,52 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     widget.onChanged(newText);
     setState(() {});
   }
+}
+
+// ▼▼ 分割したキーウィジェット ▼▼
+class _KeyboardKey extends StatelessWidget {
+  final String label;
+  final int flex;
+  final Color textColor;
+  final VoidCallback onTap;
+  final bool isBold;
+  final double fontSize;
+
+  const _KeyboardKey({
+    required this.label,
+    this.flex = 1,
+    required this.textColor,
+    required this.onTap,
+    this.isBold = true,
+    this.fontSize = 22,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const Color bgColor = Color(0xFFF2F2F7);
-    const Color btnColor = Colors.white;
-    const Color shadowColor = Colors.black12;
-
-    // 現在のテキストを取得
-    String text = widget.controller.text;
-
-    // 判定：末尾が "x" で終わっているか？
-    bool isMultiplyMode = text.isNotEmpty && text.endsWith("x");
-
-    // 計算記号が含まれているか判定
-    final bool hasOperator = [
-      "+",
-      "-",
-      "x",
-      "÷",
-    ].any((o) => widget.controller.text.contains(o));
-
-    Widget buildKey(
-      String label, {
-      Color textColor = Colors.black,
-      Color? color,
-      int flex = 1,
-      VoidCallback? onTap,
-      bool isBold = true,
-    }) {
-      return Expanded(
-        flex: flex,
-        child: Padding(
-          padding: const EdgeInsets.all(4.0),
-          child: Material(
-            color: color ?? btnColor,
-            elevation: 1,
-            shadowColor: shadowColor,
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.all(4.0), // キー同士の間隔
+        child: Material(
+          color: Colors.white,
+          elevation: 1,
+          shadowColor: Colors.black12,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            onTap: onTap,
             borderRadius: BorderRadius.circular(8),
-            child: InkWell(
-              onTap: onTap ?? () => _handleTap(context, label),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                alignment: Alignment.center,
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                    color: textColor,
-                  ),
+            child: Container(
+              alignment: Alignment.center,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+                  color: textColor,
                 ),
               ),
             ),
           ),
-        ),
-      );
-    }
-
-    Widget buildFunctionKey(
-      String label,
-      VoidCallback onTap, {
-      Color textColor = Colors.black,
-    }) {
-      return buildKey(label, onTap: onTap, textColor: textColor, isBold: true);
-    }
-
-    return GestureDetector(
-      onTap: () {
-        // キーボード内のタップが背後の「閉じる判定」に伝わるのを防ぐ
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        color: bgColor,
-        width: double.infinity,
-        child: Column(
-          children: [
-            SizedBox(
-              height: 40,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (widget.onUndo != null)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: TextButton.icon(
-                        onPressed: widget.onUndo,
-                        icon: const Icon(Icons.undo, size: 18),
-                        label: const Text(
-                          '1つ戻す',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.black54,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    )
-                  else
-                    const SizedBox(),
-
-                  Row(
-                    children: [
-                      // 「保存して閉じる」ボタンの表示制御
-                      if (widget.onSaveAndClose != null && !hasOperator) ...[
-                        TextButton.icon(
-                          onPressed: widget.onSaveAndClose,
-                          icon: const Icon(Icons.check_circle, size: 18),
-                          label: const Text(
-                            '保存して閉じる',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.blue.shade700,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Container(
-                          width: 1,
-                          height: 20,
-                          color: Colors.grey.shade300,
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      IconButton(
-                        onPressed: widget.onClose,
-                        icon: const Icon(
-                          Icons.keyboard_hide,
-                          color: Colors.grey,
-                        ),
-                        tooltip: 'キーボードを閉じる',
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          buildKey("7"),
-                          buildKey("8"),
-                          buildKey("9"),
-                          buildKey("÷", textColor: Colors.black87),
-                          buildFunctionKey(
-                            "AC",
-                            _handleClear,
-                            textColor: Colors.black54,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          buildKey("4"),
-                          buildKey("5"),
-                          buildKey("6"),
-                          buildKey("x", textColor: Colors.black87),
-                          buildFunctionKey(
-                            "Del",
-                            _handleDelete,
-                            textColor: Colors.deepOrange,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 4,
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      buildKey("1"),
-                                      buildKey("2"),
-                                      buildKey("3"),
-                                      buildKey("-", textColor: Colors.black87),
-                                    ],
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      // 左側のボタン
-                                      buildKey(
-                                        isMultiplyMode ? "1.1" : "0",
-                                        color: isMultiplyMode ? null : null,
-                                        textColor: isMultiplyMode
-                                            ? Colors.orange
-                                            : Colors.black,
-                                      ),
-
-                                      // 中央のボタン
-                                      buildKey(
-                                        isMultiplyMode ? "1.08" : "00",
-                                        flex: 2,
-                                        color: isMultiplyMode ? null : null,
-                                        textColor: isMultiplyMode
-                                            ? Colors.orange
-                                            : Colors.black,
-                                      ),
-
-                                      // 右のプラスボタン
-                                      buildKey("+", textColor: Colors.black87),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: Padding(
-                              padding: const EdgeInsets.all(4.0),
-                              child: Material(
-                                color: hasOperator
-                                    ? Colors.orange
-                                    : Colors.blue,
-                                elevation: 1,
-                                borderRadius: BorderRadius.circular(8),
-                                child: InkWell(
-                                  onTap: hasOperator
-                                      ? _handleCalculate
-                                      : widget.onSubmitted,
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Container(
-                                    alignment: Alignment.center,
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          hasOperator
-                                              ? Icons.calculate
-                                              : Icons.playlist_add,
-                                          color: Colors.white,
-                                          size: 28,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          hasOperator ? "＝" : "次へ",
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
