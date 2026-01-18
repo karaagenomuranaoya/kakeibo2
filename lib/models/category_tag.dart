@@ -7,9 +7,9 @@ class CategoryTag {
   final bool isCircle;
 
   // --- クレジットカード設定用 ---
-  final int? closingDay; // 締め日 (1-28, 99=末日)
-  final int? paymentDay; // 支払日 (1-28, 99=末日)
-  final int paymentMonthOffset; // 支払月 (1=翌月, 2=翌々月)
+  final int? closingDay;
+  final int? paymentDay;
+  final int paymentMonthOffset;
 
   // --- アイコン保存用データ ---
   final int? iconCodePoint;
@@ -39,43 +39,13 @@ class CategoryTag {
     );
   }
 
-  // アプリ全体で使う「表示用アイコン」の取得ロジック
+  // ▼▼ 変更箇所：推定ロジックを削除し、なければデフォルトを返すだけに単純化 ▼▼
   IconData get displayIcon {
+    // 設定されているアイコンがあればそれを返す
     if (icon != null) return icon!;
 
-    // デフォルト推測ロジック
-    final l = label;
-    if (l.contains('外食')) return Icons.restaurant;
-    if (l.contains('食')) return Icons.local_grocery_store;
-    if (l.contains('飲み物') || l.contains('カフェ') || l.contains('酒'))
-      return Icons.local_cafe;
-    if (l.contains('遊び') || l.contains('レジャー') || l.contains('楽'))
-      return Icons.attractions;
-    if (l.contains('日用')) return Icons.shopping_bag;
-    if (l.contains('交際')) return Icons.wine_bar;
-    // 「交通系」もここでヒットして電車アイコンになります
-    if (l.contains('交通') || l.contains('電')) return Icons.train;
-    if (l.contains('趣味') || l.contains('推')) return Icons.sports_esports;
-    if (l.contains('美容') || l.contains('服')) return Icons.checkroom;
-    if (l.contains('医療') || l.contains('薬') || l.contains('院'))
-      return Icons.medical_services;
-    if (l.contains('教育') || l.contains('本')) return Icons.menu_book;
-    if (l.contains('光熱') || l.contains('家賃') || l.contains('住'))
-      return Icons.home;
-    if (l.contains('通信') || l.contains('スマホ')) return Icons.wifi;
-    if (l.contains('車') || l.contains('ガソリン')) return Icons.directions_car;
-    if (l.contains('給料') || l.contains('給与')) return Icons.attach_money;
-    if (l.contains('映画')) return Icons.movie;
-
-    // カード系の推測
-    if (l.contains('クレジット') ||
-        closingDay != null ||
-        l.contains('カード') ||
-        l.contains('Pay')) {
-      return Icons.credit_card;
-    }
-
-    // どうしても決まらない場合
+    // 推定ロジックを全削除
+    // どうしてもアイコンがない場合の最終手段
     return isCircle ? Icons.category : Icons.payment;
   }
 
@@ -109,27 +79,52 @@ class CategoryTag {
     };
   }
 
-  // ▼▼ あなた仕様のデフォルトカード ▼▼
+  // --- ヘルパー: アイコンデータ付きでCategoryTagを作るのを楽にする関数 ---
+  static CategoryTag _create(
+    String label,
+    Color color,
+    IconData iconData, {
+    bool isCircle = true,
+  }) {
+    return CategoryTag(
+      label: label,
+      color: color,
+      isCircle: isCircle,
+      iconCodePoint: iconData.codePoint,
+      iconFontFamily: iconData.fontFamily,
+      iconFontPackage: iconData.fontPackage,
+    );
+  }
+
   static List<CategoryTag> get defaultCards => [
     CategoryTag(
       label: 'クレジット',
       color: Colors.redAccent,
-      closingDay: 99, // 仮で末締め翌27日払いに設定
+      closingDay: 99,
       paymentDay: 27,
       paymentMonthOffset: 1,
+      // カードもアイコン指定（任意）
+      iconCodePoint: Icons.credit_card.codePoint,
+      iconFontFamily: Icons.credit_card.fontFamily,
     ),
-    CategoryTag(label: '交通系', color: Colors.green),
+    CategoryTag(
+      label: '交通系',
+      color: Colors.green,
+      iconCodePoint: Icons.directions_transit.codePoint,
+      iconFontFamily: Icons.directions_transit.fontFamily,
+    ),
   ];
 
+  // ▼▼ 変更箇所：ここでアイコンを明示的に指定することで、推定機能を不要にする ▼▼
   static List<CategoryTag> get defaultExpenses => [
-    CategoryTag(label: '食費', color: Colors.orange, isCircle: true),
-    CategoryTag(label: '外食費', color: Colors.deepOrange, isCircle: true),
-    CategoryTag(label: '飲み物代', color: Colors.green, isCircle: true),
-    CategoryTag(label: '娯楽費', color: Colors.purple, isCircle: true),
-    CategoryTag(label: '交通費', color: Colors.blue, isCircle: true),
-    CategoryTag(label: '医療費', color: Colors.blueGrey, isCircle: true),
-    CategoryTag(label: '本代', color: Colors.brown, isCircle: true),
-    CategoryTag(label: '美容・衣服代', color: Colors.pinkAccent, isCircle: true),
-    CategoryTag(label: '家賃', color: Colors.indigo, isCircle: true),
+    _create('食費', Colors.orange, Icons.restaurant),
+    _create('日用品', Colors.lightGreen, Icons.shopping_bag),
+    _create('交通費', Colors.blue, Icons.train),
+    _create('交際費', Colors.pinkAccent, Icons.wine_bar),
+    _create('趣味・娯楽', Colors.purple, Icons.sports_esports),
+    _create('衣服・美容', Colors.teal, Icons.checkroom),
+    _create('健康・医療', Colors.blueGrey, Icons.medical_services),
+    _create('通信費', Colors.cyan, Icons.wifi),
+    _create('住まい', Colors.brown, Icons.home),
   ];
 }
