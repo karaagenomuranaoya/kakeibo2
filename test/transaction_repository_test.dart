@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/repositories/transaction_repository.dart';
-import 'package:flutter_application_1/models/transaction_item.dart';
+import 'package:atsumeru_kakeibo/repositories/transaction_repository.dart';
+import 'package:atsumeru_kakeibo/models/transaction_item.dart';
 
 void main() {
   setUp(() async {

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/services/input_service.dart';
-import 'package:flutter_application_1/models/category_tag.dart';
-import 'package:flutter_application_1/repositories/transaction_repository.dart';
+import 'package:atsumeru_kakeibo/services/input_service.dart';
+import 'package:atsumeru_kakeibo/models/category_tag.dart';
+import 'package:atsumeru_kakeibo/repositories/transaction_repository.dart';
 
 void main() {
   setUp(() async {

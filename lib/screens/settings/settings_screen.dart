@@ -14,8 +14,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsRepository _repository = SettingsRepository();
   bool _isGachaEnabled = true;
   bool _isCategoryLongPressEnabled = true;
-  // ▼▼ 追加: 入力画面でのカード表示設定 ▼▼
   bool _showCardOnInput = true;
+  // ▼▼ 追加: バイブレーション設定用変数 ▼▼
+  bool _isVibrationEnabled = true;
 
   @override
   void initState() {
@@ -26,11 +27,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     final gacha = await _repository.loadGachaEnabled();
     final catLongPress = await _repository.loadCategoryLongPressEnabled();
-    final showCard = await _repository.loadShowCardOnInput(); // 追加
+    final showCard = await _repository.loadShowCardOnInput();
+    // ▼▼ 追加: 設定読み込み ▼▼
+    final vibration = await _repository.loadVibrationEnabled();
+
     setState(() {
       _isGachaEnabled = gacha;
       _isCategoryLongPressEnabled = catLongPress;
       _showCardOnInput = showCard;
+      _isVibrationEnabled = vibration;
     });
   }
 
@@ -48,12 +53,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _repository.saveCategoryLongPressEnabled(value);
   }
 
-  // ▼▼ 追加: 設定切り替え処理 ▼▼
   Future<void> _toggleShowCardOnInput(bool value) async {
     setState(() {
       _showCardOnInput = value;
     });
     await _repository.saveShowCardOnInput(value);
+  }
+
+  // ▼▼ 追加: バイブレーション切り替え処理 ▼▼
+  Future<void> _toggleVibration(bool value) async {
+    setState(() {
+      _isVibrationEnabled = value;
+    });
+    await _repository.saveVibrationEnabled(value);
   }
 
   @override
@@ -90,7 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // ▼▼ 追加: カード表示設定 ▼▼
+          // 入力画面でのカード表示設定
           SwitchListTile(
             secondary: const Icon(Icons.credit_card, color: Colors.purple),
             title: const Text('入力画面に支払い方法選択を表示'),
@@ -111,6 +123,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             activeColor: Colors.orange,
             onChanged: _toggleGacha,
           ),
+
+          // ▼▼ 追加: バイブレーション設定UI ▼▼
+          if (_isGachaEnabled) ...[
+            const Divider(indent: 16, endIndent: 16),
+            SwitchListTile(
+              secondary: const Icon(Icons.vibration, color: Colors.teal),
+              title: const Text('ガチャ演出時の振動'),
+              subtitle: const Text('結果が出る時にスマートフォンを振動させます'),
+              value: _isVibrationEnabled,
+              activeColor: Colors.teal,
+              onChanged: _toggleVibration,
+            ),
+          ],
+
           const Divider(),
 
           // 管理人の独り言

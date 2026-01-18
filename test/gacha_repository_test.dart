@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/repositories/gacha_repository.dart';
-import 'package:flutter_application_1/data/gacha_data.dart';
+import 'package:atsumeru_kakeibo/repositories/gacha_repository.dart';
+import 'package:atsumeru_kakeibo/data/gacha_data.dart';
 
 void main() {
   setUp(() {

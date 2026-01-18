@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_application_1/widgets/custom_number_keyboard.dart';
+import 'package:atsumeru_kakeibo/widgets/custom_number_keyboard.dart';
 
 void main() {
   // テストを見やすくするためのヘルパー関数

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ▼▼ 追加: バイブレーション用 ▼▼
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../repositories/gacha_repository.dart';
 import '../../models/gacha_item.dart';
@@ -7,8 +8,12 @@ import '../../models/gacha_item.dart';
 import 'dialogs/gacha_rate_dialog.dart';
 import 'dialogs/gacha_result_dialog.dart';
 import 'dialogs/gacha_complete_dialog.dart';
-// ▼▼ 追加 ▼▼
 import 'dialogs/gacha_tutorial_content.dart';
+
+// ▼▼ 新しいWidgetをインポート ▼▼
+import 'widgets/gacha_header.dart';
+import 'widgets/gacha_item_tile.dart';
+import 'widgets/gacha_action_panel.dart';
 
 class GachaGameTab extends StatefulWidget {
   const GachaGameTab({super.key});
@@ -30,7 +35,7 @@ class _GachaGameTabState extends State<GachaGameTab>
 
   final GlobalKey _ticketKey = GlobalKey();
   final GlobalKey _spinButtonKey = GlobalKey();
-  final GlobalKey _topBarKey = GlobalKey();
+  final GlobalKey _topBarKey = GlobalKey(); // ヘッダー全体用(必要に応じて)
   final GlobalKey _gridKey = GlobalKey();
 
   bool _pendingTutorialPhase2 = false;
@@ -52,7 +57,6 @@ class _GachaGameTabState extends State<GachaGameTab>
     final bool isShown = prefs.getBool(_tutorialKey) ?? false;
 
     if (!isShown && mounted && _credits > 0) {
-      // 画面の描画完了を少し待ってから表示
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _showTutorialPhase1();
       });
@@ -65,7 +69,6 @@ class _GachaGameTabState extends State<GachaGameTab>
     await prefs.setBool(_tutorialKey, true);
   }
 
-  // ▼▼▼ 修正: 切り出したWidgetを使用 ▼▼▼
   void _showTutorialPhase1() {
     showDialog(
       context: context,
@@ -97,7 +100,7 @@ class _GachaGameTabState extends State<GachaGameTab>
       },
     );
   }
-  // ▲▲▲ 修正ここまで ▲▲▲
+  // --- チュートリアルここまで ---
 
   Future<void> _loadData() async {
     await _repository.checkInitialBonus();
@@ -128,7 +131,6 @@ class _GachaGameTabState extends State<GachaGameTab>
   }
 
   Future<void> _spinGacha() async {
-    // 念のためチュートリアル完了フラグを保存
     await _completeTutorial();
 
     if (_credits < _costPerSpin) return;
@@ -161,6 +163,12 @@ class _GachaGameTabState extends State<GachaGameTab>
 
       if (!mounted) return;
 
+      // ▼▼ 追加: バイブレーション実行 ▼▼
+      // heavyImpact: 重めの衝突感（ガチャ結果に最適）
+      // mediumImpact: 軽い衝突感
+      // lightImpact: タップ音のような微細な振動
+      await HapticFeedback.heavyImpact();
+      // ▲▲ 追加ここまで ▲▲
       await _showResultDialog(item, newCount);
 
       if (newCount == _maxLevel) {
@@ -172,19 +180,14 @@ class _GachaGameTabState extends State<GachaGameTab>
 
         if (isAllComplete) {
           await Future.delayed(const Duration(milliseconds: 300));
-          if (mounted) {
-            _showCompleteDialog();
-          }
+          if (mounted) _showCompleteDialog();
         }
       }
 
-      // 初回ガチャ後のチュートリアル表示
       if (_pendingTutorialPhase2) {
         _pendingTutorialPhase2 = false;
         await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted) {
-          _showTutorialPhase2();
-        }
+        if (mounted) _showTutorialPhase2();
       }
     } catch (e) {
       debugPrint("Gacha Error: $e");
@@ -228,80 +231,15 @@ class _GachaGameTabState extends State<GachaGameTab>
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          Container(
+          // ▼▼ ヘッダー部分 ▼▼
+          GachaHeader(
             key: _topBarKey,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50.withOpacity(0.5),
-              border: Border(bottom: BorderSide(color: Colors.orange.shade100)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  key: _ticketKey,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.orange.shade200),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.orange.withOpacity(0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.confirmation_number,
-                        size: 18,
-                        color: Colors.orange.shade800,
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        "所持チケット:",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.brown,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        "$spins枚",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepOrange,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _showRateDialog,
-                  icon: const Icon(
-                    Icons.info_outline,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
-                  label: const Text(
-                    "提供割合",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ],
-            ),
+            ticketCount: spins,
+            onRatePressed: _showRateDialog,
+            ticketKey: _ticketKey,
           ),
+
+          // ▼▼ グリッド部分 ▼▼
           Expanded(
             child: GridView.builder(
               key: _gridKey,
@@ -316,15 +254,12 @@ class _GachaGameTabState extends State<GachaGameTab>
               itemBuilder: (context, index) {
                 final item = _allItems[index];
                 final int count = _itemCounts[item.id] ?? 0;
-                final int level = item.getStage(count);
-                final bool isUnlocked = count > 0;
-                final Color itemColor = item.getColor(count);
-                final bool isOverLimit = count > _maxLevel;
 
-                return GestureDetector(
-                  onTap: isUnlocked
-                      ? () => _showResultDialog(item, count)
-                      : null,
+                return GachaItemTile(
+                  item: item,
+                  count: count,
+                  maxLevel: _maxLevel,
+                  onTap: () => _showResultDialog(item, count),
                   onLongPress: kDebugMode
                       ? () async {
                           final newCount = await _repository.unlockItem(
@@ -334,165 +269,17 @@ class _GachaGameTabState extends State<GachaGameTab>
                           if (mounted) _showResultDialog(item, newCount);
                         }
                       : null,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isUnlocked
-                            ? itemColor.withOpacity(0.3)
-                            : Colors.grey.shade200,
-                        width: isUnlocked ? 2 : 1,
-                      ),
-                      boxShadow: [
-                        if (isUnlocked)
-                          BoxShadow(
-                            color: itemColor.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                      ],
-                    ),
-                    child: Stack(
-                      children: [
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Center(
-                                child: isUnlocked
-                                    ? Icon(
-                                        item.iconData,
-                                        size: 42,
-                                        color: itemColor,
-                                      )
-                                    : Icon(
-                                        Icons.lock_outline,
-                                        size: 32,
-                                        color: Colors.grey.shade300,
-                                      ),
-                              ),
-                            ),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              decoration: BoxDecoration(
-                                color: isUnlocked
-                                    ? itemColor.withOpacity(0.1)
-                                    : Colors.grey.shade50,
-                                borderRadius: const BorderRadius.vertical(
-                                  bottom: Radius.circular(14),
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    isUnlocked
-                                        ? (isOverLimit
-                                              ? "Lv.$count"
-                                              : "Lv.$level")
-                                        : "???",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: isUnlocked
-                                          ? itemColor
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                  if (isUnlocked && !isOverLimit)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 2,
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(2),
-                                        child: LinearProgressIndicator(
-                                          value: level / _maxLevel,
-                                          minHeight: 3,
-                                          backgroundColor: Colors.white,
-                                          color: itemColor,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (isOverLimit)
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Icon(
-                              Icons.auto_awesome,
-                              size: 16,
-                              color: itemColor.withOpacity(0.8),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
                 );
               },
             ),
           ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(30),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    key: _spinButtonKey,
-                    onPressed: spins > 0 ? _spinGacha : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isAllComplete
-                          ? Colors.deepPurple
-                          : Colors.orange,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade200,
-                      disabledForegroundColor: Colors.grey,
-                      elevation: spins > 0 ? 4 : 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Text(
-                      isAllComplete
-                          ? "殿堂入りガチャを回す"
-                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "チケットが足りません"),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  "※入力をすると1日最大5枚までチケットを獲得できます",
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
+
+          // ▼▼ アクションパネル部分 ▼▼
+          GachaActionPanel(
+            buttonKey: _spinButtonKey,
+            isAllComplete: isAllComplete,
+            ticketCount: spins,
+            onSpin: spins > 0 ? _spinGacha : null,
           ),
         ],
       ),

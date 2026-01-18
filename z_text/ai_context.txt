@@ -82,7 +82,7 @@ kakeibo2/
 
 ## File: pubspec.yaml
 ```dart
-name: flutter_application_1
+name: atsumeru_kakeibo
 description: "A new Flutter project."
 publish_to: 'none'
 

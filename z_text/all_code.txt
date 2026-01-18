@@ -2,7 +2,7 @@
 
 --- FILE: pubspec.yaml ---
 ```
-name: flutter_application_1
+name: atsumeru_kakeibo
 description: "A new Flutter project."
 publish_to: 'none'
 
@@ -90,9 +90,9 @@ linter:
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/services/input_service.dart';
-import 'package:flutter_application_1/models/category_tag.dart';
-import 'package:flutter_application_1/repositories/transaction_repository.dart';
+import 'package:atsumeru_kakeibo/services/input_service.dart';
+import 'package:atsumeru_kakeibo/models/category_tag.dart';
+import 'package:atsumeru_kakeibo/repositories/transaction_repository.dart';
 
 void main() {
   setUp(() async {
@@ -176,8 +176,8 @@ void main() {
 ```dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/repositories/transaction_repository.dart';
-import 'package:flutter_application_1/models/transaction_item.dart';
+import 'package:atsumeru_kakeibo/repositories/transaction_repository.dart';
+import 'package:atsumeru_kakeibo/models/transaction_item.dart';
 
 void main() {
   setUp(() async {
@@ -246,7 +246,7 @@ void main() {
 ```dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_application_1/widgets/custom_number_keyboard.dart';
+import 'package:atsumeru_kakeibo/widgets/custom_number_keyboard.dart';
 
 void main() {
   // テストを見やすくするためのヘルパー関数
@@ -417,9 +417,9 @@ void main() {
 ```dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/services/history_service.dart';
-import 'package:flutter_application_1/repositories/transaction_repository.dart';
-import 'package:flutter_application_1/models/transaction_item.dart';
+import 'package:atsumeru_kakeibo/services/history_service.dart';
+import 'package:atsumeru_kakeibo/repositories/transaction_repository.dart';
+import 'package:atsumeru_kakeibo/models/transaction_item.dart';
 
 void main() {
   setUp(() async {
@@ -581,8 +581,8 @@ void main() {
 ```dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/repositories/gacha_repository.dart';
-import 'package:flutter_application_1/data/gacha_data.dart';
+import 'package:atsumeru_kakeibo/repositories/gacha_repository.dart';
+import 'package:atsumeru_kakeibo/data/gacha_data.dart';
 
 void main() {
   setUp(() {
@@ -707,7 +707,7 @@ void main() {
 --- FILE: test/simple_calculator_test.dart ---
 ```dart
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_application_1/utils/simple_calculator.dart'; // パスは適宜調整
+import 'package:atsumeru_kakeibo/utils/simple_calculator.dart'; // パスは適宜調整
 
 void main() {
   group('SimpleCalculator Tests', () {
@@ -759,8 +759,8 @@ void main() {
 --- FILE: web/manifest.json ---
 ```
 {
-    "name": "flutter_application_1",
-    "short_name": "flutter_application_1",
+    "name": "atsumeru_kakeibo",
+    "short_name": "atsumeru_kakeibo",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

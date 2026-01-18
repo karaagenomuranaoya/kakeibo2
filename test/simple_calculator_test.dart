@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_application_1/utils/simple_calculator.dart'; // パスは適宜調整
+import 'package:atsumeru_kakeibo/utils/simple_calculator.dart'; // パスは適宜調整
 
 void main() {
   group('SimpleCalculator Tests', () {
