@@ -5,11 +5,9 @@ import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import '../../repositories/gacha_repository.dart';
 import '../../models/gacha_item.dart';
 
-// ▼▼▼ 新規作成したダイアログをインポート ▼▼▼
 import 'dialogs/gacha_rate_dialog.dart';
 import 'dialogs/gacha_result_dialog.dart';
 import 'dialogs/gacha_complete_dialog.dart';
-// ▲▲▲ インポートここまで ▲▲▲
 
 class GachaGameTab extends StatefulWidget {
   const GachaGameTab({super.key});
@@ -44,7 +42,7 @@ class _GachaGameTabState extends State<GachaGameTab>
     _loadData();
   }
 
-  // --- チュートリアル関連メソッド (変更なし) ---
+  // --- チュートリアル関連メソッド (省略: 変更なし) ---
   Future<void> _checkTutorialPhase1() async {
     final prefs = await SharedPreferences.getInstance();
     final bool isShown = prefs.getBool('is_gacha_tutorial_shown_v1') ?? false;
@@ -267,7 +265,6 @@ class _GachaGameTabState extends State<GachaGameTab>
       opacityShadow: 0.8,
     ).show(context: context);
   }
-  // --- チュートリアルここまで ---
 
   Future<void> _loadData() async {
     await _repository.checkInitialBonus();
@@ -289,7 +286,6 @@ class _GachaGameTabState extends State<GachaGameTab>
     }
   }
 
-  // ▼▼▼ リファクタリング: メソッドの中身をシンプルに ▼▼▼
   void _showRateDialog() {
     showDialog(
       context: context,
@@ -315,8 +311,8 @@ class _GachaGameTabState extends State<GachaGameTab>
     if (!mounted) return;
     Navigator.pop(context);
 
+    // Repositoryのロジック変更により、ここがnullになるのは「データが空」などの異常系のみ
     if (item == null) {
-      _showCompleteDialog();
       return;
     }
 
@@ -324,10 +320,29 @@ class _GachaGameTabState extends State<GachaGameTab>
     if (!success) return;
 
     final newCount = await _repository.unlockItem(item.id);
-    await _loadData();
+    await _loadData(); // データを更新して isAllComplete などを再計算
 
     if (mounted) {
       await _showResultDialog(item, newCount);
+
+      // ▼▼▼ 殿堂入りチェック ▼▼▼
+      // 今回のガチャでLv10になったキャラがいて、かつ全員Lv10以上になった場合
+      if (newCount == _maxLevel) {
+        final maxLevelItems = _itemCounts.entries
+            .where((e) => e.value >= _maxLevel)
+            .length;
+        final isAllComplete =
+            maxLevelItems == _allItems.length && _allItems.isNotEmpty;
+
+        if (isAllComplete) {
+          // 少し待ってから殿堂入りダイアログを表示
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (mounted) {
+            _showCompleteDialog();
+          }
+        }
+      }
+      // ▲▲▲ 殿堂入りチェックここまで ▲▲▲
 
       if (_pendingTutorialPhase2) {
         _pendingTutorialPhase2 = false;
@@ -337,7 +352,6 @@ class _GachaGameTabState extends State<GachaGameTab>
     }
   }
 
-  // ▼▼▼ リファクタリング: メソッドの中身をシンプルに ▼▼▼
   void _showCompleteDialog() {
     showDialog(
       context: context,
@@ -345,7 +359,6 @@ class _GachaGameTabState extends State<GachaGameTab>
     );
   }
 
-  // ▼▼▼ リファクタリング: メソッドの中身をシンプルに ▼▼▼
   Future<void> _showResultDialog(GachaItem item, int count) {
     return showDialog(
       context: context,
@@ -366,6 +379,8 @@ class _GachaGameTabState extends State<GachaGameTab>
         .where((e) => e.value >= _maxLevel)
         .length;
     final int totalItems = _allItems.length;
+    // 「全キャラLv10以上」かどうか。
+    // 新キャラ追加(count=0)時は false になり、通常モードに戻る。
     final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
 
     return Scaffold(
@@ -394,10 +409,12 @@ class _GachaGameTabState extends State<GachaGameTab>
                   width: double.infinity,
                   child: ElevatedButton(
                     key: _spinButtonKey,
+                    // 殿堂入りしていても回せるように null チェックを変更
                     onPressed: spins > 0 ? _spinGacha : null,
                     style: ElevatedButton.styleFrom(
+                      // 殿堂入りモードは特別な色（紫など）にする
                       backgroundColor: isAllComplete
-                          ? Colors.grey
+                          ? Colors.deepPurple
                           : Colors.orange,
                       foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey.shade300,
@@ -406,7 +423,7 @@ class _GachaGameTabState extends State<GachaGameTab>
                     ),
                     child: Text(
                       isAllComplete
-                          ? "コンプリート済み"
+                          ? "ガチャを回す (殿堂入りモード)"
                           : (spins > 0 ? "ガチャを回す (1枚消費)" : "入力をするとチケットが貰えます"),
                       style: const TextStyle(
                         fontSize: 16,
@@ -420,9 +437,19 @@ class _GachaGameTabState extends State<GachaGameTab>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        "※ガチャは完全無料です。課金要素はありません。",
-                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                      Text(
+                        isAllComplete
+                            ? "※殿堂入りモード中！無限のカラーバリエーションを楽しめます"
+                            : "※ガチャは完全無料です。課金要素はありません。",
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isAllComplete
+                              ? Colors.purple.shade700
+                              : Colors.grey,
+                          fontWeight: isAllComplete
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
                       ),
                     ],
                   ),
@@ -472,28 +499,27 @@ class _GachaGameTabState extends State<GachaGameTab>
                           ],
                         ),
                       ),
-                      if (!isAllComplete)
-                        TextButton.icon(
-                          onPressed: _showRateDialog,
-                          icon: const Icon(
-                            Icons.info_outline,
-                            size: 16,
+                      TextButton.icon(
+                        onPressed: _showRateDialog,
+                        icon: const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
+                        label: const Text(
+                          "提供割合",
+                          style: TextStyle(
+                            fontSize: 12,
                             color: Colors.grey,
-                          ),
-                          label: const Text(
-                            "提供割合",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(0, 0),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            decoration: TextDecoration.underline,
                           ),
                         ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -516,7 +542,10 @@ class _GachaGameTabState extends State<GachaGameTab>
                   final int count = _itemCounts[item.id] ?? 0;
                   final int level = item.getStage(count);
                   final bool isUnlocked = count > 0;
+                  // Lv11以上は虹色に変化するロジックが適用された色が返ってくる
                   final Color itemColor = item.getColor(count);
+
+                  final bool isOverLimit = count > _maxLevel;
 
                   return GestureDetector(
                     onTap: isUnlocked
@@ -580,7 +609,7 @@ class _GachaGameTabState extends State<GachaGameTab>
                                   child: Column(
                                     children: [
                                       Text(
-                                        "Lv.$level",
+                                        isOverLimit ? "Lv.$count" : "Lv.$level",
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold,
@@ -591,7 +620,10 @@ class _GachaGameTabState extends State<GachaGameTab>
                                       ClipRRect(
                                         borderRadius: BorderRadius.circular(2),
                                         child: LinearProgressIndicator(
-                                          value: level / _maxLevel,
+                                          // Lv11以上はずっと満タン表示
+                                          value: isOverLimit
+                                              ? 1.0
+                                              : level / _maxLevel,
                                           minHeight: 4,
                                           backgroundColor: Colors.grey.shade100,
                                           color: itemColor,
@@ -626,6 +658,17 @@ class _GachaGameTabState extends State<GachaGameTab>
                               ),
                             ),
                           ),
+                          // 殿堂入りバッジ（Lv11以上ならキラキラアイコンなどをつける）
+                          if (isOverLimit)
+                            Positioned(
+                              top: 5,
+                              right: 5,
+                              child: Icon(
+                                Icons.auto_awesome,
+                                size: 16,
+                                color: itemColor.withOpacity(0.6),
+                              ),
+                            ),
                         ],
                       ),
                     ),

@@ -19,9 +19,15 @@ class GachaResultDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int level = item.getStage(count);
+    // 内部的な進行度 (ストーリーや称号用。最大10)
+    final int stageLevel = item.getStage(count);
+
+    // 表示用のレベル (Lv.11以降もそのまま表示)
+    final int displayLevel = count;
+
     final bool isNew = count == 1;
-    final bool isMax = level == _maxLevel;
+    final bool isMaxReached = stageLevel == _maxLevel; // Lv10到達（それ以上も含む）
+    final bool isOverLimit = count > _maxLevel; // Lv11以上（殿堂入り）
 
     String title = "LEVEL UP!!";
     Color titleColor = Colors.orange;
@@ -29,7 +35,12 @@ class GachaResultDialog extends StatelessWidget {
     if (isNew) {
       title = "NEW GET!!";
       titleColor = Colors.redAccent;
-    } else if (isMax) {
+    } else if (isOverLimit) {
+      // 殿堂入り後のタイトル
+      title = "COLOR CHANGE!!";
+      titleColor = Colors.indigoAccent;
+    } else if (isMaxReached) {
+      // ちょうどLv10になった時
       title = "MAX EVOLUTION!!";
       titleColor = Colors.purpleAccent;
     }
@@ -52,7 +63,8 @@ class GachaResultDialog extends StatelessWidget {
             ),
             const SizedBox(height: 30),
             GestureDetector(
-              onTap: () => _showHistoryDialog(context, level),
+              // 履歴ダイアログにはストーリーの上限である stageLevel (最大10) を渡す
+              onTap: () => _showHistoryDialog(context, stageLevel),
               child: Container(
                 width: 120,
                 height: 120,
@@ -86,12 +98,13 @@ class GachaResultDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 5),
+            // ▼▼▼ 修正箇所: Lv.11 / 10 のように表示 ▼▼▼
             Text(
-              "Lv.$level / $_maxLevel",
-              style: const TextStyle(
+              "Lv.$displayLevel / $_maxLevel",
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Colors.blueGrey,
+                color: isOverLimit ? Colors.indigo : Colors.blueGrey,
               ),
             ),
             const SizedBox(height: 10),
@@ -107,9 +120,11 @@ class GachaResultDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            if (!isMax) ...[
+
+            // Lv10未満ならプログレスバー、殿堂入りならメッセージ
+            if (!isMaxReached) ...[
               LinearProgressIndicator(
-                value: level / _maxLevel,
+                value: stageLevel / _maxLevel,
                 minHeight: 10,
                 backgroundColor: Colors.grey.shade200,
                 color: item.getColor(count),
@@ -117,13 +132,25 @@ class GachaResultDialog extends StatelessWidget {
               ),
               const SizedBox(height: 5),
               Text(
-                "あと ${_maxLevel - level}枚で最大進化",
+                "あと ${_maxLevel - stageLevel}枚で最大進化",
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
-              const SizedBox(height: 20),
+            ] else if (isOverLimit) ...[
+              // 殿堂入り時の表示
+              const Text(
+                "✨ 殿堂入りモード：無限に色が変化 ✨",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.indigoAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
+
+            const SizedBox(height: 20),
             OutlinedButton.icon(
-              onPressed: () => _showHistoryDialog(context, level),
+              // 履歴は最大Lv10までの内容しかないので stageLevel を渡す
+              onPressed: () => _showHistoryDialog(context, stageLevel),
               icon: const Icon(Icons.history_edu),
               label: const Text("進化の記録を見る"),
             ),

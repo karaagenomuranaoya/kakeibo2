@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math';
-// import 'package:flutter/foundation.dart'; // kDebugModeを使わなくなるので削除またはコメントアウト
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/gacha_item.dart';
 import '../data/gacha_data.dart';
@@ -8,21 +7,12 @@ import '../data/gacha_data.dart';
 class GachaRepository {
   static const String _creditKey = 'gacha_credits';
   static const String _countsKey = 'gacha_counts_v2';
-
-  // 初回ボーナス付与フラグ
   static const String _initialBonusKey = 'gacha_initial_bonus_done';
-
-  // 日次制限用のキー
   static const String _dailyCountKey = 'gacha_daily_count';
   static const String _lastDateKey = 'gacha_last_input_date';
-
-  // 1日5回（ガチャ5回分）
   static const int _dailyLimit = 5;
 
   Map<String, int> _counts = {};
-
-  // ... (getItems, getItemCounts, _loadCounts, _saveCounts, unlockItem, drawItem は変更なしのため省略) ...
-  // ※実装時は省略せず、元のコードを維持してください
 
   Future<List<GachaItem>> getItems() async {
     return GachaData.monsters;
@@ -57,17 +47,26 @@ class GachaRepository {
     return current;
   }
 
+  // ▼▼▼ 変更箇所: 殿堂入り対応の抽選ロジック ▼▼▼
   Future<GachaItem?> drawItem() async {
     await getItemCounts();
     final List<GachaItem> allItems = GachaData.monsters;
 
-    final List<GachaItem> candidates = allItems.where((item) {
+    // まず、Lv10未満のアイテム（育成中のキャラ）を探す
+    List<GachaItem> candidates = allItems.where((item) {
       final count = _counts[item.id] ?? 0;
       return count < 10;
     }).toList();
 
-    if (candidates.isEmpty) return null;
+    // もし育成中のキャラがいない（＝全員Lv10以上）なら、
+    // 「殿堂入りモード」として全員を候補にする
+    if (candidates.isEmpty) {
+      candidates = allItems;
+    }
 
+    if (candidates.isEmpty) return null; // データ自体が空の場合
+
+    // 重み付け抽選
     int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
     int randomValue = Random().nextInt(totalWeight);
 
@@ -77,61 +76,48 @@ class GachaRepository {
     }
     return candidates.last;
   }
+  // ▲▲▲ 変更ここまで ▲▲▲
 
-  // --- クレジット管理 ---
   Future<int> getCredits() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_creditKey) ?? 0;
   }
 
-  // ▼▼ 追加: 初回起動時に3ポイント付与する処理 ▼▼
   Future<void> checkInitialBonus() async {
     final prefs = await SharedPreferences.getInstance();
     final bool isDone = prefs.getBool(_initialBonusKey) ?? false;
-
     if (!isDone) {
-      // まだ付与していなければ
       int current = prefs.getInt(_creditKey) ?? 0;
       await prefs.setInt(_creditKey, current + 3);
       await prefs.setBool(_initialBonusKey, true);
     }
   }
 
-  // 入力時の加算
   Future<(int total, bool added)> addCredit() async {
     final prefs = await SharedPreferences.getInstance();
     int currentTotal = prefs.getInt(_creditKey) ?? 0;
 
-    // ▼▼ 変更: kDebugModeの判定を削除し、常に日次制限チェックを行う ▼▼
-    // これにより、開発環境でも「無限入力」ができなくなり、本番と同じ挙動になります
     final now = DateTime.now();
     final todayStr = "${now.year}-${now.month}-${now.day}";
     final lastDate = prefs.getString(_lastDateKey);
 
-    // 日付が変わっていればリセット
     if (lastDate != todayStr) {
       await prefs.setString(_lastDateKey, todayStr);
       await prefs.setInt(_dailyCountKey, 0);
     }
 
     final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
-
-    // 上限チェック (5回以上なら加算せずリターン)
     if (dailyCount >= _dailyLimit) {
       return (currentTotal, false);
     }
 
-    // 回数をインクリメント
     await prefs.setInt(_dailyCountKey, dailyCount + 1);
-
-    // ▼▼ 変更: 10000ポイント付与ロジックを削除し、常に+1 ▼▼
     currentTotal++;
 
     await prefs.setInt(_creditKey, currentTotal);
     return (currentTotal, true);
   }
 
-  // ... (consumeCredits は変更なし) ...
   Future<bool> consumeCredits(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     int current = prefs.getInt(_creditKey) ?? 0;

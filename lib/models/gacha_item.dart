@@ -6,7 +6,6 @@ class GachaItem {
   final int weight;
   final IconData iconData;
   final String baseName;
-  // 説明文をレベルごとのリストに変更
   final List<String> descriptions;
 
   const GachaItem({
@@ -19,13 +18,14 @@ class GachaItem {
   });
 
   // 現在のステージを判定 (1〜10)
+  // ※バッジ表示や説明文用には最大10で止める
   int getStage(int count) {
     if (count <= 0) return 0; // 未所持
     if (count > 10) return 10; // カンスト
     return count;
   }
 
-  // ステージごとの色定義
+  // ステージごとの色定義 (Lv1〜Lv10)
   static const List<Color> _stageColors = [
     Colors.grey, // Lv1
     Colors.brown, // Lv2
@@ -55,12 +55,22 @@ class GachaItem {
 
   // ステージに応じた色を取得
   Color getColor(int count) {
-    final stage = getStage(count);
-    int safeIndex = stage - 1;
-    if (safeIndex < 0) safeIndex = 0;
-    if (safeIndex >= _stageColors.length) safeIndex = _stageColors.length - 1;
+    // 未所持
+    if (count <= 0) return Colors.grey;
 
-    return _stageColors[safeIndex];
+    // Lv1〜Lv10: 固定色
+    if (count <= 10) {
+      int index = count - 1;
+      return _stageColors[index];
+    }
+
+    // Lv11以降: 殿堂入り（無限色変化）
+    // カウントをシードにして色相(Hue)を回転させる
+    // 黄金角 (約137.5度) を使うと色が綺麗に分散する
+    final double hue = (count * 137.508) % 360;
+
+    // HSVからColorに変換 (彩度と明度は見やすい値に固定)
+    return HSVColor.fromAHSV(1.0, hue, 0.7, 0.95).toColor();
   }
 
   // ステージに応じた名前を取得
@@ -69,9 +79,12 @@ class GachaItem {
     if (stage == 0) return "???";
 
     int safeIndex = stage - 1;
-    if (safeIndex >= _stagePrefixes.length)
+    if (safeIndex >= _stagePrefixes.length) {
       safeIndex = _stagePrefixes.length - 1;
+    }
 
+    // Lv11以上の場合、名前の後ろにエクストラ表示をつけるなどの工夫も可能ですが
+    // 今回は名前はそのままで色が変化する仕様とします
     return "${_stagePrefixes[safeIndex]}$baseName";
   }
 
