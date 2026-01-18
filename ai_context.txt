@@ -1,0 +1,1304 @@
+
+# Application Overview
+This is a **Household Account Book (Kakeibo) app combined with a Gacha game element**.
+- Users record daily expenses/incomes.
+- Recording entries rewards users with points or tickets to spin a Gacha.
+- The Gacha allows users to collect characters/items.
+
+# Project Context for Flutter/Dart
+This document provides the **Project Structure**, **Dependencies**, and **Core Logic/Data Definitions**.
+
+## Instructions for AI
+1. **Context Understanding**:
+   - Use the **Tree** to understand the file organization.
+   - Use the **Core Logic Files** (Models, Repositories, Services, Utils) to understand data types, global functions, and the "Kakeibo x Gacha" logic.
+2. **Task Execution**:
+   - I will provide the **Specific Modification Task** and the **Target Code** (UI/Widget files) in the next message.
+   - When modifying the target code, assume existing custom widgets work as they are used in the snippet, unless I ask to modify them.
+3. **Missing Information**:
+   - If the task requires modifying a file NOT included here (e.g., a specific Custom Widget definition), **explicitly ask me to provide that file.**
+   - **Do not hallucinate** methods or parameters for unknown classes.
+
+--- START OF CONTEXT ---
+## Project Tree
+```
+./
+    .metadata
+    a.py
+    all_code.txt
+    README.md
+    ai_context.py
+    pubspec.yaml
+    a.txt
+    get_tree.py
+    .gitignore
+    .flutter-plugins-dependencies
+    all_code.py
+    analysis_options.yaml
+    extract_flutter.py
+    tree.txt
+    ai_context.txt
+    lib/
+        main.dart
+        utils/
+            simple_calculator.dart
+            app_date_utils.dart
+        repositories/
+            gacha_repository.dart
+            settings_repository.dart
+            transaction_repository.dart
+        models/
+            transaction_item.dart
+            category_tag.dart
+            bonus_item.dart
+            gacha_item.dart
+        screens/
+            summary_detail_screen.dart
+            history_screen.dart
+            gacha_screen.dart
+            main_screen.dart
+            input_tab.dart
+            monthly_report_screen.dart
+            settings/
+                developer_tips_screen.dart
+                settings_screen.dart
+                category_manage_screen.dart
+            gacha/
+                bonus_tab.dart
+                gacha_game_tab.dart
+                dialogs/
+                    gacha_rate_dialog.dart
+                    gacha_result_dialog.dart
+                    gacha_history_dialog.dart
+                    gacha_complete_dialog.dart
+        data/
+            bonus_data.dart
+            gacha_data.dart
+            gacha_data_backup.dart
+        services/
+            history_service.dart
+            input_service.dart
+        widgets/
+            category_selector.dart
+            card_settings_dialog.dart
+            monthly_report_components.dart
+            app_drawer.dart
+            flash_message.dart
+            transaction_edit_dialog.dart
+            custom_number_keyboard.dart
+            transaction_tile.dart
+            input/
+                amount_input_area.dart
+                payment_selector.dart
+                input_control_panel.dart
+```
+
+## File: pubspec.yaml
+```dart
+name: flutter_application_1
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.4
+  intl: ^0.20.2
+  fl_chart: ^0.69.0
+  tutorial_coach_mark: ^1.2.9
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    # ▼▼ ガチャ用の画像フォルダを追加 ▼▼
+    - assets/images/gacha/
+    # ▼▼ マスタデータ用のJSONフォルダを追加 ▼▼
+    - assets/json/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  # Androidのアダプティブアイコン用背景色（必要なら）
+  # adaptive_icon_background: "#FFFFFF" 
+  # Androidのアダプティブアイコン用前面画像（必要なら指定。なければimage_pathが使われる）
+  # adaptive_icon_foreground: "assets/icon/app_icon.png"
+```
+
+## File: analysis_options.yaml
+```dart
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+#
+# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
+# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
+# invoked from the command line by running `flutter analyze`.
+
+# The following line activates a set of recommended lints for Flutter apps,
+# packages, and plugins designed to encourage good coding practices.
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  # The lint rules applied to this project can be customized in the
+  # section below to disable rules from the `package:flutter_lints/flutter.yaml`
+  # included above or to enable additional rules. A list of all available lints
+  # and their documentation is published at https://dart.dev/lints.
+  #
+  # Instead of disabling a lint rule for the entire project in the
+  # section below, it can also be suppressed for a single line of code
+  # or a specific dart file by using the `// ignore: name_of_lint` and
+  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
+  # producing the lint.
+  rules:
+    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
+    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+
+# Additional information about this file can be found at
+# https://dart.dev/guides/language/analysis-options
+
+```
+
+## File: lib/models/transaction_item.dart
+```dart
+class TransactionItem {
+  final String id;
+  final int amount;
+  final String expense;
+  final String payment;
+  final DateTime date;
+  final DateTime? paymentDate;
+  final String memo;
+
+  TransactionItem({
+    String? id,
+    required this.amount,
+    required this.expense,
+    required this.payment,
+    required this.date,
+    this.paymentDate,
+    this.memo = '',
+  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'amount': amount,
+      'expense': expense,
+      'payment': payment,
+      'date_iso': date.toIso8601String(),
+      'payment_date_iso': paymentDate?.toIso8601String(),
+      'memo': memo,
+    };
+  }
+
+  factory TransactionItem.fromJson(Map<String, dynamic> json) {
+    return TransactionItem(
+      // IDがない場合は現在のタイムスタンプ＋ランダム値などで代用するが、
+      // 基本は保存されたIDを使う。
+      id:
+          json['id'] as String? ??
+          // フォールバック: IDがない古いデータ用の救済措置
+          (DateTime.now().microsecondsSinceEpoch.toString() +
+              (json['date_iso'] as String)),
+      amount: json['amount'] as int,
+      expense: json['expense'] as String,
+      payment: json['payment'] as String,
+      date: DateTime.parse(json['date_iso'] as String),
+      paymentDate: json['payment_date_iso'] != null
+          ? DateTime.parse(json['payment_date_iso'] as String)
+          : null,
+      memo: json['memo'] as String? ?? '',
+    );
+  }
+
+  TransactionItem copyWith({
+    String? id, // IDもcopyできるようにしておくと編集時に便利です
+    int? amount,
+    String? expense,
+    String? payment,
+    DateTime? date,
+    DateTime? paymentDate,
+    String? memo,
+  }) {
+    return TransactionItem(
+      id: id ?? this.id,
+      amount: amount ?? this.amount,
+      expense: expense ?? this.expense,
+      payment: payment ?? this.payment,
+      date: date ?? this.date,
+      paymentDate: paymentDate ?? this.paymentDate,
+      memo: memo ?? this.memo,
+    );
+  }
+}
+
+```
+
+## File: lib/models/category_tag.dart
+```dart
+import 'package:flutter/material.dart';
+
+class CategoryTag {
+  final String id;
+  final String label;
+  final Color color;
+  final bool isCircle;
+
+  // --- クレジットカード設定用 ---
+  final int? closingDay; // 締め日 (1-28, 99=末日)
+  final int? paymentDay; // 支払日 (1-28, 99=末日)
+  final int paymentMonthOffset; // 支払月 (1=翌月, 2=翌々月)
+
+  // --- アイコン保存用データ ---
+  final int? iconCodePoint;
+  final String? iconFontFamily;
+  final String? iconFontPackage;
+
+  CategoryTag({
+    String? id,
+    required this.label,
+    required this.color,
+    this.isCircle = false,
+    this.closingDay,
+    this.paymentDay,
+    this.paymentMonthOffset = 1,
+    this.iconCodePoint,
+    this.iconFontFamily,
+    this.iconFontPackage,
+  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+
+  // 保存された情報からIconDataを復元するgetter
+  IconData? get icon {
+    if (iconCodePoint == null) return null;
+    return IconData(
+      iconCodePoint!,
+      fontFamily: iconFontFamily,
+      fontPackage: iconFontPackage,
+    );
+  }
+
+  // アプリ全体で使う「表示用アイコン」の取得ロジック
+  IconData get displayIcon {
+    if (icon != null) return icon!;
+
+    // デフォルト推測ロジック
+    final l = label;
+    if (l.contains('外食')) return Icons.restaurant;
+    if (l.contains('食')) return Icons.local_grocery_store;
+    if (l.contains('飲み物') || l.contains('カフェ') || l.contains('酒'))
+      return Icons.local_cafe;
+    if (l.contains('遊び') || l.contains('レジャー') || l.contains('楽'))
+      return Icons.attractions;
+    if (l.contains('日用')) return Icons.shopping_bag;
+    if (l.contains('交際')) return Icons.wine_bar;
+    // 「交通系」もここでヒットして電車アイコンになります
+    if (l.contains('交通') || l.contains('電')) return Icons.train;
+    if (l.contains('趣味') || l.contains('推')) return Icons.sports_esports;
+    if (l.contains('美容') || l.contains('服')) return Icons.checkroom;
+    if (l.contains('医療') || l.contains('薬') || l.contains('院'))
+      return Icons.medical_services;
+    if (l.contains('教育') || l.contains('本')) return Icons.menu_book;
+    if (l.contains('光熱') || l.contains('家賃') || l.contains('住'))
+      return Icons.home;
+    if (l.contains('通信') || l.contains('スマホ')) return Icons.wifi;
+    if (l.contains('車') || l.contains('ガソリン')) return Icons.directions_car;
+    if (l.contains('給料') || l.contains('給与')) return Icons.attach_money;
+    if (l.contains('映画')) return Icons.movie;
+
+    // カード系の推測
+    if (l.contains('クレジット') ||
+        closingDay != null ||
+        l.contains('カード') ||
+        l.contains('Pay')) {
+      return Icons.credit_card;
+    }
+
+    // どうしても決まらない場合
+    return isCircle ? Icons.category : Icons.payment;
+  }
+
+  factory CategoryTag.fromJson(Map<String, dynamic> json) {
+    return CategoryTag(
+      id: json['id'],
+      label: json['label'],
+      color: Color(json['color_value']),
+      isCircle: json['is_circle'] ?? false,
+      closingDay: json['closing_day'],
+      paymentDay: json['payment_day'],
+      paymentMonthOffset: json['payment_month_offset'] ?? 1,
+      iconCodePoint: json['icon_code_point'],
+      iconFontFamily: json['icon_font_family'],
+      iconFontPackage: json['icon_font_package'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'label': label,
+      'color_value': color.value,
+      'is_circle': isCircle,
+      'closing_day': closingDay,
+      'payment_day': paymentDay,
+      'payment_month_offset': paymentMonthOffset,
+      'icon_code_point': iconCodePoint,
+      'icon_font_family': iconFontFamily,
+      'icon_font_package': iconFontPackage,
+    };
+  }
+
+  // ▼▼ あなた仕様のデフォルトカード ▼▼
+  static List<CategoryTag> get defaultCards => [
+    CategoryTag(
+      label: 'クレジット',
+      color: Colors.redAccent,
+      closingDay: 99, // 仮で末締め翌27日払いに設定
+      paymentDay: 27,
+      paymentMonthOffset: 1,
+    ),
+    CategoryTag(label: '交通系', color: Colors.green),
+  ];
+
+  static List<CategoryTag> get defaultExpenses => [
+    CategoryTag(label: '食費', color: Colors.orange, isCircle: true),
+    CategoryTag(label: '外食費', color: Colors.deepOrange, isCircle: true),
+    CategoryTag(label: '飲み物代', color: Colors.green, isCircle: true),
+    CategoryTag(label: '娯楽費', color: Colors.purple, isCircle: true),
+    CategoryTag(label: '交通費', color: Colors.blue, isCircle: true),
+    CategoryTag(label: '医療費', color: Colors.blueGrey, isCircle: true),
+    CategoryTag(label: '本代', color: Colors.brown, isCircle: true),
+    CategoryTag(label: '美容・衣服代', color: Colors.pinkAccent, isCircle: true),
+    CategoryTag(label: '家賃', color: Colors.indigo, isCircle: true),
+  ];
+}
+
+```
+
+## File: lib/models/bonus_item.dart
+```dart
+import 'package:flutter/material.dart';
+
+/// ボーナスアイテムのモデル定義
+class BonusItem {
+  final int targetDays;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String description;
+
+  const BonusItem({
+    required this.targetDays,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.description,
+  });
+}
+
+```
+
+## File: lib/models/gacha_item.dart
+```dart
+import 'package:flutter/material.dart';
+
+class GachaItem {
+  final String id;
+  final int rarity;
+  final int weight;
+  final IconData iconData;
+  final String baseName;
+  // 説明文をレベルごとのリストに変更
+  final List<String> descriptions;
+
+  const GachaItem({
+    required this.id,
+    required this.rarity,
+    required this.weight,
+    required this.iconData,
+    required this.baseName,
+    required this.descriptions,
+  });
+
+  // 現在のステージを判定 (1〜10)
+  int getStage(int count) {
+    if (count <= 0) return 0; // 未所持
+    if (count > 10) return 10; // カンスト
+    return count;
+  }
+
+  // ステージごとの色定義
+  static const List<Color> _stageColors = [
+    Colors.grey, // Lv1
+    Colors.brown, // Lv2
+    Colors.blueGrey, // Lv3
+    Colors.green, // Lv4
+    Colors.cyan, // Lv5
+    Colors.blue, // Lv6
+    Colors.indigo, // Lv7
+    Colors.purple, // Lv8
+    Colors.red, // Lv9
+    Colors.amber, // Lv10
+  ];
+
+  // ステージごとの称号（Prefix）
+  static const List<String> _stagePrefixes = [
+    "迷子の", // Lv1
+    "見習い", // Lv2
+    "駆け出し", // Lv3
+    "一人前の", // Lv4
+    "熟練の", // Lv5
+    "達人の", // Lv6
+    "師範代", // Lv7
+    "将軍", // Lv8
+    "英雄", // Lv9
+    "伝説の", // Lv10
+  ];
+
+  // ステージに応じた色を取得
+  Color getColor(int count) {
+    final stage = getStage(count);
+    int safeIndex = stage - 1;
+    if (safeIndex < 0) safeIndex = 0;
+    if (safeIndex >= _stageColors.length) safeIndex = _stageColors.length - 1;
+
+    return _stageColors[safeIndex];
+  }
+
+  // ステージに応じた名前を取得
+  String getName(int count) {
+    final stage = getStage(count);
+    if (stage == 0) return "???";
+
+    int safeIndex = stage - 1;
+    if (safeIndex >= _stagePrefixes.length)
+      safeIndex = _stagePrefixes.length - 1;
+
+    return "${_stagePrefixes[safeIndex]}$baseName";
+  }
+
+  // ステージに応じた説明文をリストから取得
+  String getDescription(int count) {
+    final stage = getStage(count);
+    if (stage == 0) return "";
+
+    int safeIndex = stage - 1;
+    if (safeIndex >= descriptions.length) {
+      return "（説明文データがありません）";
+    }
+    return descriptions[safeIndex];
+  }
+}
+
+```
+
+## File: lib/repositories/gacha_repository.dart
+```dart
+import 'dart:convert';
+import 'dart:math';
+// import 'package:flutter/foundation.dart'; // kDebugModeを使わなくなるので削除またはコメントアウト
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/gacha_item.dart';
+import '../data/gacha_data.dart';
+
+class GachaRepository {
+  static const String _creditKey = 'gacha_credits';
+  static const String _countsKey = 'gacha_counts_v2';
+
+  // 初回ボーナス付与フラグ
+  static const String _initialBonusKey = 'gacha_initial_bonus_done';
+
+  // 日次制限用のキー
+  static const String _dailyCountKey = 'gacha_daily_count';
+  static const String _lastDateKey = 'gacha_last_input_date';
+
+  // 1日5回（ガチャ5回分）
+  static const int _dailyLimit = 5;
+
+  Map<String, int> _counts = {};
+
+  // ... (getItems, getItemCounts, _loadCounts, _saveCounts, unlockItem, drawItem は変更なしのため省略) ...
+  // ※実装時は省略せず、元のコードを維持してください
+
+  Future<List<GachaItem>> getItems() async {
+    return GachaData.monsters;
+  }
+
+  Future<Map<String, int>> getItemCounts() async {
+    if (_counts.isEmpty) await _loadCounts();
+    return _counts;
+  }
+
+  Future<void> _loadCounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonString = prefs.getString(_countsKey);
+    if (jsonString != null) {
+      final Map<String, dynamic> decoded = json.decode(jsonString);
+      _counts = decoded.map((key, value) => MapEntry(key, value as int));
+    }
+  }
+
+  Future<void> _saveCounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String jsonString = json.encode(_counts);
+    await prefs.setString(_countsKey, jsonString);
+  }
+
+  Future<int> unlockItem(String id) async {
+    await getItemCounts();
+    int current = _counts[id] ?? 0;
+    current++;
+    _counts[id] = current;
+    await _saveCounts();
+    return current;
+  }
+
+  Future<GachaItem?> drawItem() async {
+    await getItemCounts();
+    final List<GachaItem> allItems = GachaData.monsters;
+
+    final List<GachaItem> candidates = allItems.where((item) {
+      final count = _counts[item.id] ?? 0;
+      return count < 10;
+    }).toList();
+
+    if (candidates.isEmpty) return null;
+
+    int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
+    int randomValue = Random().nextInt(totalWeight);
+
+    for (final item in candidates) {
+      randomValue -= item.weight;
+      if (randomValue < 0) return item;
+    }
+    return candidates.last;
+  }
+
+  // --- クレジット管理 ---
+  Future<int> getCredits() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_creditKey) ?? 0;
+  }
+
+  // ▼▼ 追加: 初回起動時に3ポイント付与する処理 ▼▼
+  Future<void> checkInitialBonus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isDone = prefs.getBool(_initialBonusKey) ?? false;
+
+    if (!isDone) {
+      // まだ付与していなければ
+      int current = prefs.getInt(_creditKey) ?? 0;
+      await prefs.setInt(_creditKey, current + 3);
+      await prefs.setBool(_initialBonusKey, true);
+    }
+  }
+
+  // 入力時の加算
+  Future<(int total, bool added)> addCredit() async {
+    final prefs = await SharedPreferences.getInstance();
+    int currentTotal = prefs.getInt(_creditKey) ?? 0;
+
+    // ▼▼ 変更: kDebugModeの判定を削除し、常に日次制限チェックを行う ▼▼
+    // これにより、開発環境でも「無限入力」ができなくなり、本番と同じ挙動になります
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month}-${now.day}";
+    final lastDate = prefs.getString(_lastDateKey);
+
+    // 日付が変わっていればリセット
+    if (lastDate != todayStr) {
+      await prefs.setString(_lastDateKey, todayStr);
+      await prefs.setInt(_dailyCountKey, 0);
+    }
+
+    final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
+
+    // 上限チェック (5回以上なら加算せずリターン)
+    if (dailyCount >= _dailyLimit) {
+      return (currentTotal, false);
+    }
+
+    // 回数をインクリメント
+    await prefs.setInt(_dailyCountKey, dailyCount + 1);
+
+    // ▼▼ 変更: 10000ポイント付与ロジックを削除し、常に+1 ▼▼
+    currentTotal++;
+
+    await prefs.setInt(_creditKey, currentTotal);
+    return (currentTotal, true);
+  }
+
+  // ... (consumeCredits は変更なし) ...
+  Future<bool> consumeCredits(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    int current = prefs.getInt(_creditKey) ?? 0;
+    if (current >= amount) {
+      await prefs.setInt(_creditKey, current - amount);
+      return true;
+    }
+    return false;
+  }
+}
+
+```
+
+## File: lib/repositories/settings_repository.dart
+```dart
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/category_tag.dart';
+
+class SettingsRepository {
+  static const String _expenseTagsKey = 'expense_tags_list';
+  static const String _cardTagsKey = 'card_tags_list';
+  static const String _gachaEnabledKey = 'gacha_enabled';
+  static const String _categoryLongPressKey = 'category_long_press_enabled';
+  static const String _showCardOnInputKey = 'show_card_on_input';
+
+  // --- 費目リスト管理 ---
+  Future<List<CategoryTag>> loadExpenseTags() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonString = prefs.getString(_expenseTagsKey);
+    if (jsonString == null) {
+      return CategoryTag.defaultExpenses;
+    }
+    final List<dynamic> jsonList = json.decode(jsonString);
+    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+  }
+
+  Future<void> saveExpenseTags(List<CategoryTag> tags) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String jsonString = json.encode(tags.map((e) => e.toJson()).toList());
+    await prefs.setString(_expenseTagsKey, jsonString);
+  }
+
+  // --- カードリスト管理 ---
+  Future<List<CategoryTag>> loadCardTags() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonString = prefs.getString(_cardTagsKey);
+    if (jsonString == null) {
+      return CategoryTag.defaultCards;
+    }
+    final List<dynamic> jsonList = json.decode(jsonString);
+    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+  }
+
+  Future<void> saveCardTags(List<CategoryTag> tags) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String jsonString = json.encode(tags.map((e) => e.toJson()).toList());
+    await prefs.setString(_cardTagsKey, jsonString);
+  }
+
+  // --- ガチャ設定の管理 ---
+  Future<bool> loadGachaEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_gachaEnabledKey) ?? true;
+  }
+
+  Future<void> saveGachaEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_gachaEnabledKey, enabled);
+  }
+
+  // --- カテゴリ長押し設定の管理 ---
+  Future<bool> loadCategoryLongPressEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_categoryLongPressKey) ?? true;
+  }
+
+  Future<void> saveCategoryLongPressEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_categoryLongPressKey, enabled);
+  }
+
+  // --- 入力画面でのカード表示設定 ---
+  Future<bool> loadShowCardOnInput() async {
+    final prefs = await SharedPreferences.getInstance();
+    // デフォルトは true (表示する)
+    return prefs.getBool(_showCardOnInputKey) ?? true;
+  }
+
+  Future<void> saveShowCardOnInput(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showCardOnInputKey, enabled);
+  }
+}
+
+```
+
+## File: lib/repositories/transaction_repository.dart
+```dart
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/transaction_item.dart';
+
+class TransactionRepository {
+  static final TransactionRepository _instance =
+      TransactionRepository._internal();
+  factory TransactionRepository() => _instance;
+  TransactionRepository._internal();
+
+  static const String _key = 'history';
+
+  // メモリキャッシュ
+  List<TransactionItem>? _memoryCache;
+
+  /// 全件取得 (メモリキャッシュがあればそれを返す)
+  Future<List<TransactionItem>> getAllTransactions({
+    bool forceReload = false,
+  }) async {
+    if (_memoryCache != null && !forceReload) {
+      return List.from(_memoryCache!);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonString = prefs.getString(_key);
+
+    if (jsonString == null) {
+      _memoryCache = [];
+      return [];
+    }
+
+    try {
+      final List<dynamic> jsonList = json.decode(jsonString);
+      final list = jsonList.map((e) => TransactionItem.fromJson(e)).toList();
+
+      // 日付順（新しい順）にソート
+      list.sort((a, b) => b.date.compareTo(a.date));
+
+      _memoryCache = list;
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// 追加処理
+  Future<void> addTransaction(TransactionItem item) async {
+    await getAllTransactions();
+    _memoryCache!.insert(0, item);
+    _memoryCache!.sort((a, b) => b.date.compareTo(a.date));
+    await _saveToPrefs();
+  }
+
+  /// 更新処理
+  Future<void> updateTransaction(TransactionItem newItem) async {
+    await getAllTransactions();
+    final index = _memoryCache!.indexWhere((item) => item.id == newItem.id);
+    if (index != -1) {
+      _memoryCache![index] = newItem;
+      _memoryCache!.sort((a, b) => b.date.compareTo(a.date));
+      await _saveToPrefs();
+    }
+  }
+
+  /// 削除処理
+  Future<void> deleteTransaction(String id) async {
+    await getAllTransactions();
+    _memoryCache!.removeWhere((item) => item.id == id);
+    await _saveToPrefs();
+  }
+
+  /// 内部保存処理
+  Future<void> _saveToPrefs() async {
+    if (_memoryCache == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final String jsonString = json.encode(
+      _memoryCache!.map((e) => e.toJson()).toList(),
+    );
+    await prefs.setString(_key, jsonString);
+  }
+
+  // --- ⬇️ ここから追加機能：日数カウントロジック ---
+
+  /// ユニークな入力日数を取得する
+  /// (1日に複数回入力しても「1日」としてカウント)
+  int getUniqueInputDaysCount() {
+    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
+
+    // Setを使って重複する日付を除去する
+    final uniqueDates = _memoryCache!.map((item) {
+      // 時間情報(HH:mm:ss)を切り捨てて、年月日だけにする
+      return DateTime(item.date.year, item.date.month, item.date.day);
+    }).toSet();
+
+    return uniqueDates.length;
+  }
+
+  /// 継続中の入力日数を取得する（オプション機能：連続記録用）
+  /// 今日から遡って何日連続で入力しているか
+  int getCurrentStreak() {
+    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
+
+    // 日付のみのリストを作成して降順ソート
+    final sortedDates =
+        _memoryCache!
+            .map((item) {
+              return DateTime(item.date.year, item.date.month, item.date.day);
+            })
+            .toSet()
+            .toList()
+          ..sort((a, b) => b.compareTo(a)); // 新しい順
+
+    if (sortedDates.isEmpty) return 0;
+
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+
+    int streak = 0;
+    // 最新の入力が今日、または昨日でない場合はストリーク途切れとみなす場合などの判定
+    // ここでは単純にリストを遡る
+
+    DateTime checkDate = sortedDates.first;
+
+    // もし最新入力が今日より未来なら（入力ミスなど）、カウント対象にするか要検討ですが
+    // 一旦、最新の日付を基準にカウントを開始します
+
+    // ※ シンプルにするため、最新の日付から「1日ずつ差があるか」をチェック
+    for (int i = 0; i < sortedDates.length - 1; i++) {
+      final current = sortedDates[i];
+      final next = sortedDates[i + 1];
+
+      final diff = current.difference(next).inDays;
+      if (diff == 1) {
+        streak++;
+      } else {
+        break; // 連続が途切れたら終了
+      }
+    }
+
+    // 最初の1日分を加算
+    return streak + 1;
+  }
+}
+
+```
+
+## File: lib/services/history_service.dart
+```dart
+import 'package:flutter/material.dart';
+import '../models/transaction_item.dart';
+import '../models/category_tag.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
+
+class HistoryService {
+  final TransactionRepository _transactionRepo = TransactionRepository();
+  final SettingsRepository _settingsRepo = SettingsRepository();
+
+  /// 指定された年月のデータを取得する
+  Future<List<TransactionItem>> getMonthlyTransactions({
+    required int year,
+    required int month,
+  }) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+
+    // 指定月でフィルタリング
+    final filtered = allItems.where((i) {
+      return i.date.year == year && i.date.month == month;
+    }).toList();
+
+    // 日付順（新しい順）に並び替え
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+
+    return filtered;
+  }
+
+  /// 条件（費目やカード）で絞り込んだデータを取得する
+  Future<List<TransactionItem>> getFilteredTransactions({
+    required String filterKey, // 'expense' or 'payment'
+    required String filterValue,
+    required int year,
+    required int month,
+    required int viewMode, // 0: 利用日基準, 1: 支払日基準（引き落とし予定）
+  }) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+
+    final filtered = allItems.where((i) {
+      // 1. キーによるフィルタリング
+      if (filterKey == 'expense') {
+        if (i.expense != filterValue) return false;
+      } else if (filterKey == 'payment') {
+        if (filterValue == '現金' && i.payment.isEmpty) {
+          // 現金扱い（空文字）OK
+        } else if (i.payment != filterValue) {
+          return false;
+        }
+      }
+
+      // 2. 年月によるフィルタリング
+      if (viewMode == 1) {
+        // 引き落とし予定モードなら、paymentDateを見る
+        final targetDate = i.paymentDate ?? i.date; // paymentDateがなければ利用日
+        return targetDate.year == year && targetDate.month == month;
+      } else {
+        // 通常モードなら利用日を見る
+        return i.date.year == year && i.date.month == month;
+      }
+    }).toList();
+
+    // 日付順に並び替え
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+
+    return filtered;
+  }
+
+  /// 費目タグのリストを取得（アイコン表示などに必要）
+  Future<List<CategoryTag>> getExpenseTags() async {
+    return await _settingsRepo.loadExpenseTags();
+  }
+
+  /// カードタグのリストを取得
+  Future<List<CategoryTag>> getCardTags() async {
+    return await _settingsRepo.loadCardTags();
+  }
+
+  /// 特定のカード情報を取得（設定変更用）
+  Future<CategoryTag?> getCardTagByLabel(String label) async {
+    final cards = await getCardTags();
+    try {
+      return cards.firstWhere((c) => c.label == label);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// カード設定を更新する
+  Future<void> updateCardTag(CategoryTag newTag) async {
+    final cards = await getCardTags();
+    final index = cards.indexWhere((c) => c.id == newTag.id);
+    if (index != -1) {
+      cards[index] = newTag;
+      await _settingsRepo.saveCardTags(cards);
+    }
+  }
+}
+
+```
+
+## File: lib/services/input_service.dart
+```dart
+import 'package:flutter/material.dart';
+import '../models/category_tag.dart';
+import '../models/transaction_item.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/gacha_repository.dart';
+import '../utils/simple_calculator.dart';
+
+/// 保存処理の結果をまとめたクラス
+class InputServiceResult {
+  final bool success;
+  final String message;
+  final Color messageColor;
+  final String? formattedAmount;
+  final String? savedId;
+
+  InputServiceResult({
+    required this.success,
+    required this.message,
+    this.messageColor = Colors.blue,
+    this.formattedAmount,
+    this.savedId,
+  });
+}
+
+class InputService {
+  final TransactionRepository _transactionRepo = TransactionRepository();
+  final GachaRepository _gachaRepo = GachaRepository();
+
+  Future<InputServiceResult> registerTransaction({
+    required String rawAmount,
+    required String memo,
+    required DateTime date,
+    required CategoryTag expenseTag,
+    required bool isCardPayment,
+    required CategoryTag? cardTag,
+    required bool showCardOnInput,
+    required bool isGachaEnabled,
+  }) async {
+    // 1. 計算とバリデーション
+    final calculatedText = SimpleCalculator.calculate(rawAmount);
+
+    if (calculatedText.isEmpty) {
+      return InputServiceResult(
+        success: false,
+        message: '金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
+    if (amount <= 0) {
+      return InputServiceResult(
+        success: false,
+        message: '1円以上の金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    // 2. 支払い情報の構築
+    String paymentMethod = '';
+    DateTime? paymentDate;
+
+    final bool shouldUseCard = showCardOnInput && isCardPayment;
+
+    if (shouldUseCard) {
+      if (cardTag != null) {
+        paymentMethod = cardTag.label;
+        if (cardTag.closingDay != null && cardTag.paymentDay != null) {
+          int monthsToAdd = cardTag.paymentMonthOffset;
+          if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
+            monthsToAdd++;
+          }
+          int targetYear = date.year;
+          int targetMonth = date.month + monthsToAdd;
+          int targetDay = cardTag.paymentDay!;
+
+          paymentDate = (targetDay == 99)
+              ? DateTime(targetYear, targetMonth + 1, 0)
+              : DateTime(targetYear, targetMonth, targetDay);
+        }
+      } else {
+        paymentMethod = 'カード';
+      }
+    }
+
+    // 3. データの保存
+    try {
+      final newItem = TransactionItem(
+        amount: amount,
+        expense: expenseTag.label,
+        payment: paymentMethod,
+        date: DateTime(
+          date.year,
+          date.month,
+          date.day,
+          DateTime.now().hour,
+          DateTime.now().minute,
+        ),
+        paymentDate: paymentDate,
+        memo: memo,
+      );
+
+      await _transactionRepo.addTransaction(newItem);
+
+      // 4. ガチャポイント処理
+      String msg = '保存しました';
+      Color color = Colors.blue;
+
+      if (isGachaEnabled) {
+        final result = await _gachaRepo.addCredit();
+        // final int currentCredits = result.$1; // 未使用のためコメントアウト
+        final bool isAdded = result.$2;
+
+        if (isAdded) {
+          // ▼▼ 変更: 1入力1ガチャなので、加算＝ガチャ権利獲得 ▼▼
+          msg = 'ガチャチケット獲得！';
+          color = Colors.orange;
+        } else {
+          msg = '保存しました（本日の上限到達）';
+          color = Colors.grey;
+        }
+      } else if (paymentDate != null) {
+        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      return InputServiceResult(
+        success: true,
+        message: msg,
+        messageColor: color,
+        formattedAmount: calculatedText,
+        savedId: newItem.id,
+      );
+    } catch (e) {
+      return InputServiceResult(
+        success: false,
+        message: '保存エラー: $e',
+        messageColor: Colors.red,
+      );
+    }
+  }
+
+  Future<void> deleteTransaction(String id) async {
+    await _transactionRepo.deleteTransaction(id);
+  }
+
+  Future<TransactionItem?> getTransaction(String id) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+    try {
+      return allItems.firstWhere((e) => e.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+```
+
+## File: lib/utils/simple_calculator.dart
+```dart
+class SimpleCalculator {
+  /// 文字列の数式を計算して結果を返す
+  /// 日本円の家計簿なので、結果は必ず「四捨五入した整数」の文字列を返す
+  static String calculate(String expression) {
+    if (expression.isEmpty) return "";
+
+    // 1. カンマを除去
+    String cleanExpr = expression.replaceAll(',', '');
+
+    // 2. 末尾が演算子の場合は削除して計算する (例: "100+" -> "100")
+    if (_isOperator(cleanExpr[cleanExpr.length - 1])) {
+      cleanExpr = cleanExpr.substring(0, cleanExpr.length - 1);
+    }
+
+    try {
+      final tokens = _tokenize(cleanExpr);
+      if (tokens.isEmpty) return expression;
+
+      final double result = _evaluateTokens(tokens);
+
+      // ▼▼ 修正箇所: ここで強制的に四捨五入して整数にする ▼▼
+      // 家計簿（円）に小数は不要なため、四捨五入(round)を行って整数文字列にする
+      return result.round().toString();
+    } catch (e) {
+      // 計算不能な場合（ゼロ除算など）は元の文字列を返すか、"0"にする
+      return expression;
+    }
+  }
+
+  static bool _isOperator(String char) {
+    return ["+", "-", "x", "÷"].contains(char);
+  }
+
+  static List<dynamic> _tokenize(String expr) {
+    final List<dynamic> tokens = [];
+    String currentNumber = "";
+
+    for (int i = 0; i < expr.length; i++) {
+      final char = expr[i];
+      if (_isOperator(char)) {
+        // ▼▼ 修正: 先頭のマイナス、または演算子直後のマイナスは「負の数」の一部とみなす ▼▼
+        // 例: "-100", "50x-2" などの対応
+        if (char == '-' && currentNumber.isEmpty) {
+          // トークンがまだ空（先頭）か、直前が演算子（currentNumberが空かつtokensの末尾が演算子）の場合
+          // ただし、家計簿アプリのキーボード仕様上、"50x-2"は入力できないようになっているため、
+          // 「先頭のマイナス」だけケアすればOKです。
+          bool isNegativeSign = false;
+          if (tokens.isEmpty) {
+            isNegativeSign = true;
+          } else {
+            // 念のため、前のトークンが演算子ならマイナス符号扱いにするロジック
+            final lastToken = tokens.last;
+            if (lastToken is String && _isOperator(lastToken)) {
+              isNegativeSign = true;
+            }
+          }
+
+          if (isNegativeSign) {
+            currentNumber += char;
+            continue;
+          }
+        }
+        // ▲▲ 修正ここまで ▲▲
+        if (currentNumber.isNotEmpty) {
+          tokens.add(double.parse(currentNumber));
+          currentNumber = "";
+        }
+        tokens.add(char);
+      } else {
+        currentNumber += char;
+      }
+    }
+    if (currentNumber.isNotEmpty) {
+      tokens.add(double.parse(currentNumber));
+    }
+    return tokens;
+  }
+
+  static double _evaluateTokens(List<dynamic> tokens) {
+    // 1. 乗算・除算を先に計算
+    final List<dynamic> processing = [];
+    int i = 0;
+    while (i < tokens.length) {
+      final token = tokens[i];
+      if (token == "x" || token == "÷") {
+        final operator = token;
+        // 先頭がいきなり演算子などの不正なケース対策
+        if (processing.isEmpty || i + 1 >= tokens.length) {
+          i++;
+          continue;
+        }
+
+        final left = processing.removeLast() as double;
+        final right = tokens[i + 1] as double;
+
+        double result = 0;
+        if (operator == "x") result = left * right;
+        if (operator == "÷") {
+          // ゼロ除算対策（無限大になっても round() でエラーにならないようガード）
+          if (right == 0) {
+            result = 0; // または left をそのまま返す仕様もアリ
+          } else {
+            result = left / right;
+          }
+        }
+
+        processing.add(result);
+        i += 2;
+      } else {
+        processing.add(token);
+        i++;
+      }
+    }
+
+    // 2. 加算・減算を計算
+    if (processing.isEmpty) return 0;
+
+    double finalResult = processing[0] as double;
+    for (int j = 1; j < processing.length; j += 2) {
+      final operator = processing[j];
+      final right = processing[j + 1] as double;
+
+      if (operator == "+") finalResult += right;
+      if (operator == "-") finalResult -= right;
+    }
+
+    return finalResult;
+  }
+}
+
+```
+
+## File: lib/utils/app_date_utils.dart
+```dart
+class AppDateUtils {
+  static const List<String> _weekDays = ["月", "火", "水", "木", "金", "土", "日"];
+
+  /// 例: 1/15 (月)
+  static String formatMonthDayWeek(DateTime date) {
+    return "${date.month}/${date.day} (${_weekDays[date.weekday - 1]})";
+  }
+
+  /// 例: 1/15 14:30
+  static String formatDateTime(DateTime date) {
+    return "${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+  }
+}
+
+```

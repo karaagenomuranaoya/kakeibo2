@@ -1,0 +1,54 @@
+.
+├── data
+│   ├── bonus_data.dart
+│   ├── gacha_data.dart
+│   └── gacha_data_backup.dart
+├── main.dart
+├── models
+│   ├── bonus_item.dart
+│   ├── category_tag.dart
+│   ├── gacha_item.dart
+│   └── transaction_item.dart
+├── repositories
+│   ├── gacha_repository.dart
+│   ├── settings_repository.dart
+│   └── transaction_repository.dart
+├── screens
+│   ├── gacha
+│   │   ├── bonus_tab.dart
+│   │   ├── dialogs
+│   │   │   ├── gacha_complete_dialog.dart
+│   │   │   ├── gacha_history_dialog.dart
+│   │   │   ├── gacha_rate_dialog.dart
+│   │   │   └── gacha_result_dialog.dart
+│   │   └── gacha_game_tab.dart
+│   ├── gacha_screen.dart
+│   ├── history_screen.dart
+│   ├── input_tab.dart
+│   ├── main_screen.dart
+│   ├── monthly_report_screen.dart
+│   ├── settings
+│   │   ├── category_manage_screen.dart
+│   │   ├── developer_tips_screen.dart
+│   │   └── settings_screen.dart
+│   └── summary_detail_screen.dart
+├── services
+│   ├── history_service.dart
+│   └── input_service.dart
+├── utils
+│   ├── app_date_utils.dart
+│   └── simple_calculator.dart
+└── widgets
+    ├── app_drawer.dart
+    ├── card_settings_dialog.dart
+    ├── category_selector.dart
+    ├── custom_number_keyboard.dart
+    ├── flash_message.dart
+    ├── input
+    │   ├── amount_input_area.dart
+    │   ├── input_control_panel.dart
+    │   └── payment_selector.dart
+    ├── monthly_report_components.dart
+    ├── transaction_edit_dialog.dart
+    └── transaction_tile.dart
+└── pubspec.yaml
