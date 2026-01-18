@@ -7,6 +7,8 @@ import '../../models/gacha_item.dart';
 import 'dialogs/gacha_rate_dialog.dart';
 import 'dialogs/gacha_result_dialog.dart';
 import 'dialogs/gacha_complete_dialog.dart';
+// ▼▼ 追加 ▼▼
+import 'dialogs/gacha_tutorial_content.dart';
 
 class GachaGameTab extends StatefulWidget {
   const GachaGameTab({super.key});
@@ -43,7 +45,6 @@ class _GachaGameTabState extends State<GachaGameTab>
   }
 
   // --- チュートリアル関連 ---
-  // ▼▼▼ キー名を元に戻しました ▼▼▼
   static const String _tutorialKey = 'is_gacha_tutorial_shown';
 
   Future<void> _checkTutorialPhase1() async {
@@ -64,83 +65,22 @@ class _GachaGameTabState extends State<GachaGameTab>
     await prefs.setBool(_tutorialKey, true);
   }
 
-  // 全画面チュートリアル (ガチャ前)
+  // ▼▼▼ 修正: 切り出したWidgetを使用 ▼▼▼
   void _showTutorialPhase1() {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return Material(
-          type: MaterialType.transparency,
-          child: GestureDetector(
-            // 画面全体どこをタップしても閉じる
-            onTap: () async {
-              Navigator.pop(context);
-              await _completeTutorial();
-            },
-            child: Container(
-              color: Colors.black.withOpacity(0.85), // 背景を暗く
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.auto_awesome, size: 80, color: Colors.orange),
-                  SizedBox(height: 30),
-                  Text(
-                    "アイコンガチャへようこそ",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      fontSize: 26,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 24),
-                  Text(
-                    "ここでは特別なアイコンが手に入る\nガチャを回すことができます。",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      height: 1.6,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    "チケットは入力で1日5枚まで\n手に入りますが\n今回はお試し用のチケットを\n用意しました。",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      height: 1.6,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 40),
-                  Text(
-                    "試しに回してみましょう",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orangeAccent,
-                      fontSize: 20,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 60),
-                  Text(
-                    "(画面をタップして閉じる)",
-                    style: TextStyle(color: Colors.white54, fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return GachaTutorialContent.phase1(
+          onDismiss: () async {
+            Navigator.pop(context);
+            await _completeTutorial();
+          },
         );
       },
     );
   }
 
-  // 全画面チュートリアル (ガチャ後)
   Future<void> _showTutorialPhase2() async {
     if (!mounted) return;
     await _completeTutorial();
@@ -149,74 +89,15 @@ class _GachaGameTabState extends State<GachaGameTab>
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return Material(
-          type: MaterialType.transparency,
-          child: GestureDetector(
-            onTap: () {
-              Navigator.pop(context);
-            },
-            child: Container(
-              color: Colors.black.withOpacity(0.85),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.grid_view, size: 80, color: Colors.white),
-                  SizedBox(height: 30),
-                  Text(
-                    "コレクション",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      fontSize: 26,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 24),
-                  Text(
-                    "手に入れたアイコンはここに並びます。",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      height: 1.6,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    "タップすると詳細が見られるほか、\nカテゴリを編集するときには\nアイコンとして使えます。\n同じものが出ると10段階で進化します。",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      height: 1.6,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 40),
-                  Text(
-                    "コンプリート目指して\n頑張ってくださいね",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orangeAccent,
-                      fontSize: 20,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 60),
-                  Text(
-                    "(画面をタップして閉じる)",
-                    style: TextStyle(color: Colors.white54, fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return GachaTutorialContent.phase2(
+          onDismiss: () {
+            Navigator.pop(context);
+          },
         );
       },
     );
   }
-  // --- チュートリアルここまで ---
+  // ▲▲▲ 修正ここまで ▲▲▲
 
   Future<void> _loadData() async {
     await _repository.checkInitialBonus();
