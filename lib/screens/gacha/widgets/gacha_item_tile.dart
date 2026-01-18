@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../models/gacha_item.dart';
+import '../../../../../models/gacha_item.dart';
 
 class GachaItemTile extends StatelessWidget {
   final GachaItem item;

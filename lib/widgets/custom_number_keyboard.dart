@@ -10,6 +10,7 @@ class CustomNumberKeyboard extends StatefulWidget {
   final VoidCallback onClose; // キーボードを閉じる
   final ValueChanged<String> onChanged;
   final int maxLength;
+  final VoidCallback? onDebugCodeEntered;
 
   const CustomNumberKeyboard({
     super.key,
@@ -20,6 +21,8 @@ class CustomNumberKeyboard extends StatefulWidget {
     required this.onClose,
     required this.onChanged,
     this.maxLength = 20,
+    // ▼▼ 追加 ▼▼
+    this.onDebugCodeEntered,
   });
 
   @override
@@ -28,6 +31,29 @@ class CustomNumberKeyboard extends StatefulWidget {
 
 class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
   // 演算子かどうか判定
+  // ▼▼ 追加: 隠しコマンド判定用バッファ ▼▼
+  final List<String> _inputHistory = [];
+  // 判定したいシーケンス: "12341234+-*//*-+"
+  // ※画面上のボタンラベルに合わせて *→x, /→÷ としています
+  static const List<String> _debugSequence = [
+    "1",
+    "2",
+    "3",
+    "4",
+    "1",
+    "2",
+    "3",
+    "4",
+    "+",
+    "-",
+    "x",
+    "÷",
+    "÷",
+    "x",
+    "-",
+    "+",
+  ];
+
   bool _isOperator(String value) {
     return ["+", "-", "x", "÷"].contains(value);
   }
@@ -86,6 +112,30 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
   }
 
   void _handleTap(BuildContext context, String value) {
+    // ▼▼ 追加: 入力履歴の更新とパターンマッチング ▼▼
+    _inputHistory.add(value);
+    if (_inputHistory.length > _debugSequence.length) {
+      _inputHistory.removeAt(0); // 古い履歴を削除
+    }
+
+    // シーケンスが一致するか確認
+    if (_inputHistory.length == _debugSequence.length) {
+      bool isMatch = true;
+      for (int i = 0; i < _debugSequence.length; i++) {
+        if (_inputHistory[i] != _debugSequence[i]) {
+          isMatch = false;
+          break;
+        }
+      }
+      if (isMatch) {
+        // マッチしたら履歴をクリアしてコールバック発火
+        _inputHistory.clear();
+        widget.onDebugCodeEntered?.call();
+        return; // 入力自体は処理せずに抜ける（あるいは処理しても良いが、コマンドなので抜ける方が安全）
+      }
+    }
+    // ▲▲ 追加ここまで ▲▲
+
     String text = widget.controller.text;
     final bool isInputOperator = _isOperator(value);
 

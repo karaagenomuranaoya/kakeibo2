@@ -6,21 +6,12 @@ This is a **Household Account Book (Kakeibo) app combined with a Gacha game elem
 ## Project Tree
 ```
 kakeibo2/
-    textify.py
     .metadata
-    a.py
-    all_code.txt
     README.md
     pubspec.yaml
-    combined_code.txt
-    a.txt
-    get_tree.py
     .gitignore
     .flutter-plugins-dependencies
-    all_code.py
     analysis_options.yaml
-    extract_flutter.py
-    tree.txt
     lib/
         main.dart
         utils/

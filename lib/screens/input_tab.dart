@@ -230,6 +230,9 @@ class _InputTabState extends State<InputTab>
                         : null,
                     onClose: _vm.closeKeyboard,
                     onChanged: (_) {},
+                    // ▼▼ 追加: デモデータ注入用コールバック ▼▼
+                    onDebugCodeEntered: () =>
+                        _vm.confirmAndInjectDemoData(context),
                   ),
                 ),
 
