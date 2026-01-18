@@ -1,41 +1,57 @@
 import os
 from pathlib import Path
 
-def aggregate_flutter_code(output_file="all_code.txt"):
-    # 除外ディレクトリ（lib/dataをここから削除し、中身を探索対象に含めました）
-    exclude_dirs = {'.git', '.dart_tool', 'build', 'ios', 'android', 'windows', 'linux', 'macos'}
+def aggregate_flutter_code():
+    # --- パス設定 ---
+    # スクリプトの場所 (root/z_textify) から見たルート (root) を取得
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent
     
-    # 除外したい特定のファイルパス（プロジェクトルートからの相対パス）
-    exclude_files = {
-        'lib/data/gacha_data_backup.dart',
-        'pubspec.lock', # 必要に応じて追加
+    # 出力ファイルパス (root/z_text/all_code.txt)
+    output_dir = project_root / "z_text"
+    output_file = output_dir / "all_code.txt"
+
+    # 出力ディレクトリが存在しない場合は作成
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- 除外設定 ---
+    exclude_dirs = {
+        '.git', '.dart_tool', 'build', 'ios', 'android', 
+        'windows', 'linux', 'macos', 'z_textify', 'z_text'
     }
     
-    # 対象とする拡張子
+    exclude_files = {
+        'lib/data/gacha_data_backup.dart',
+        'pubspec.lock',
+    }
+    
     include_extensions = {'.dart', '.yaml', '.json'}
 
-    project_root = Path.cwd()
-    
+    print(f"Project Root: {project_root}")
+    print(f"Output File: {output_file}")
+
     with open(output_file, "w", encoding="utf-8") as f:
+        # project_root を起点に探索
         for root, dirs, files in os.walk(project_root):
             # 除外ディレクトリのスキップ
             dirs[:] = [d for d in dirs if d not in exclude_dirs]
             
             for file in files:
                 file_path = Path(root) / file
-                # 相対パスを取得（例: lib/main.dart）
+                
+                # プロジェクトルートからの相対パスを計算
                 try:
                     relative_path = file_path.relative_to(project_root)
                 except ValueError:
                     continue
 
-                # 特定のファイルを除外、または拡張子が対象外ならスキップ
-                if str(relative_path) in exclude_files:
+                # 除外条件の判定
+                if str(relative_path).replace(os.sep, '/') in exclude_files:
                     continue
                 if not any(file.endswith(ext) for ext in include_extensions):
                     continue
                 
-                # AIがファイル境界を認識しやすいようにフォーマット
+                # 書き込み
                 f.write(f"\n\n--- FILE: {relative_path} ---\n")
                 f.write("```dart\n" if file.endswith('.dart') else "```\n")
                 try:

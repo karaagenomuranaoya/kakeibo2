@@ -1,34 +1,18 @@
 
 # Application Overview
 This is a **Household Account Book (Kakeibo) app combined with a Gacha game element**.
-- Users record daily expenses/incomes.
-- Recording entries rewards users with points or tickets to spin a Gacha.
-- The Gacha allows users to collect characters/items.
-
-# Project Context for Flutter/Dart
-This document provides the **Project Structure**, **Dependencies**, and **Core Logic/Data Definitions**.
-
-## Instructions for AI
-1. **Context Understanding**:
-   - Use the **Tree** to understand the file organization.
-   - Use the **Core Logic Files** (Models, Repositories, Services, Utils) to understand data types, global functions, and the "Kakeibo x Gacha" logic.
-2. **Task Execution**:
-   - I will provide the **Specific Modification Task** and the **Target Code** (UI/Widget files) in the next message.
-   - When modifying the target code, assume existing custom widgets work as they are used in the snippet, unless I ask to modify them.
-3. **Missing Information**:
-   - If the task requires modifying a file NOT included here (e.g., a specific Custom Widget definition), **explicitly ask me to provide that file.**
-   - **Do not hallucinate** methods or parameters for unknown classes.
-
+... (省略) ...
 --- START OF CONTEXT ---
 ## Project Tree
 ```
-./
+kakeibo2/
+    textify.py
     .metadata
     a.py
     all_code.txt
     README.md
-    ai_context.py
     pubspec.yaml
+    combined_code.txt
     a.txt
     get_tree.py
     .gitignore
@@ -37,7 +21,6 @@ This document provides the **Project Structure**, **Dependencies**, and **Core L
     analysis_options.yaml
     extract_flutter.py
     tree.txt
-    ai_context.txt
     lib/
         main.dart
         utils/

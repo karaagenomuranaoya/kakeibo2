@@ -1,0 +1,68 @@
+.
+├── lib/
+│   ├── data/
+│   │   ├── gacha_data.dart
+│   │   └── gacha_data_backup.dart
+│   ├── main.dart
+│   ├── models/
+│   │   ├── category_tag.dart
+│   │   ├── gacha_item.dart
+│   │   └── transaction_item.dart
+│   ├── repositories/
+│   │   ├── gacha_repository.dart
+│   │   ├── settings_repository.dart
+│   │   └── transaction_repository.dart
+│   ├── screens/
+│   │   ├── gacha/
+│   │   │   ├── dialogs/
+│   │   │   │   ├── gacha_complete_dialog.dart
+│   │   │   │   ├── gacha_history_dialog.dart
+│   │   │   │   ├── gacha_rate_dialog.dart
+│   │   │   │   ├── gacha_result_dialog.dart
+│   │   │   │   └── gacha_tutorial_content.dart
+│   │   │   ├── gacha_game_tab.dart
+│   │   │   └── widgets/
+│   │   │       ├── gacha_action_panel.dart
+│   │   │       ├── gacha_header.dart
+│   │   │       └── gacha_item_tile.dart
+│   │   ├── gacha_screen.dart
+│   │   ├── history_monthly_page.dart
+│   │   ├── history_screen.dart
+│   │   ├── input/
+│   │   │   ├── input_tab_tutorial.dart
+│   │   │   └── input_tab_view_model.dart
+│   │   ├── input_tab.dart
+│   │   ├── main_screen.dart
+│   │   ├── monthly_report_screen.dart
+│   │   ├── settings/
+│   │   │   ├── category_manage_screen.dart
+│   │   │   ├── developer_tips_screen.dart
+│   │   │   └── settings_screen.dart
+│   │   └── summary_detail_screen.dart
+│   ├── services/
+│   │   ├── history_service.dart
+│   │   └── input_service.dart
+│   ├── utils/
+│   │   ├── app_date_utils.dart
+│   │   ├── flash_message_mixin.dart
+│   │   └── simple_calculator.dart
+│   └── widgets/
+│       ├── app_drawer.dart
+│       ├── card_settings_dialog.dart
+│       ├── category_selector.dart
+│       ├── custom_number_keyboard.dart
+│       ├── flash_message.dart
+│       ├── input/
+│       │   ├── amount_input_area.dart
+│       │   ├── input_control_panel.dart
+│       │   └── payment_selector.dart
+│       ├── monthly_report/
+│       │   ├── calendar_view.dart
+│       │   ├── daily_transaction_list.dart
+│       │   ├── graph_view.dart
+│       │   └── total_expense_card.dart
+│       ├── monthly_report_components.dart
+│       ├── transaction_edit_dialog.dart
+│       ├── transaction_tile.dart
+│       └── tutorial_overlay.dart
+└── pubspec.yaml
