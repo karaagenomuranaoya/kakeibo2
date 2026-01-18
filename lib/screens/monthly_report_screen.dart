@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 追加
-import 'package:tutorial_coach_mark/tutorial_coach_mark.dart'; // 追加
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart';
-import '../widgets/transaction_tile.dart';
 import '../widgets/transaction_edit_dialog.dart';
 import 'summary_detail_screen.dart';
 import 'history_screen.dart';
@@ -26,7 +25,6 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
   late int _currentMonth;
   int _currentTabIndex = 0;
 
-  // ▼▼ 追加: チュートリアル用のキー ▼▼
   final GlobalKey _titleKey = GlobalKey();
 
   @override
@@ -45,16 +43,13 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
       }
     });
 
-    // ▼▼ 追加: 画面描画後にチュートリアルチェック ▼▼
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkTutorial();
     });
   }
 
-  // ▼▼ 追加: チュートリアル表示ロジック ▼▼
   Future<void> _checkTutorial() async {
     final prefs = await SharedPreferences.getInstance();
-    // 入力画面とは別のキーで管理
     final bool isShown = prefs.getBool('is_report_tutorial_shown_v1') ?? false;
 
     if (!isShown && mounted && _titleKey.currentContext != null) {
@@ -160,7 +155,7 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
       appBar: AppBar(
         centerTitle: true,
         title: GestureDetector(
-          key: _titleKey, // ▼▼ 追加: キーを設定 ▼▼
+          key: _titleKey,
           onTap: _pickMonth,
           child: Container(
             color: Colors.transparent,
@@ -205,7 +200,6 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
   }
 }
 
-// ... (以下の MonthPage クラスなどは変更なしのため省略) ...
 class MonthPage extends StatefulWidget {
   final int year;
   final int month;
@@ -270,7 +264,22 @@ class _MonthPageState extends State<MonthPage> {
       padding: const EdgeInsets.only(bottom: 50),
       child: Column(
         children: [
-          _buildTotalCard(total),
+          // 合計カードコンポーネント
+          TotalExpenseCard(
+            total: total,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SummaryDetailScreen(
+                    year: widget.year,
+                    month: widget.month,
+                  ),
+                ),
+              );
+            },
+          ),
+          // カレンダー/グラフ切り替え
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: widget.tabIndex == 0
@@ -299,164 +308,25 @@ class _MonthPageState extends State<MonthPage> {
                   ),
           ),
           const Divider(height: 1),
-          _buildDailyList(),
+          // 日次リストコンポーネント
+          DailyTransactionList(
+            history: _history,
+            expenseTags: _expenseTags,
+            dayKeys: _dayKeys,
+            onTransactionTap: (item) {
+              showDialog(
+                context: context,
+                builder: (context) => TransactionEditDialog(
+                  item: item,
+                  onSuccess: () {
+                    _load();
+                  },
+                ),
+              );
+            },
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _buildTotalCard(int total) {
-    return Material(
-      color: Colors.blue.shade50,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  SummaryDetailScreen(year: widget.year, month: widget.month),
-            ),
-          );
-        },
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
-          child: Column(
-            children: [
-              const Text(
-                '合計支出',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '¥ $total',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 6, left: 5),
-                    child: Icon(
-                      Icons.arrow_forward_ios,
-                      size: 14,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-              const Text(
-                'タップして詳細を見る',
-                style: TextStyle(fontSize: 10, color: Colors.blueGrey),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDailyList() {
-    if (_history.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(30),
-        child: Text('データがありません', style: TextStyle(color: Colors.grey)),
-      );
-    }
-
-    final grouped = <int, List<TransactionItem>>{};
-    for (var item in _history) {
-      if (!grouped.containsKey(item.date.day)) {
-        grouped[item.date.day] = [];
-      }
-      grouped[item.date.day]!.add(item);
-    }
-
-    final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-    const weekDays = ["月", "火", "水", "木", "金", "土", "日"];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: sortedDays.map((day) {
-        final items = grouped[day]!;
-        if (!_dayKeys.containsKey(day)) {
-          _dayKeys[day] = GlobalKey();
-        }
-
-        final dayTotal = items.fold(0, (sum, i) => sum + i.amount);
-        final dateObj = items.first.date;
-        final weekStr = weekDays[dateObj.weekday - 1];
-
-        return Container(
-          key: _dayKeys[day],
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                color: Colors.grey.shade100,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '${dateObj.month}/$day ($weekStr)',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black54,
-                      ),
-                    ),
-                    Text(
-                      '¥$dayTotal',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              ...items.map((item) {
-                Color color = Colors.grey;
-                IconData? icon;
-
-                try {
-                  final tag = _expenseTags.firstWhere(
-                    (t) => t.label == item.expense,
-                  );
-                  color = tag.color;
-                  icon = tag.displayIcon;
-                } catch (_) {}
-
-                return TransactionTile(
-                  item: item,
-                  categoryColor: color,
-                  categoryIcon: icon,
-                  showDate: false,
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => TransactionEditDialog(
-                        item: item,
-                        onSuccess: () {
-                          _load();
-                        },
-                      ),
-                    );
-                  },
-                );
-              }),
-              const Divider(height: 1),
-            ],
-          ),
-        );
-      }).toList(),
     );
   }
 }
