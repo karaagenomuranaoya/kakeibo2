@@ -55,7 +55,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _checkIfCardType() async {
-    if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
+    if (widget.filterKey == 'payment' && widget.filterValue != '記録しない') {
       final card = await _historyService.getCardTagByLabel(widget.filterValue);
       if (card != null && mounted) {
         setState(() {

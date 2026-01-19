@@ -269,7 +269,7 @@ class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
 
         final expense = data!.expenses[random.nextInt(data!.expenses.length)];
 
-        String payment = '現金';
+        String payment = '記録しない';
         CategoryTag? card;
         DateTime? paymentDate;
 

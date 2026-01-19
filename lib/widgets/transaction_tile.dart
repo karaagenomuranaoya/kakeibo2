@@ -24,7 +24,7 @@ class TransactionTile extends StatelessWidget {
     final List<String> details = [];
 
     if (item.payment.isNotEmpty &&
-        item.payment != '現金' &&
+        item.payment != '記録しない' &&
         item.payment != 'デフォルト') {
       details.add(item.payment);
     }

@@ -197,7 +197,7 @@ void main() {
     final newItem = TransactionItem(
       amount: 1500,
       expense: '食費',
-      payment: '現金',
+      payment: '記録しない',
       date: DateTime(2025, 1, 1),
       memo: 'ラーメン',
     );
@@ -218,7 +218,7 @@ void main() {
     final item = TransactionItem(
       amount: 500,
       expense: 'おやつ',
-      payment: '現金',
+      payment: '記録しない',
       date: DateTime.now(),
     );
     await repo.addTransaction(item);
@@ -434,12 +434,12 @@ void main() {
   Future<void> addSampleData() async {
     final repo = TransactionRepository();
 
-    // 1. 1月の食費 (現金)
+    // 1. 1月の食費 (記録しない)
     await repo.addTransaction(
       TransactionItem(
         amount: 1000,
         expense: '食費',
-        payment: '現金',
+        payment: '記録しない',
         date: DateTime(2025, 1, 15),
       ),
     );
@@ -455,12 +455,12 @@ void main() {
       ),
     );
 
-    // 3. 2月の食費 (現金)
+    // 3. 2月の食費 (記録しない)
     await repo.addTransaction(
       TransactionItem(
         amount: 2000,
         expense: '食費',
-        payment: '現金',
+        payment: '記録しない',
         date: DateTime(2025, 2, 10),
       ),
     );
@@ -1966,7 +1966,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _checkIfCardType() async {
-    if (widget.filterKey == 'payment' && widget.filterValue != '現金') {
+    if (widget.filterKey == 'payment' && widget.filterValue != '記録しない') {
       final card = await _historyService.getCardTagByLabel(widget.filterValue);
       if (card != null && mounted) {
         setState(() {
@@ -4146,7 +4146,7 @@ class InputTabTutorial {
                     ),
                     SizedBox(height: 10),
                     Text(
-                      "左右にスワイプして「カード」や「現金（記録なし）」を切り替えられます。\n\n長押しすると、そのカードの利用明細へジャンプします。",
+                      "左右にスワイプして「カード」や「記録しない（記録なし）」を切り替えられます。\n\n長押しすると、そのカードの利用明細へジャンプします。",
                       style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   ],
@@ -6521,8 +6521,8 @@ class HistoryService {
       if (filterKey == 'expense') {
         if (i.expense != filterValue) return false;
       } else if (filterKey == 'payment') {
-        if (filterValue == '現金' && i.payment.isEmpty) {
-          // 現金扱い（空文字）OK
+        if (filterValue == '記録しない' && i.payment.isEmpty) {
+          // 記録しない扱い（空文字）OK
         } else if (i.payment != filterValue) {
           return false;
         }
@@ -7177,7 +7177,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                // ▼▼ 変更: 「現金」項目を削除しました ▼▼
+                // ▼▼ 変更: 「記録しない」項目を削除しました ▼▼
                 ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),
@@ -8002,7 +8002,7 @@ class TransactionTile extends StatelessWidget {
     final List<String> details = [];
 
     if (item.payment.isNotEmpty &&
-        item.payment != '現金' &&
+        item.payment != '記録しない' &&
         item.payment != 'デフォルト') {
       details.add(item.payment);
     }
@@ -8737,7 +8737,7 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     // 項目数 = 「記録しない(1つ)」 + カード数
     _itemCount = 1 + widget.cardList.length;
 
-    // 現在の選択状態から初期ページ位置を計算 (0: 現金, 1~: カード)
+    // 現在の選択状態から初期ページ位置を計算 (0: 記録しない, 1~: カード)
     int initialOffset = 0;
     if (widget.isCardPayment) {
       initialOffset = 1 + widget.selectedCardIndex;
@@ -8771,7 +8771,7 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     final int actualIndex = index % _itemCount;
 
     if (actualIndex == 0) {
-      // 0番目は「記録しない（現金）」
+      // 0番目は「記録しない（記録しない）」
       if (widget.isCardPayment) {
         widget.onToggle(false);
       }
@@ -8848,13 +8848,13 @@ class _PaymentSelectorState extends State<PaymentSelector> {
 
   Widget _buildContent(int index) {
     if (index == 0) {
-      // 現金（記録しない）
+      // 記録しない（記録しない）
       return _buildChip(
         label: '記録しない',
         icon: Icons.wallet,
         color: Colors.grey,
         isCard: false,
-        onLongPress: null, // 現金は長押しなし
+        onLongPress: null, // 記録しないは長押しなし
       );
     } else {
       // カード

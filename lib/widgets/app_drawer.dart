@@ -57,7 +57,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const Divider(),
                 _buildSectionHeader("支払い方法別 履歴"),
-                // ▼▼ 変更: 「現金」項目を削除しました ▼▼
+                // ▼▼ 変更: 「記録しない」項目を削除しました ▼▼
                 ..._cardList.map(
                   (tag) => _buildFilterTile(context, tag, 'payment'),
                 ),

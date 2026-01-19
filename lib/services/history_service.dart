@@ -41,8 +41,8 @@ class HistoryService {
       if (filterKey == 'expense') {
         if (i.expense != filterValue) return false;
       } else if (filterKey == 'payment') {
-        if (filterValue == '現金' && i.payment.isEmpty) {
-          // 現金扱い（空文字）OK
+        if (filterValue == '記録しない' && i.payment.isEmpty) {
+          // 記録しない扱い（空文字）OK
         } else if (i.payment != filterValue) {
           return false;
         }

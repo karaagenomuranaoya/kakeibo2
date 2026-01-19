@@ -17,12 +17,12 @@ void main() {
   Future<void> addSampleData() async {
     final repo = TransactionRepository();
 
-    // 1. 1月の食費 (現金)
+    // 1. 1月の食費 (記録しない)
     await repo.addTransaction(
       TransactionItem(
         amount: 1000,
         expense: '食費',
-        payment: '現金',
+        payment: '記録しない',
         date: DateTime(2025, 1, 15),
       ),
     );
@@ -38,12 +38,12 @@ void main() {
       ),
     );
 
-    // 3. 2月の食費 (現金)
+    // 3. 2月の食費 (記録しない)
     await repo.addTransaction(
       TransactionItem(
         amount: 2000,
         expense: '食費',
-        payment: '現金',
+        payment: '記録しない',
         date: DateTime(2025, 2, 10),
       ),
     );

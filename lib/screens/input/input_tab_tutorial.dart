@@ -37,7 +37,7 @@ class InputTabTutorial {
                     ),
                     SizedBox(height: 10),
                     Text(
-                      "左右にスワイプして「カード」や「現金（記録なし）」を切り替えられます。\n\n長押しすると、そのカードの利用明細へジャンプします。",
+                      "左右にスワイプして「カード」や「記録しない（記録なし）」を切り替えられます。\n\n長押しすると、そのカードの利用明細へジャンプします。",
                       style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   ],

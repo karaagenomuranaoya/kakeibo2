@@ -37,7 +37,7 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     // 項目数 = 「記録しない(1つ)」 + カード数
     _itemCount = 1 + widget.cardList.length;
 
-    // 現在の選択状態から初期ページ位置を計算 (0: 現金, 1~: カード)
+    // 現在の選択状態から初期ページ位置を計算 (0: 記録しない, 1~: カード)
     int initialOffset = 0;
     if (widget.isCardPayment) {
       initialOffset = 1 + widget.selectedCardIndex;
@@ -71,7 +71,7 @@ class _PaymentSelectorState extends State<PaymentSelector> {
     final int actualIndex = index % _itemCount;
 
     if (actualIndex == 0) {
-      // 0番目は「記録しない（現金）」
+      // 0番目は「記録しない（記録しない）」
       if (widget.isCardPayment) {
         widget.onToggle(false);
       }
@@ -148,13 +148,13 @@ class _PaymentSelectorState extends State<PaymentSelector> {
 
   Widget _buildContent(int index) {
     if (index == 0) {
-      // 現金（記録しない）
+      // 記録しない（記録しない）
       return _buildChip(
         label: '記録しない',
         icon: Icons.wallet,
         color: Colors.grey,
         isCard: false,
-        onLongPress: null, // 現金は長押しなし
+        onLongPress: null, // 記録しないは長押しなし
       );
     } else {
       // カード

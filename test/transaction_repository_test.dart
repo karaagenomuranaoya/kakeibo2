@@ -21,7 +21,7 @@ void main() {
     final newItem = TransactionItem(
       amount: 1500,
       expense: '食費',
-      payment: '現金',
+      payment: '記録しない',
       date: DateTime(2025, 1, 1),
       memo: 'ラーメン',
     );
@@ -42,7 +42,7 @@ void main() {
     final item = TransactionItem(
       amount: 500,
       expense: 'おやつ',
-      payment: '現金',
+      payment: '記録しない',
       date: DateTime.now(),
     );
     await repo.addTransaction(item);
