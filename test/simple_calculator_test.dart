@@ -16,6 +16,11 @@ void main() {
       expect(SimpleCalculator.calculate('50x3'), '150');
     });
 
+    test('引き算と掛け算の優先順位', () {
+      // 家計簿の入力順としてどう処理されるか確認
+      expect(SimpleCalculator.calculate('100+20x3'), '160');
+    });
+
     // 家計簿アプリ特有の仕様（整数・四捨五入）
     test('割り算(割り切れる): 100÷2 = 50', () {
       expect(SimpleCalculator.calculate('100÷2'), '50');

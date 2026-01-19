@@ -156,7 +156,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   const NavigationDestination(
                     icon: Icon(Icons.star_outline, color: Colors.orange),
                     selectedIcon: Icon(Icons.star, color: Colors.orange),
-                    label: 'ガチャ',
+                    label: 'コレクション',
                   ),
               ],
             )

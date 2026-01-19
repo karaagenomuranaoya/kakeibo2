@@ -15,11 +15,17 @@ class SettingsRepository {
   Future<List<CategoryTag>> loadExpenseTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_expenseTagsKey);
+
+    List<CategoryTag> tags;
     if (jsonString == null) {
-      return CategoryTag.defaultExpenses;
+      tags = CategoryTag.defaultExpenses;
+    } else {
+      final List<dynamic> jsonList = json.decode(jsonString);
+      tags = jsonList.map((e) => CategoryTag.fromJson(e)).toList();
     }
-    final List<dynamic> jsonList = json.decode(jsonString);
-    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+
+    // ▼▼ 修正: ID重複チェックと修復処理を通してから返す ▼▼
+    return _sanitizeTags(tags);
   }
 
   Future<void> saveExpenseTags(List<CategoryTag> tags) async {
@@ -32,11 +38,17 @@ class SettingsRepository {
   Future<List<CategoryTag>> loadCardTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_cardTagsKey);
+
+    List<CategoryTag> tags;
     if (jsonString == null) {
-      return CategoryTag.defaultCards;
+      tags = CategoryTag.defaultCards;
+    } else {
+      final List<dynamic> jsonList = json.decode(jsonString);
+      tags = jsonList.map((e) => CategoryTag.fromJson(e)).toList();
     }
-    final List<dynamic> jsonList = json.decode(jsonString);
-    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+
+    // ▼▼ 修正: ID重複チェックと修復処理を通してから返す ▼▼
+    return _sanitizeTags(tags);
   }
 
   Future<void> saveCardTags(List<CategoryTag> tags) async {
@@ -78,7 +90,7 @@ class SettingsRepository {
     await prefs.setBool(_showCardOnInputKey, enabled);
   }
 
-  // ▼▼ 追加: バイブレーション設定の管理 ▼▼
+  // --- バイブレーション設定の管理 ---
   Future<bool> loadVibrationEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     // デフォルトは true (振動する)
@@ -90,15 +102,38 @@ class SettingsRepository {
     await prefs.setBool(_vibrationEnabledKey, enabled);
   }
 
-  /// 全てのチュートリアル済みフラグをリセット（false）にする
-  Future<void> resetTutorials() async {
-    final prefs = await SharedPreferences.getInstance();
+  // ▼▼ 追加: 重複IDを検知してユニークにするヘルパーメソッド ▼▼
+  // これにより、IDが被ってReorderableListViewでエラーになったり
+  // 項目が表示されなかったりするバグを自動的に直します。
+  List<CategoryTag> _sanitizeTags(List<CategoryTag> rawTags) {
+    final Set<String> seenIds = {};
+    final List<CategoryTag> sanitized = [];
 
-    // 入力画面のキー
-    await prefs.setBool('is_input_tutorial_shown_v1', false);
-    // レポート画面のキー
-    await prefs.setBool('is_report_tutorial_shown_v1', false);
-    // ガチャ画面のキー
-    await prefs.setBool('is_gacha_tutorial_shown', false);
+    for (var tag in rawTags) {
+      if (seenIds.contains(tag.id)) {
+        // IDが重複している場合、IDをnullにして再生成させた新しいタグを作る
+        // (CategoryTagのコンストラクタでid: nullなら自動生成される仕組みを利用)
+        final newTag = CategoryTag(
+          id: null, // 新規ID生成トリガー
+          label: tag.label,
+          color: tag.color,
+          isCircle: tag.isCircle,
+          closingDay: tag.closingDay,
+          paymentDay: tag.paymentDay,
+          paymentMonthOffset: tag.paymentMonthOffset,
+          iconCodePoint: tag.iconCodePoint,
+          iconFontFamily: tag.iconFontFamily,
+          iconFontPackage: tag.iconFontPackage,
+        );
+        sanitized.add(newTag);
+        // 新しく生成されたIDを記録（理論上被らないが念のため）
+        seenIds.add(newTag.id);
+      } else {
+        // 重複していない正常なデータ
+        sanitized.add(tag);
+        seenIds.add(tag.id);
+      }
+    }
+    return sanitized;
   }
 }

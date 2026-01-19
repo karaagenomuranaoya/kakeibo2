@@ -3,7 +3,6 @@ import '../../models/category_tag.dart';
 import '../../models/gacha_item.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/gacha_repository.dart';
-// ▼ 作成したダイアログをインポート
 import 'dialogs/category_edit_dialog.dart';
 
 class CategoryManageScreen extends StatefulWidget {
@@ -22,17 +21,33 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   List<CategoryTag> _expenseList = [];
   List<CategoryTag> _cardList = [];
 
-  // ガチャデータ
   List<GachaItem> _gachaItems = [];
   Map<String, int> _gachaCounts = {};
 
   bool _isLoading = true;
+  // 現在のタブインデックスを保持する変数（FAB用）
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // タブ切り替えを監視してFABの動作を更新する
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+        });
+      }
+    });
     _loadData();
+  }
+
+  // タブコントローラーの破棄忘れ防止
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -57,13 +72,11 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     await _settingsRepository.saveCardTags(_cardList);
   }
 
-  // 追加・編集ダイアログを開く
   Future<void> _openEditDialog({
     required bool isExpense,
     CategoryTag? item,
     required int index,
   }) async {
-    // 分割したダイアログウィジェットを呼び出す
     final CategoryTag? result = await showDialog<CategoryTag>(
       context: context,
       builder: (context) {
@@ -76,15 +89,12 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       },
     );
 
-    // 保存ボタンが押されてデータが返ってきた場合のみ更新
     if (result != null) {
       setState(() {
         final list = isExpense ? _expenseList : _cardList;
         if (item == null) {
-          // 新規追加
           list.add(result);
         } else {
-          // 編集更新
           list[index] = result;
         }
       });
@@ -124,8 +134,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
         children: [_buildList(isExpense: true), _buildList(isExpense: false)],
       ),
       floatingActionButton: FloatingActionButton(
+        // _tabController.index は非同期でズレることがあるため、listenerで更新した変数を使う
         onPressed: () => _openEditDialog(
-          isExpense: _tabController.index == 0,
+          isExpense: _currentTabIndex == 0,
           index: -1,
           item: null,
         ),
@@ -136,6 +147,7 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
 
   Widget _buildList({required bool isExpense}) {
     final list = isExpense ? _expenseList : _cardList;
+
     return ReorderableListView.builder(
       itemCount: list.length,
       padding: const EdgeInsets.only(bottom: 80),
@@ -149,6 +161,9 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       },
       itemBuilder: (context, index) {
         final item = list[index];
+        // アイコンデータを変数に格納
+        final iconData = item.displayIcon;
+
         return ListTile(
           key: ValueKey(item.id),
           leading: Container(
@@ -157,11 +172,21 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: item.color.withOpacity(0.1),
+              // shapeとborderRadiusの競合を防ぐため、明示的に切り分ける
               shape: item.isCircle ? BoxShape.circle : BoxShape.rectangle,
               borderRadius: item.isCircle ? null : BorderRadius.circular(8),
               border: Border.all(color: item.color, width: 1.5),
             ),
-            child: Icon(item.displayIcon, color: item.color, size: 20),
+            // ▼▼ 修正箇所: RepaintBoundaryとKeyで描画を安定化 ▼▼
+            child: RepaintBoundary(
+              child: Icon(
+                iconData,
+                // Keyを指定することで、データが変わった時や再利用時に確実に再構築させる
+                key: ValueKey(iconData.hashCode),
+                color: item.color,
+                size: 20,
+              ),
+            ),
           ),
           title: Text(item.label, overflow: TextOverflow.ellipsis),
           trailing: Row(

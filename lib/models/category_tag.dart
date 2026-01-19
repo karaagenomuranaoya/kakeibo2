@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math'; // ▼ 追加
 
 class CategoryTag {
   final String id;
@@ -27,7 +28,9 @@ class CategoryTag {
     this.iconCodePoint,
     this.iconFontFamily,
     this.iconFontPackage,
-  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+  }) : id =
+           id ??
+           "${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(10000)}";
 
   // 保存された情報からIconDataを復元するgetter
   IconData? get icon {
