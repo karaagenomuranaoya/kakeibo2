@@ -146,6 +146,17 @@ class InputService {
       );
     }
 
+    // ▼▼ 追加: 桁数（金額）の上限チェック ▼▼
+    // 10桁まで = 9,999,999,999 までOK。10,000,000,000 (100億)以上はNG
+    if (amount >= 10000000000) {
+      return InputServiceResult(
+        success: false,
+        message: '金額が大きすぎます',
+        messageColor: Colors.redAccent,
+      );
+    }
+    // ▲▲ 追加ここまで ▲▲
+
     // 2. 支払い情報の構築
     String paymentMethod = '';
     DateTime? paymentDate;

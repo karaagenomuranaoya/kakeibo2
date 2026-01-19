@@ -385,16 +385,45 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
 
     if (text.isEmpty && isInputOperator) return;
 
-    if (!isInputOperator && text.length >= widget.maxLength) {
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('これ以上入力できません'),
-          duration: Duration(milliseconds: 500),
-        ),
-      );
+    // ▼▼ 変更: ここから桁数制限ロジック ▼▼
+
+    // 1. 全体の文字数制限（計算式が長くなりすぎてエラーになるのを防ぐ安全弁）
+    // 数字だけでなく演算子も含んだ全体の長さチェック
+    if (text.length >= 30) {
+      // 少し余裕を持たせて30文字くらいで止める
+      _showWarning(context, 'これ以上入力できません');
       return;
     }
+
+    // 2. 数値単体の桁数制限（これがメインの10桁制限）
+    // 入力しようとしているのが「数字」の場合のみチェック
+    if (!isInputOperator) {
+      // 今入力している数値の部分を取り出す（演算子で区切られた最後の塊）
+      // 例: "100+1234" -> ["100", "1234"] -> "1234"
+      final parts = text.split(RegExp(r'[\+\-x÷]'));
+      final currentNumStr = parts.isNotEmpty ? parts.last : "";
+
+      // カンマを除去して純粋な数字の長さをカウント
+      final currentDigits = currentNumStr.replaceAll(',', '').length;
+
+      // 既に10桁あって、さらに数字を足そうとしているならブロック
+      if (currentDigits >= 10) {
+        _showWarning(context, '10桁までしか入力できません');
+        return;
+      }
+    }
+    // ▲▲ 変更ここまで ▲▲
+
+    // if (!isInputOperator && text.length >= widget.maxLength) {
+    //   ScaffoldMessenger.of(context).clearSnackBars();
+    //   ScaffoldMessenger.of(context).showSnackBar(
+    //     const SnackBar(
+    //       content: Text('これ以上入力できません'),
+    //       duration: Duration(milliseconds: 500),
+    //     ),
+    //   );
+    //   return;
+    // }
 
     // 演算子の連続入力防止（置換）
     if (isInputOperator && text.isNotEmpty) {
@@ -417,6 +446,17 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     String newText = text.replaceRange(start, end, value);
     String formattedText = _formatExpression(newText);
     _updateController(formattedText);
+  }
+
+  // ▼▼ 追加: 警告メッセージを出すヘルパーメソッド ▼▼
+  void _showWarning(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        duration: const Duration(milliseconds: 1000),
+      ),
+    );
   }
 
   void _handleDelete() {
@@ -447,8 +487,41 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
   }
 
   void _handleCalculate() {
-    final result = SimpleCalculator.calculate(widget.controller.text);
-    final formattedResult = _formatExpression(result);
+    // 1. 計算実行
+    final resultString = SimpleCalculator.calculate(widget.controller.text);
+    double? val = double.tryParse(resultString);
+
+    if (val == null) return; // 計算不能
+
+    // 2. 例外チェック（ここを強化！）
+
+    // A. ゼロ除算 (例: 100 ÷ 0) -> 無限大(Infinity)になる
+    if (val.isInfinite || val.isNaN) {
+      _showWarning(context, '0では割れません');
+      return;
+    }
+
+    // B. 金額が大きすぎる (10桁以上)
+    if (val.abs() >= 10000000000) {
+      _showWarning(context, '金額が大きすぎます');
+      return;
+    }
+
+    // C. マイナスになる (例: 100 - 200)
+    if (val < 0) {
+      _showWarning(context, 'マイナスの金額は入力できません');
+      return;
+    }
+
+    // D. 0円になる (例: 100 - 100)
+    // ※ 入力中は0でもいいですが、計算結果として0が確定するのは無意味なので弾きます
+    if (val == 0) {
+      _showWarning(context, '金額が0円になってしまいます');
+      return;
+    }
+
+    // 3. 問題なければ表示を更新
+    final formattedResult = _formatExpression(resultString);
     _updateController(formattedResult);
   }
 

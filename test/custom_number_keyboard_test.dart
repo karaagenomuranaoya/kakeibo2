@@ -157,7 +157,7 @@ void main() {
 
       // "保存して閉じる" ボタンを探してタップ
       // テキストボタンなのでラベルで探す
-      await tester.tap(find.text('保存して閉じる'));
+      await tester.tap(find.text('保存'));
 
       expect(isSaved, isTrue);
     });
