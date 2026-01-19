@@ -64,7 +64,7 @@ class _InputTabState extends State<InputTab>
   void didUpdateWidget(covariant InputTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.dataVersion != widget.dataVersion) {
-      _vm.loadData();
+      _vm.loadData().then((_) => _checkTutorial());
     }
   }
 

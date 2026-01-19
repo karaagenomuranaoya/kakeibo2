@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ▼▼ 追加: バイブレーション用 ▼▼
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../repositories/gacha_repository.dart';
 import '../../models/gacha_item.dart';
@@ -10,13 +10,16 @@ import 'dialogs/gacha_result_dialog.dart';
 import 'dialogs/gacha_complete_dialog.dart';
 import 'dialogs/gacha_tutorial_content.dart';
 
-// ▼▼ 新しいWidgetをインポート ▼▼
 import 'widgets/gacha_header.dart';
 import 'widgets/gacha_item_tile.dart';
 import 'widgets/gacha_action_panel.dart';
 
 class GachaGameTab extends StatefulWidget {
-  const GachaGameTab({super.key});
+  // ▼▼ 追加: 親からバージョン番号を受け取る ▼▼
+  final int dataVersion;
+
+  // ▼▼ 修正: コンストラクタで dataVersion を受け取るように変更 ▼▼
+  const GachaGameTab({super.key, this.dataVersion = 0});
 
   @override
   State<GachaGameTab> createState() => _GachaGameTabState();
@@ -35,7 +38,7 @@ class _GachaGameTabState extends State<GachaGameTab>
 
   final GlobalKey _ticketKey = GlobalKey();
   final GlobalKey _spinButtonKey = GlobalKey();
-  final GlobalKey _topBarKey = GlobalKey(); // ヘッダー全体用(必要に応じて)
+  final GlobalKey _topBarKey = GlobalKey();
   final GlobalKey _gridKey = GlobalKey();
 
   bool _pendingTutorialPhase2 = false;
@@ -49,6 +52,16 @@ class _GachaGameTabState extends State<GachaGameTab>
     _loadData();
   }
 
+  // ▼▼ 追加: 親から更新通知(dataVersion変更)が来たらリロードする ▼▼
+  @override
+  void didUpdateWidget(covariant GachaGameTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dataVersion != widget.dataVersion) {
+      _loadData();
+    }
+  }
+  // ▲▲ 追加ここまで ▲▲
+
   // --- チュートリアル関連 ---
   static const String _tutorialKey = 'is_gacha_tutorial_shown';
 
@@ -56,6 +69,7 @@ class _GachaGameTabState extends State<GachaGameTab>
     final prefs = await SharedPreferences.getInstance();
     final bool isShown = prefs.getBool(_tutorialKey) ?? false;
 
+    // クレジット(チケット)を持っている場合のみチュートリアルを表示
     if (!isShown && mounted && _credits > 0) {
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _showTutorialPhase1();
@@ -116,6 +130,7 @@ class _GachaGameTabState extends State<GachaGameTab>
         _isLoading = false;
       });
 
+      // データ読み込み完了後にチュートリアルチェック
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _checkTutorialPhase1();
       });
@@ -131,6 +146,7 @@ class _GachaGameTabState extends State<GachaGameTab>
   }
 
   Future<void> _spinGacha() async {
+    // スピン開始時にも念のためチュートリアル完了とする
     await _completeTutorial();
 
     if (_credits < _costPerSpin) return;
@@ -163,12 +179,7 @@ class _GachaGameTabState extends State<GachaGameTab>
 
       if (!mounted) return;
 
-      // ▼▼ 追加: バイブレーション実行 ▼▼
-      // heavyImpact: 重めの衝突感（ガチャ結果に最適）
-      // mediumImpact: 軽い衝突感
-      // lightImpact: タップ音のような微細な振動
       await HapticFeedback.heavyImpact();
-      // ▲▲ 追加ここまで ▲▲
       await _showResultDialog(item, newCount);
 
       if (newCount == _maxLevel) {
@@ -231,15 +242,12 @@ class _GachaGameTabState extends State<GachaGameTab>
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          // ▼▼ ヘッダー部分 ▼▼
           GachaHeader(
             key: _topBarKey,
             ticketCount: spins,
             onRatePressed: _showRateDialog,
             ticketKey: _ticketKey,
           ),
-
-          // ▼▼ グリッド部分 ▼▼
           Expanded(
             child: GridView.builder(
               key: _gridKey,
@@ -273,8 +281,6 @@ class _GachaGameTabState extends State<GachaGameTab>
               },
             ),
           ),
-
-          // ▼▼ アクションパネル部分 ▼▼
           GachaActionPanel(
             buttonKey: _spinButtonKey,
             isAllComplete: isAllComplete,

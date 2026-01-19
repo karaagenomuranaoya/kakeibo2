@@ -40,6 +40,9 @@ atsumeru_kakeibo/
                 developer_tips_screen.dart
                 settings_screen.dart
                 category_manage_screen.dart
+                dialogs/
+                    category_edit_dialog.dart
+                    gacha_style_dialog.dart
             input/
                 input_tab_tutorial.dart
                 input_tab_view_model.dart
@@ -710,6 +713,18 @@ class SettingsRepository {
   Future<void> saveVibrationEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_vibrationEnabledKey, enabled);
+  }
+
+  /// 全てのチュートリアル済みフラグをリセット（false）にする
+  Future<void> resetTutorials() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 入力画面のキー
+    await prefs.setBool('is_input_tutorial_shown_v1', false);
+    // レポート画面のキー
+    await prefs.setBool('is_report_tutorial_shown_v1', false);
+    // ガチャ画面のキー
+    await prefs.setBool('is_gacha_tutorial_shown', false);
   }
 }
 
