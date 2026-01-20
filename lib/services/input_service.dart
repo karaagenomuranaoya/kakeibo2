@@ -203,24 +203,28 @@ class InputService {
 
       await _transactionRepo.addTransaction(newItem);
 
-      // 4. ガチャポイント処理
-      String msg = '保存しました';
+      // 4. ガチャポイント処理とメッセージ生成
+      String msg = '保存しました'; // 基本のメッセージ
       Color color = Colors.blue;
 
+      // ① まず支払日の情報をメッセージに入れる
+      if (paymentDate != null) {
+        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      // ② 次に（elseを使わずに）ガチャ処理を行う
       if (isGachaEnabled) {
+        // addCreditは (int 現在のポイント, bool 追加できたか) の2つを返します
         final result = await _gachaRepo.addCredit();
-        // final int currentCredits = result.$1;
+
+        // result.$2 が「ポイントが追加できたかどうか(bool)」です
+        // result.$1 は「現在のポイント数(int)」ですが、ここでは使いません（だから囮に見えたのかも！）
         final bool isAdded = result.$2;
 
         if (isAdded) {
-          msg = 'ガチャチケット獲得！';
-          color = Colors.orange;
-        } else {
-          msg = '保存しました（本日の上限到達）';
-          color = Colors.grey;
+          // ポイントが増えたら、メッセージの後ろにチケットを付け足す
+          msg += '🎫';
         }
-      } else if (paymentDate != null) {
-        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
       }
 
       return InputServiceResult(
