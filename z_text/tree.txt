@@ -37,6 +37,9 @@
 │   │   ├── settings/
 │   │   │   ├── category_manage_screen.dart
 │   │   │   ├── developer_tips_screen.dart
+│   │   │   ├── dialogs/
+│   │   │   │   ├── category_edit_dialog.dart
+│   │   │   │   └── gacha_style_dialog.dart
 │   │   │   └── settings_screen.dart
 │   │   └── summary_detail_screen.dart
 │   ├── services/

@@ -108,6 +108,7 @@ class GachaRepository {
 
     final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
     if (dailyCount >= _dailyLimit) {
+      //ここで5回制限をかけている
       return (currentTotal, false);
     }
 

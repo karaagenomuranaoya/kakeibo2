@@ -69,3 +69,5 @@ class TransactionItem {
     );
   }
 }
+
+//copywithを利用して、カテゴリや支払いの編集もできるようにしよう。

@@ -117,33 +117,34 @@ class InputService {
   }
 
   Future<InputServiceResult> registerTransaction({
-    required String rawAmount,
-    required String memo,
-    required DateTime date,
-    required CategoryTag expenseTag,
-    required bool isCardPayment,
-    required CategoryTag? cardTag,
-    required bool showCardOnInput,
-    required bool isGachaEnabled,
+    required String rawAmount, //計算前の金額
+    required String memo, //メモ
+    required DateTime date, //日付
+    required CategoryTag expenseTag, //カテゴリ
+    required bool isCardPayment, //支払いが現金以外か
+    required CategoryTag? cardTag, //支払い方法
+    required bool showCardOnInput, //カード機能をのものを画面に置いているか
+    required bool isGachaEnabled, //なんだこれは
   }) async {
     // 1. 計算とバリデーション
-    final calculatedText = SimpleCalculator.calculate(rawAmount);
+    final calculatedText = SimpleCalculator.calculate(rawAmount); //計算した
 
     if (calculatedText.isEmpty) {
       return InputServiceResult(
         success: false,
         message: '金額を入力してください',
         messageColor: Colors.redAccent,
-      );
+      ); //最終的な結果。無入力で保存しない。
     }
 
-    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
+    final int amount =
+        double.tryParse(calculatedText)?.toInt() ?? 0; //parseってなんだ？
     if (amount <= 0) {
       return InputServiceResult(
         success: false,
         message: '1円以上の金額を入力してください',
         messageColor: Colors.redAccent,
-      );
+      ); //-チェッカー
     }
 
     // ▼▼ 追加: 桁数（金額）の上限チェック ▼▼
@@ -175,12 +176,23 @@ class InputService {
           int targetMonth = date.month + monthsToAdd;
           int targetDay = cardTag.paymentDay!;
 
-          paymentDate = (targetDay == 99)
-              ? DateTime(targetYear, targetMonth + 1, 0)
-              : DateTime(targetYear, targetMonth, targetDay);
+          // 1. その月の「本当の末日」を計算する（例：4月なら30日）
+          final int lastDayOfMonth = DateTime(
+            targetYear,
+            targetMonth + 1,
+            0,
+          ).day;
+
+          // 2. 支払日を決める
+          // targetDay（31）が lastDayOfMonth（30）より大きければ、30を使う。そうでなければ31を使う。
+          final int realPaymentDay = (targetDay > lastDayOfMonth)
+              ? lastDayOfMonth
+              : targetDay;
+
+          paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
         }
       } else {
-        paymentMethod = 'カード';
+        paymentMethod = '不明';
       }
     }
 
@@ -218,7 +230,6 @@ class InputService {
         final result = await _gachaRepo.addCredit();
 
         // result.$2 が「ポイントが追加できたかどうか(bool)」です
-        // result.$1 は「現在のポイント数(int)」ですが、ここでは使いません（だから囮に見えたのかも！）
         final bool isAdded = result.$2;
 
         if (isAdded) {

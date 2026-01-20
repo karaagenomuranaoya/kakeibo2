@@ -247,6 +247,7 @@ class TransactionItem {
 ## File: lib/models/category_tag.dart
 ```dart
 import 'package:flutter/material.dart';
+import 'dart:math'; // ▼ 追加
 
 class CategoryTag {
   final String id;
@@ -275,7 +276,9 @@ class CategoryTag {
     this.iconCodePoint,
     this.iconFontFamily,
     this.iconFontPackage,
-  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+  }) : id =
+           id ??
+           "${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(10000)}";
 
   // 保存された情報からIconDataを復元するgetter
   IconData? get icon {
@@ -640,11 +643,17 @@ class SettingsRepository {
   Future<List<CategoryTag>> loadExpenseTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_expenseTagsKey);
+
+    List<CategoryTag> tags;
     if (jsonString == null) {
-      return CategoryTag.defaultExpenses;
+      tags = CategoryTag.defaultExpenses;
+    } else {
+      final List<dynamic> jsonList = json.decode(jsonString);
+      tags = jsonList.map((e) => CategoryTag.fromJson(e)).toList();
     }
-    final List<dynamic> jsonList = json.decode(jsonString);
-    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+
+    // ▼▼ 修正: ID重複チェックと修復処理を通してから返す ▼▼
+    return _sanitizeTags(tags);
   }
 
   Future<void> saveExpenseTags(List<CategoryTag> tags) async {
@@ -657,11 +666,17 @@ class SettingsRepository {
   Future<List<CategoryTag>> loadCardTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_cardTagsKey);
+
+    List<CategoryTag> tags;
     if (jsonString == null) {
-      return CategoryTag.defaultCards;
+      tags = CategoryTag.defaultCards;
+    } else {
+      final List<dynamic> jsonList = json.decode(jsonString);
+      tags = jsonList.map((e) => CategoryTag.fromJson(e)).toList();
     }
-    final List<dynamic> jsonList = json.decode(jsonString);
-    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+
+    // ▼▼ 修正: ID重複チェックと修復処理を通してから返す ▼▼
+    return _sanitizeTags(tags);
   }
 
   Future<void> saveCardTags(List<CategoryTag> tags) async {
@@ -703,7 +718,7 @@ class SettingsRepository {
     await prefs.setBool(_showCardOnInputKey, enabled);
   }
 
-  // ▼▼ 追加: バイブレーション設定の管理 ▼▼
+  // --- バイブレーション設定の管理 ---
   Future<bool> loadVibrationEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     // デフォルトは true (振動する)
@@ -715,16 +730,39 @@ class SettingsRepository {
     await prefs.setBool(_vibrationEnabledKey, enabled);
   }
 
-  /// 全てのチュートリアル済みフラグをリセット（false）にする
-  Future<void> resetTutorials() async {
-    final prefs = await SharedPreferences.getInstance();
+  // ▼▼ 追加: 重複IDを検知してユニークにするヘルパーメソッド ▼▼
+  // これにより、IDが被ってReorderableListViewでエラーになったり
+  // 項目が表示されなかったりするバグを自動的に直します。
+  List<CategoryTag> _sanitizeTags(List<CategoryTag> rawTags) {
+    final Set<String> seenIds = {};
+    final List<CategoryTag> sanitized = [];
 
-    // 入力画面のキー
-    await prefs.setBool('is_input_tutorial_shown_v1', false);
-    // レポート画面のキー
-    await prefs.setBool('is_report_tutorial_shown_v1', false);
-    // ガチャ画面のキー
-    await prefs.setBool('is_gacha_tutorial_shown', false);
+    for (var tag in rawTags) {
+      if (seenIds.contains(tag.id)) {
+        // IDが重複している場合、IDをnullにして再生成させた新しいタグを作る
+        // (CategoryTagのコンストラクタでid: nullなら自動生成される仕組みを利用)
+        final newTag = CategoryTag(
+          id: null, // 新規ID生成トリガー
+          label: tag.label,
+          color: tag.color,
+          isCircle: tag.isCircle,
+          closingDay: tag.closingDay,
+          paymentDay: tag.paymentDay,
+          paymentMonthOffset: tag.paymentMonthOffset,
+          iconCodePoint: tag.iconCodePoint,
+          iconFontFamily: tag.iconFontFamily,
+          iconFontPackage: tag.iconFontPackage,
+        );
+        sanitized.add(newTag);
+        // 新しく生成されたIDを記録（理論上被らないが念のため）
+        seenIds.add(newTag.id);
+      } else {
+        // 重複していない正常なデータ
+        sanitized.add(tag);
+        seenIds.add(tag.id);
+      }
+    }
+    return sanitized;
   }
 }
 
@@ -1130,6 +1168,17 @@ class InputService {
       );
     }
 
+    // ▼▼ 追加: 桁数（金額）の上限チェック ▼▼
+    // 10桁まで = 9,999,999,999 までOK。10,000,000,000 (100億)以上はNG
+    if (amount >= 10000000000) {
+      return InputServiceResult(
+        success: false,
+        message: '金額が大きすぎます',
+        messageColor: Colors.redAccent,
+      );
+    }
+    // ▲▲ 追加ここまで ▲▲
+
     // 2. 支払い情報の構築
     String paymentMethod = '';
     DateTime? paymentDate;
@@ -1176,24 +1225,28 @@ class InputService {
 
       await _transactionRepo.addTransaction(newItem);
 
-      // 4. ガチャポイント処理
-      String msg = '保存しました';
+      // 4. ガチャポイント処理とメッセージ生成
+      String msg = '保存しました'; // 基本のメッセージ
       Color color = Colors.blue;
 
+      // ① まず支払日の情報をメッセージに入れる
+      if (paymentDate != null) {
+        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      // ② 次に（elseを使わずに）ガチャ処理を行う
       if (isGachaEnabled) {
+        // addCreditは (int 現在のポイント, bool 追加できたか) の2つを返します
         final result = await _gachaRepo.addCredit();
-        // final int currentCredits = result.$1;
+
+        // result.$2 が「ポイントが追加できたかどうか(bool)」です
+        // result.$1 は「現在のポイント数(int)」ですが、ここでは使いません（だから囮に見えたのかも！）
         final bool isAdded = result.$2;
 
         if (isAdded) {
-          msg = 'ガチャチケット獲得！';
-          color = Colors.orange;
-        } else {
-          msg = '保存しました（本日の上限到達）';
-          color = Colors.grey;
+          // ポイントが増えたら、メッセージの後ろにチケットを付け足す
+          msg += '🎫';
         }
-      } else if (paymentDate != null) {
-        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
       }
 
       return InputServiceResult(
