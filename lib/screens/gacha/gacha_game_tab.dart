@@ -211,8 +211,9 @@ class _GachaGameTabState extends State<GachaGameTab>
   void _showCompleteDialog() {
     showDialog(
       context: context,
-      builder: (context) =>
-          GachaCompleteDialog(onDebugReset: _debugResetGachaProgress),
+      builder: (context) => GachaCompleteDialog(
+        onDebugReset: kDebugMode ? _debugResetGachaProgress : null,
+      ),
     );
   }
 
@@ -258,12 +259,14 @@ class _GachaGameTabState extends State<GachaGameTab>
 
     return Scaffold(
       backgroundColor: Colors.white,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _debugSetNearComplete,
-        backgroundColor: Colors.purple,
-        tooltip: 'デバッグ: あと1つでコンプリート',
-        child: const Icon(Icons.fast_forward),
-      ),
+      floatingActionButton: kDebugMode
+          ? FloatingActionButton(
+              onPressed: _debugSetNearComplete,
+              backgroundColor: Colors.purple,
+              tooltip: 'デバッグ: あと1つでコンプリート',
+              child: const Icon(Icons.fast_forward),
+            )
+          : null,
       body: Column(
         children: [
           GachaHeader(
