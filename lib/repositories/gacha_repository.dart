@@ -128,4 +128,35 @@ class GachaRepository {
     }
     return false;
   }
+
+  // デバッグ用: ガチャの進行状況をリセットする
+  Future<void> debugResetProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_creditKey);
+    await prefs.remove(_countsKey);
+    await prefs.remove(_initialBonusKey);
+    _counts.clear();
+  }
+
+  // デバッグ用: コンプリート一歩手前まで進める
+  Future<void> debugSetNearComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // データをリセット
+    await debugResetProgress();
+
+    // すべてのアイテムを取得
+    final allItems = GachaData.monsters;
+
+    // 全てLv10に、最後の一つだけLv9にする
+    for (int i = 0; i < allItems.length; i++) {
+      final item = allItems[i];
+      final count = (i == allItems.length - 1) ? 9 : 10;
+      _counts[item.id] = count;
+    }
+    await _saveCounts();
+
+    // クレジットを付与（テスト用）
+    await prefs.setInt(_creditKey, 10);
+  }
 }

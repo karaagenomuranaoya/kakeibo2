@@ -211,9 +211,27 @@ class _GachaGameTabState extends State<GachaGameTab>
   void _showCompleteDialog() {
     showDialog(
       context: context,
-      builder: (context) => const GachaCompleteDialog(),
+      builder: (context) =>
+          GachaCompleteDialog(onDebugReset: _debugResetGachaProgress),
     );
   }
+
+  // ▼▼ 追加: デバッグ機能 ▼▼
+  Future<void> _debugResetGachaProgress() async {
+    await _repository.debugResetProgress();
+    await _loadData();
+  }
+
+  Future<void> _debugSetNearComplete() async {
+    await _repository.debugSetNearComplete();
+    await _loadData();
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('デバッグ: コンプリート一歩手前に設定しました')));
+    }
+  }
+  // ▲▲ 追加ここまで ▲▲
 
   Future<void> _showResultDialog(GachaItem item, int count) async {
     await showDialog(
@@ -240,6 +258,12 @@ class _GachaGameTabState extends State<GachaGameTab>
 
     return Scaffold(
       backgroundColor: Colors.white,
+      floatingActionButton: FloatingActionButton(
+        onPressed: _debugSetNearComplete,
+        backgroundColor: Colors.purple,
+        tooltip: 'デバッグ: あと1つでコンプリート',
+        child: const Icon(Icons.fast_forward),
+      ),
       body: Column(
         children: [
           GachaHeader(
