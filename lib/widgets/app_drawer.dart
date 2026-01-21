@@ -111,6 +111,7 @@ class _AppDrawerState extends State<AppDrawer> {
           MaterialPageRoute(
             builder: (context) => HistoryScreen(
               filterValue: tag.label,
+              filterId: tag.id, // IDも渡す
               filterKey: filterKey,
               color: tag.color,
             ),

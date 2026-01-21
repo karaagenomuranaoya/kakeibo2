@@ -7,6 +7,7 @@ import 'history_monthly_page.dart';
 
 class HistoryScreen extends StatefulWidget {
   final String filterValue;
+  final String? filterId; // 追加
   final String filterKey; // 'expense' or 'payment'
   final Color? color;
   final int? year; // 指定年月がある場合
@@ -16,6 +17,7 @@ class HistoryScreen extends StatefulWidget {
   const HistoryScreen({
     super.key,
     required this.filterValue,
+    this.filterId, // 追加
     required this.filterKey,
     this.color,
     this.year,
@@ -177,6 +179,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     year: widget.year!,
                     month: widget.month!,
                     filterValue: widget.filterValue,
+                    filterId: widget.filterId, // 追加
                     filterKey: widget.filterKey,
                     color: widget.color ?? Colors.blue,
                     viewMode: _viewMode,
@@ -196,6 +199,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         year: targetDate.year,
                         month: targetDate.month,
                         filterValue: widget.filterValue,
+                        filterId: widget.filterId, // 追加
                         filterKey: widget.filterKey,
                         color: widget.color ?? Colors.blue,
                         viewMode: _viewMode,

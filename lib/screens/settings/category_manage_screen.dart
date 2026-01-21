@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../models/category_tag.dart';
 import '../../models/gacha_item.dart';
+import '../../models/transaction_item.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/gacha_repository.dart';
+import '../../repositories/transaction_repository.dart';
 import 'dialogs/category_edit_dialog.dart';
+
+enum _DeleteAction { deleteAll, move }
 
 class CategoryManageScreen extends StatefulWidget {
   const CategoryManageScreen({super.key});
@@ -103,6 +107,113 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   }
 
   void _deleteItem(bool isExpense, int index) async {
+    final list = isExpense ? _expenseList : _cardList;
+    final itemToDelete = list[index];
+
+    // 使用状況の確認
+    final transactionRepo = TransactionRepository();
+    final allTransactions = await transactionRepo.getAllTransactions();
+
+    int usageCount = 0;
+    if (isExpense) {
+      usageCount = allTransactions
+          .where(
+            (t) =>
+                (t.expenseId != null && t.expenseId == itemToDelete.id) ||
+                (t.expenseId == null && t.expense == itemToDelete.label),
+          )
+          .length;
+    } else {
+      usageCount = allTransactions
+          .where(
+            (t) =>
+                (t.paymentId != null && t.paymentId == itemToDelete.id) ||
+                (t.paymentId == null && t.payment == itemToDelete.label),
+          )
+          .length;
+    }
+
+    if (usageCount == 0) {
+      // 使用されていない場合でも確認ダイアログを表示
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('カテゴリの削除'),
+          content: Text('カテゴリ「${itemToDelete.label}」を削除しますか？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('削除'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        _performDelete(isExpense, index);
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // ダイアログ表示
+    final action = await showDialog<_DeleteAction>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('カテゴリの削除'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('「${itemToDelete.label}」は $usageCount 件のデータで使用されています。'),
+              const SizedBox(height: 16),
+              const Text('削除にあたり、これらのデータの扱いを選択してください。'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, _DeleteAction.deleteAll),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('データごと削除'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, _DeleteAction.move),
+              child: const Text('移動して削除'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (action == null) return;
+
+    if (action == _DeleteAction.deleteAll) {
+      // 関連データを削除してカテゴリも削除
+      await _deleteTransactions(itemToDelete, isExpense);
+      _performDelete(isExpense, index);
+    } else if (action == _DeleteAction.move) {
+      // 移動先を選択
+      final target = await _showMoveTargetDialog(isExpense, itemToDelete);
+      if (target != null) {
+        await _moveTransactions(itemToDelete, target, isExpense);
+        _performDelete(isExpense, index);
+      }
+    }
+  }
+
+  Future<void> _performDelete(bool isExpense, int index) async {
     setState(() {
       if (isExpense) {
         _expenseList.removeAt(index);
@@ -111,6 +222,112 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       }
     });
     await _saveCurrentList();
+  }
+
+  Future<void> _deleteTransactions(
+    CategoryTag itemToDelete,
+    bool isExpense,
+  ) async {
+    final transactionRepo = TransactionRepository();
+    final allTransactions = await transactionRepo.getAllTransactions();
+    final toDelete = <String>[];
+
+    for (final t in allTransactions) {
+      bool match = false;
+      if (isExpense) {
+        match =
+            (t.expenseId != null && t.expenseId == itemToDelete.id) ||
+            (t.expenseId == null && t.expense == itemToDelete.label);
+      } else {
+        match =
+            (t.paymentId != null && t.paymentId == itemToDelete.id) ||
+            (t.paymentId == null && t.payment == itemToDelete.label);
+      }
+      if (match) {
+        toDelete.add(t.id);
+      }
+    }
+
+    for (final id in toDelete) {
+      await transactionRepo.deleteTransaction(id);
+    }
+  }
+
+  Future<CategoryTag?> _showMoveTargetDialog(
+    bool isExpense,
+    CategoryTag itemToDelete,
+  ) async {
+    final list = isExpense ? _expenseList : _cardList;
+    final candidates = list.where((e) => e.id != itemToDelete.id).toList();
+
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('移動先のカテゴリがありません')));
+      return null;
+    }
+
+    return await showDialog<CategoryTag>(
+      context: context,
+      builder: (context) {
+        return SimpleDialog(
+          title: const Text('移動先を選択'),
+          children: candidates.map((c) {
+            return SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, c),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(c.displayIcon, color: c.color, size: 20),
+                    const SizedBox(width: 12),
+                    Text(c.label),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Future<void> _moveTransactions(
+    CategoryTag from,
+    CategoryTag to,
+    bool isExpense,
+  ) async {
+    final transactionRepo = TransactionRepository();
+    final allTransactions = await transactionRepo.getAllTransactions();
+    final toUpdate = <TransactionItem>[];
+
+    for (final t in allTransactions) {
+      bool match = false;
+      if (isExpense) {
+        match =
+            (t.expenseId != null && t.expenseId == from.id) ||
+            (t.expenseId == null && t.expense == from.label);
+      } else {
+        match =
+            (t.paymentId != null && t.paymentId == from.id) ||
+            (t.paymentId == null && t.payment == from.label);
+      }
+
+      if (match) {
+        // 更新
+        if (isExpense) {
+          toUpdate.add(
+            t.copyWith(expense: to.label, expenseId: to.id),
+          ); // labelも更新しておく(display fallback用)
+        } else {
+          toUpdate.add(t.copyWith(payment: to.label, paymentId: to.id));
+        }
+      }
+    }
+
+    for (final item in toUpdate) {
+      await transactionRepo.updateTransaction(item);
+    }
   }
 
   @override

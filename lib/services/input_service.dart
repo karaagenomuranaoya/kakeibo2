@@ -63,9 +63,13 @@ class InputService {
   static const String _keyLastCardIdx = 'last_card_index';
   static const String _keyLastIsCard = 'last_is_card';
   static const String _keyTutorialShown = 'is_input_tutorial_shown_v1';
+  static const String _keyMigrationV1Done = 'is_category_migration_v1_done';
 
   /// 入力画面に必要な初期データを一括で取得する
   Future<InputInitialData> loadInitialData() async {
+    // データ移行（カテゴリ名管理→ID管理への移行）
+    await _migrateCategoriesToIds();
+
     final expenses = await _settingsRepo.loadExpenseTags();
     final cards = await _settingsRepo.loadCardTags();
     final gachaEnabled = await _settingsRepo.loadGachaEnabled();
@@ -201,7 +205,9 @@ class InputService {
       final newItem = TransactionItem(
         amount: amount,
         expense: expenseTag.label,
+        expenseId: expenseTag.id,
         payment: paymentMethod,
+        paymentId: shouldUseCard ? cardTag?.id : null,
         date: DateTime(
           date.year,
           date.month,
@@ -263,6 +269,81 @@ class InputService {
       return allItems.firstWhere((e) => e.id == id);
     } catch (_) {
       return null;
+    }
+  }
+
+  /// 既存データのカテゴリ名・カード名をIDに紐付ける移行処理
+  Future<void> _migrateCategoriesToIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool done = prefs.getBool(_keyMigrationV1Done) ?? false;
+    if (done) return;
+
+    try {
+      final allTransactions = await _transactionRepo.getAllTransactions();
+      final expenses = await _settingsRepo.loadExpenseTags();
+      final cards = await _settingsRepo.loadCardTags();
+
+      bool changed = false;
+      final updatedList = <TransactionItem>[];
+
+      for (final item in allTransactions) {
+        String? newExpenseId = item.expenseId;
+        String? newPaymentId = item.paymentId;
+        bool itemChanged = false;
+
+        // 費目の紐付け
+        if (newExpenseId == null) {
+          try {
+            final tag = expenses.firstWhere((e) => e.label == item.expense);
+            newExpenseId = tag.id;
+            itemChanged = true;
+          } catch (_) {
+            // 見つからない場合は古い名前のままIDなし
+          }
+        }
+
+        // 支払いの紐付け
+        if (newPaymentId == null && item.payment.isNotEmpty) {
+          // カードリストから探す
+          try {
+            final tag = cards.firstWhere((c) => c.label == item.payment);
+            newPaymentId = tag.id;
+            itemChanged = true;
+          } catch (_) {
+            // 見つからない場合はIDなし
+          }
+        }
+
+        if (itemChanged) {
+          updatedList.add(
+            item.copyWith(expenseId: newExpenseId, paymentId: newPaymentId),
+          );
+          changed = true;
+        } else {
+          updatedList.add(item);
+        }
+      }
+
+      if (changed) {
+        // TransactionRepositoryには一括更新メソッドがないので、
+        // 内部実装を知っている前提で少し強引だが、一件ずつ更新するか、
+        // あるいはRepositoryに一括更新メソッドを追加するのが筋。
+        // ここでは件数が多いと一件ずつは重いので、Repositoryのメモリキャッシュを書き換えて保存させる
+        // ただし _saveToPrefs は private なので、一件ずつ updateTransaction するしかない。
+        // 件数が数百件程度なら問題ないはず。
+        for (final newItem in updatedList) {
+          // IDが変わっていなくても、copyWithでインスタンスが変わっているものを保存
+          // ただし、getAllTransactionsで取得したリストの要素と updatedList の要素を比較...
+          // ここでは単純に changed フラグが立っている item だけ update する
+          if (newItem.expenseId != null || newItem.paymentId != null) {
+            await _transactionRepo.updateTransaction(newItem);
+          }
+        }
+      }
+
+      await prefs.setBool(_keyMigrationV1Done, true);
+    } catch (e) {
+      debugPrint('Migration failed: $e');
     }
   }
 }

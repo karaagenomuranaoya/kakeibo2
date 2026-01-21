@@ -141,7 +141,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               inputService: _inputService, // InputServiceインスタンスをInputTabに渡す
               onTabBarVisibilityChanged: _setTabBarVisible,
             ),
-            const MonthlyHistoryScreen(),
+            MonthlyHistoryScreen(dataVersion: _dataVersion),
             if (_isGachaEnabled)
               GachaScreen(
                 dataVersion: _gachaDataVersion,

@@ -10,6 +10,7 @@ class HistoryMonthlyPage extends StatefulWidget {
   final int year;
   final int month;
   final String filterValue;
+  final String? filterId; // 追加
   final String filterKey;
   final Color color;
   final int viewMode;
@@ -24,6 +25,7 @@ class HistoryMonthlyPage extends StatefulWidget {
     required this.year,
     required this.month,
     required this.filterValue,
+    this.filterId, // 追加
     required this.filterKey,
     required this.color,
     required this.viewMode,
@@ -63,6 +65,7 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     final items = await widget.service.getFilteredTransactions(
       filterKey: widget.filterKey,
       filterValue: widget.filterValue,
+      filterId: widget.filterId, // 追加
       year: widget.year,
       month: widget.month,
       viewMode: widget.viewMode,
@@ -86,6 +89,10 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     }
 
     final int total = _history.fold(0, (s, i) => s + i.amount);
+
+    // ID -> Tag, Label -> Tag のMap作成
+    final idToTag = {for (var t in _expenseTags) t.id: t};
+    final labelToTag = {for (var t in _expenseTags) t.label: t};
 
     return Column(
       children: [
@@ -178,17 +185,27 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
                   itemBuilder: (c, i) {
                     final item = _history[i];
                     IconData? icon;
-                    try {
-                      final tag = _expenseTags.firstWhere(
-                        (t) => t.label == item.expense,
-                      );
+                    String? categoryName;
+
+                    // ID優先で検索、なければ名前で検索
+                    CategoryTag? tag;
+                    if (item.expenseId != null) {
+                      tag = idToTag[item.expenseId];
+                    }
+                    if (tag == null) {
+                      tag = labelToTag[item.expense];
+                    }
+
+                    if (tag != null) {
                       icon = tag.displayIcon;
-                    } catch (_) {}
+                      categoryName = tag.label;
+                    }
 
                     return TransactionTile(
                       item: item,
                       categoryColor: widget.color,
                       categoryIcon: icon,
+                      categoryName: categoryName,
                       showDate: true,
                       onTap: () {
                         showDialog(

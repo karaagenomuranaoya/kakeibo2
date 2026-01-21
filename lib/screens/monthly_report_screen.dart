@@ -11,7 +11,8 @@ import 'summary_detail_screen.dart';
 import 'history_screen.dart';
 
 class MonthlyHistoryScreen extends StatefulWidget {
-  const MonthlyHistoryScreen({super.key});
+  final int? dataVersion;
+  const MonthlyHistoryScreen({super.key, this.dataVersion});
   @override
   State<MonthlyHistoryScreen> createState() => _MonthlyHistoryScreenState();
 }
@@ -128,6 +129,7 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
             year: d.year,
             month: d.month,
             tabIndex: _currentTabIndex,
+            dataVersion: widget.dataVersion,
           );
         },
       ),
@@ -139,12 +141,14 @@ class MonthPage extends StatefulWidget {
   final int year;
   final int month;
   final int tabIndex;
+  final int? dataVersion;
 
   const MonthPage({
     super.key,
     required this.year,
     required this.month,
     required this.tabIndex,
+    this.dataVersion,
   });
 
   @override
@@ -162,6 +166,15 @@ class _MonthPageState extends State<MonthPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant MonthPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tabIndex != widget.tabIndex ||
+        oldWidget.dataVersion != widget.dataVersion) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -227,12 +240,13 @@ class _MonthPageState extends State<MonthPage> {
                 : GraphView(
                     history: _history,
                     expenseTags: _expenseTags,
-                    onLegendTap: (expense, color) {
+                    onLegendTap: (expense, color, expenseId) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => HistoryScreen(
                             filterValue: expense,
+                            filterId: expenseId,
                             filterKey: 'expense',
                             color: color,
                             initialDate: DateTime(widget.year, widget.month),

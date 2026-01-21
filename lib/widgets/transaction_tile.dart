@@ -7,6 +7,8 @@ class TransactionTile extends StatelessWidget {
   final Color categoryColor;
   // ▼▼ 追加: カテゴリアイコンを受け取る ▼▼
   final IconData? categoryIcon;
+  // ▼▼ 追加: カテゴリ名（ID管理移行に伴い、表示名を外部から受け取る） ▼▼
+  final String? categoryName;
   final VoidCallback? onTap;
   final bool showDate;
 
@@ -14,7 +16,8 @@ class TransactionTile extends StatelessWidget {
     super.key,
     required this.item,
     required this.categoryColor,
-    this.categoryIcon, // 追加
+    this.categoryIcon,
+    this.categoryName,
     this.onTap,
     this.showDate = true,
   });
@@ -52,7 +55,7 @@ class TransactionTile extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              item.expense,
+              categoryName ?? item.expense,
               style: const TextStyle(fontWeight: FontWeight.w500),
               overflow: TextOverflow.ellipsis,
             ),

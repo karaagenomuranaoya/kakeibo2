@@ -30,6 +30,7 @@ class HistoryService {
   Future<List<TransactionItem>> getFilteredTransactions({
     required String filterKey, // 'expense' or 'payment'
     required String filterValue,
+    String? filterId, // IDでのフィルタリング用 (追加)
     required int year,
     required int month,
     required int viewMode, // 0: 利用日基準, 1: 支払日基準（引き落とし予定）
@@ -39,12 +40,33 @@ class HistoryService {
     final filtered = allItems.where((i) {
       // 1. キーによるフィルタリング
       if (filterKey == 'expense') {
-        if (i.expense != filterValue) return false;
+        // IDが指定されていればIDで判定、なければ名前で判定
+        if (filterId != null) {
+          if (i.expenseId != filterId) {
+            // IDがない古いデータの場合は名前で判定
+            if (i.expenseId == null && i.expense == filterValue) {
+              return true;
+            }
+            return false;
+          }
+        } else {
+          if (i.expense != filterValue) return false;
+        }
       } else if (filterKey == 'payment') {
         if (filterValue == '記録しない' && i.payment.isEmpty) {
           // 記録しない扱い（空文字）OK
-        } else if (i.payment != filterValue) {
-          return false;
+        } else {
+          // IDが指定されていればIDで判定
+          if (filterId != null) {
+            if (i.paymentId != filterId) {
+              if (i.paymentId == null && i.payment == filterValue) {
+                return true;
+              }
+              return false;
+            }
+          } else {
+            if (i.payment != filterValue) return false;
+          }
         }
       }
 

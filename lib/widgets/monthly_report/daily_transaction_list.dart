@@ -41,6 +41,15 @@ class DailyTransactionList extends StatelessWidget {
     final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
     const weekDays = ["月", "火", "水", "木", "金", "土", "日"];
 
+    // 検索高速化のためにMap化
+    // ID -> Tag と Label -> Tag の両方を用意
+    final Map<String, CategoryTag> idToTag = {
+      for (var t in expenseTags) t.id: t,
+    };
+    final Map<String, CategoryTag> labelToTag = {
+      for (var t in expenseTags) t.label: t,
+    };
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: sortedDays.map((day) {
@@ -88,19 +97,28 @@ class DailyTransactionList extends StatelessWidget {
               ...items.map((item) {
                 Color color = Colors.grey;
                 IconData? icon;
+                String? categoryName;
 
-                try {
-                  final tag = expenseTags.firstWhere(
-                    (t) => t.label == item.expense,
-                  );
+                // ID優先で検索、なければ名前で検索
+                CategoryTag? tag;
+                if (item.expenseId != null) {
+                  tag = idToTag[item.expenseId];
+                }
+                if (tag == null) {
+                  tag = labelToTag[item.expense];
+                }
+
+                if (tag != null) {
                   color = tag.color;
                   icon = tag.displayIcon;
-                } catch (_) {}
+                  categoryName = tag.label;
+                }
 
                 return TransactionTile(
                   item: item,
                   categoryColor: color,
                   categoryIcon: icon,
+                  categoryName: categoryName,
                   showDate: false,
                   onTap: () => onTransactionTap(item),
                 );

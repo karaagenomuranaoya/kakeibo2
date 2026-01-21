@@ -7,7 +7,7 @@ import '../../models/transaction_item.dart';
 class GraphView extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
-  final Function(String expense, Color color)? onLegendTap;
+  final Function(String expense, Color color, String? expenseId)? onLegendTap;
 
   const GraphView({
     super.key,
@@ -20,23 +20,47 @@ class GraphView extends StatelessWidget {
   Widget build(BuildContext context) {
     int total = history.fold(0, (s, i) => s + i.amount);
 
-    final expenseSums = <String, int>{};
+    // ID -> Tag, Label -> Tag のMap作成
+    final idToTag = {for (var t in expenseTags) t.id: t};
+    final labelToTag = {for (var t in expenseTags) t.label: t};
+
+    // 集計: キーは "ID" または "名前(IDなしの場合)"
+    final sums = <String, int>{};
+    // キーから表示情報を引くためのマップ
+    final keyToDisplayInfo = <String, CategoryTag>{};
+
     for (var item in history) {
-      expenseSums[item.expense] =
-          (expenseSums[item.expense] ?? 0) + item.amount;
+      String key;
+      CategoryTag? tag;
+
+      if (item.expenseId != null) {
+        tag = idToTag[item.expenseId];
+      }
+      if (tag == null) {
+        tag = labelToTag[item.expense];
+      }
+
+      if (tag != null) {
+        key = tag.id; // IDで集計
+        keyToDisplayInfo[key] = tag;
+      } else {
+        key = item.expense; // タグが見つからない場合は名前で集計
+      }
+
+      sums[key] = (sums[key] ?? 0) + item.amount;
     }
-    final sortedEntries = expenseSums.entries.toList()
+
+    final sortedEntries = sums.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
     List<PieChartSectionData> sections = [];
     if (total > 0) {
       sections = sortedEntries.map((e) {
         final percentage = (e.value / total) * 100;
+        final key = e.key;
+        final tag = keyToDisplayInfo[key];
 
-        Color color = Colors.grey;
-        try {
-          color = expenseTags.firstWhere((t) => t.label == e.key).color;
-        } catch (_) {}
+        Color color = tag?.color ?? Colors.grey;
 
         return PieChartSectionData(
           color: color,
@@ -84,21 +108,26 @@ class GraphView extends StatelessWidget {
             Column(
               children: sortedEntries.map((e) {
                 final amount = e.value;
+                final key = e.key;
                 final percentage = (amount / total * 100).toStringAsFixed(1);
+                final tag = keyToDisplayInfo[key];
 
+                String label = key;
                 Color color = Colors.grey;
                 IconData icon = Icons.label;
+                String? expenseId;
 
-                try {
-                  final tag = expenseTags.firstWhere((t) => t.label == e.key);
+                if (tag != null) {
+                  label = tag.label;
                   color = tag.color;
                   icon = tag.displayIcon;
-                } catch (_) {}
+                  expenseId = tag.id;
+                }
 
                 return Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: () => onLegendTap?.call(e.key, color),
+                    onTap: () => onLegendTap?.call(label, color, expenseId),
                     borderRadius: BorderRadius.circular(4),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -110,7 +139,7 @@ class GraphView extends StatelessWidget {
                           Icon(icon, color: color, size: 20),
                           const SizedBox(width: 8),
                           Text(
-                            e.key,
+                            label,
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
