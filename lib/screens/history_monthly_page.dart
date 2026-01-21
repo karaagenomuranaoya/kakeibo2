@@ -3,7 +3,7 @@ import '../models/transaction_item.dart';
 import '../models/category_tag.dart';
 import '../services/history_service.dart';
 import '../widgets/transaction_tile.dart';
-import '../widgets/transaction_edit_dialog.dart';
+import '../screens/transaction_edit_screen.dart';
 
 // クラス名を _HistoryPage から HistoryMonthlyPage に変更し、publicにしました
 class HistoryMonthlyPage extends StatefulWidget {
@@ -207,16 +207,15 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
                       categoryIcon: icon,
                       categoryName: categoryName,
                       showDate: true,
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => TransactionEditDialog(
-                            item: item,
-                            onSuccess: () {
-                              _load();
-                            },
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                TransactionEditScreen(item: item),
                           ),
                         );
+                        _load();
                       },
                     );
                   },

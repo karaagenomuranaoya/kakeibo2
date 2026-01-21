@@ -272,6 +272,123 @@ class InputService {
     }
   }
 
+  Future<InputServiceResult> updateTransaction({
+    required String id,
+    required String rawAmount,
+    required String memo,
+    required DateTime date,
+    required CategoryTag expenseTag,
+    required bool isCardPayment,
+    required CategoryTag? cardTag,
+    required bool showCardOnInput,
+  }) async {
+    // 1. 計算とバリデーション
+    final calculatedText = SimpleCalculator.calculate(rawAmount);
+
+    if (calculatedText.isEmpty) {
+      return InputServiceResult(
+        success: false,
+        message: '金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
+    if (amount <= 0) {
+      return InputServiceResult(
+        success: false,
+        message: '1円以上の金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    if (amount >= 10000000000) {
+      return InputServiceResult(
+        success: false,
+        message: '金額が大きすぎます',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    // 2. 支払い情報の構築
+    String paymentMethod = '';
+    DateTime? paymentDate;
+
+    final bool shouldUseCard = showCardOnInput && isCardPayment;
+
+    if (shouldUseCard) {
+      if (cardTag != null) {
+        paymentMethod = cardTag.label;
+        if (cardTag.closingDay != null && cardTag.paymentDay != null) {
+          int monthsToAdd = cardTag.paymentMonthOffset;
+          if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
+            monthsToAdd++;
+          }
+          int targetYear = date.year;
+          int targetMonth = date.month + monthsToAdd;
+          int targetDay = cardTag.paymentDay!;
+
+          final int lastDayOfMonth = DateTime(
+            targetYear,
+            targetMonth + 1,
+            0,
+          ).day;
+
+          final int realPaymentDay = (targetDay > lastDayOfMonth)
+              ? lastDayOfMonth
+              : targetDay;
+
+          paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
+        }
+      } else {
+        paymentMethod = '不明';
+      }
+    }
+
+    // 3. データの更新
+    try {
+      // 既存のデータを取得（作成日などを保持するため、必要なら取得するが、今回は上書きでOK）
+      // ただしIDは必須
+      final newItem = TransactionItem(
+        id: id,
+        amount: amount,
+        expense: expenseTag.label,
+        expenseId: expenseTag.id,
+        payment: paymentMethod,
+        paymentId: shouldUseCard ? cardTag?.id : null,
+        date: DateTime(
+          date.year,
+          date.month,
+          date.day,
+          DateTime.now().hour,
+          DateTime.now().minute,
+        ),
+        paymentDate: paymentDate,
+        memo: memo,
+      );
+
+      await _transactionRepo.updateTransaction(newItem);
+
+      String msg = '更新しました';
+      if (paymentDate != null) {
+        msg = '更新しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      return InputServiceResult(
+        success: true,
+        message: msg,
+        formattedAmount: calculatedText,
+        savedId: newItem.id,
+      );
+    } catch (e) {
+      return InputServiceResult(
+        success: false,
+        message: '更新エラー: $e',
+        messageColor: Colors.red,
+      );
+    }
+  }
+
   /// 既存データのカテゴリ名・カード名をIDに紐付ける移行処理
   Future<void> _migrateCategoriesToIds() async {
     final prefs = await SharedPreferences.getInstance();

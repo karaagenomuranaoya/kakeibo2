@@ -6,8 +6,8 @@ import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart';
-import '../widgets/transaction_edit_dialog.dart';
 import 'summary_detail_screen.dart';
+import 'transaction_edit_screen.dart';
 import 'history_screen.dart';
 
 class MonthlyHistoryScreen extends StatefulWidget {
@@ -262,16 +262,14 @@ class _MonthPageState extends State<MonthPage> {
             history: _history,
             expenseTags: _expenseTags,
             dayKeys: _dayKeys,
-            onTransactionTap: (item) {
-              showDialog(
-                context: context,
-                builder: (context) => TransactionEditDialog(
-                  item: item,
-                  onSuccess: () {
-                    _load();
-                  },
+            onTransactionTap: (item) async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TransactionEditScreen(item: item),
                 ),
               );
+              _load();
             },
           ),
         ],
