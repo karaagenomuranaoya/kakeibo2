@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Added
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
-import '../repositories/settings_repository.dart'; // Added
+import '../repositories/settings_repository.dart';
 import '../utils/simple_calculator.dart';
 
 /// 初期表示に必要なデータをまとめたクラス
@@ -38,6 +38,7 @@ class InputServiceResult {
   final Color messageColor;
   final String? formattedAmount;
   final String? savedId;
+  final bool gachaCreditsAdded; // 追加
 
   InputServiceResult({
     required this.success,
@@ -45,13 +46,17 @@ class InputServiceResult {
     this.messageColor = Colors.blue,
     this.formattedAmount,
     this.savedId,
+    this.gachaCreditsAdded = false, // デフォルト値を設定
   });
 }
 
 class InputService {
   final TransactionRepository _transactionRepo = TransactionRepository();
   final GachaRepository _gachaRepo = GachaRepository();
-  final SettingsRepository _settingsRepo = SettingsRepository(); // Added
+  final SettingsRepository _settingsRepo = SettingsRepository();
+  final ValueNotifier<int> gachaDataVersionNotifier = ValueNotifier<int>(
+    0,
+  ); // 追加
 
   // --- keys ---
   static const String _keyLastExpenseIdx = 'last_expense_index';
@@ -117,38 +122,36 @@ class InputService {
   }
 
   Future<InputServiceResult> registerTransaction({
-    required String rawAmount, //計算前の金額
-    required String memo, //メモ
-    required DateTime date, //日付
-    required CategoryTag expenseTag, //カテゴリ
-    required bool isCardPayment, //支払いが現金以外か
-    required CategoryTag? cardTag, //支払い方法
-    required bool showCardOnInput, //カード機能をのものを画面に置いているか
-    required bool isGachaEnabled, //なんだこれは
+    required String rawAmount,
+    required String memo,
+    required DateTime date,
+    required CategoryTag expenseTag,
+    required bool isCardPayment,
+    required CategoryTag? cardTag,
+    required bool showCardOnInput,
+    required bool isGachaEnabled,
   }) async {
     // 1. 計算とバリデーション
-    final calculatedText = SimpleCalculator.calculate(rawAmount); //計算した
+    final calculatedText = SimpleCalculator.calculate(rawAmount);
 
     if (calculatedText.isEmpty) {
       return InputServiceResult(
         success: false,
         message: '金額を入力してください',
         messageColor: Colors.redAccent,
-      ); //最終的な結果。無入力で保存しない。
+      );
     }
 
-    final int amount =
-        double.tryParse(calculatedText)?.toInt() ?? 0; //parseってなんだ？
+    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
     if (amount <= 0) {
       return InputServiceResult(
         success: false,
         message: '1円以上の金額を入力してください',
         messageColor: Colors.redAccent,
-      ); //-チェッカー
+      );
     }
 
     // ▼▼ 追加: 桁数（金額）の上限チェック ▼▼
-    // 10桁まで = 9,999,999,999 までOK。10,000,000,000 (100億)以上はNG
     if (amount >= 10000000000) {
       return InputServiceResult(
         success: false,
@@ -176,15 +179,12 @@ class InputService {
           int targetMonth = date.month + monthsToAdd;
           int targetDay = cardTag.paymentDay!;
 
-          // 1. その月の「本当の末日」を計算する（例：4月なら30日）
           final int lastDayOfMonth = DateTime(
             targetYear,
             targetMonth + 1,
             0,
           ).day;
 
-          // 2. 支払日を決める
-          // targetDay（31）が lastDayOfMonth（30）より大きければ、30を使う。そうでなければ31を使う。
           final int realPaymentDay = (targetDay > lastDayOfMonth)
               ? lastDayOfMonth
               : targetDay;
@@ -216,26 +216,24 @@ class InputService {
       await _transactionRepo.addTransaction(newItem);
 
       // 4. ガチャポイント処理とメッセージ生成
-      String msg = '保存しました'; // 基本のメッセージ
+      String msg = '保存しました';
       Color color = Colors.blue;
+      bool gachaCreditsAdded = false; // 追加
 
-      // ① まず支払日の情報をメッセージに入れる
       if (paymentDate != null) {
         msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
       }
 
-      // ② 次に（elseを使わずに）ガチャ処理を行う
       if (isGachaEnabled) {
-        // addCreditは (int 現在のポイント, bool 追加できたか) の2つを返します
         final result = await _gachaRepo.addCredit();
-
-        // result.$2 が「ポイントが追加できたかどうか(bool)」です
-        final bool isAdded = result.$2;
-
-        if (isAdded) {
-          // ポイントが増えたら、メッセージの後ろにチケットを付け足す
-          msg += '🎫';
+        gachaCreditsAdded = result.$2;
+        if (gachaCreditsAdded) {
+          gachaDataVersionNotifier.value++; // gachaDataVersionNotifier をインクリメント
         }
+      }
+
+      if (gachaCreditsAdded) {
+        msg += '🎫'; // チケット絵文字はここで追加
       }
 
       return InputServiceResult(
@@ -244,6 +242,7 @@ class InputService {
         messageColor: color,
         formattedAmount: calculatedText,
         savedId: newItem.id,
+        gachaCreditsAdded: gachaCreditsAdded, // gachaCreditsAdded を返す
       );
     } catch (e) {
       return InputServiceResult(

@@ -9,7 +9,7 @@ import '../../repositories/transaction_repository.dart'; // Repository用
 import '../../repositories/gacha_repository.dart'; // Repository用
 
 class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
-  final InputService _service = InputService();
+  final InputService _service; // Injected InputService
 
   // --- Controllers & FocusNodes ---
   final TextEditingController amountController = TextEditingController();
@@ -31,7 +31,9 @@ class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
   bool showCustomKeyboard = false;
   String? lastInputId;
 
-  InputTabViewModel() {
+  // Modified constructor to accept InputService
+  InputTabViewModel({required InputService inputService})
+    : _service = inputService {
     amountFocusNode.addListener(_onAmountFocusChange);
     memoFocusNode.addListener(_onMemoFocusChange);
   }
@@ -123,7 +125,7 @@ class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
   Future<void> saveData({bool keepKeyboard = false}) async {
     if (isLoading || data == null) return;
     if (data!.expenses.isEmpty) {
-      showFlash('カテゴリがありません', Colors.redAccent);
+      showFlash("カテゴリがありません", Colors.redAccent);
       return;
     }
 
@@ -178,7 +180,9 @@ class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
   Future<void> undoLastInput(BuildContext context) async {
     if (lastInputId == null) return;
 
-    final targetItem = await _service.getTransaction(lastInputId!);
+    final targetItem = await _service.getTransaction(
+      lastInputId!,
+    ); // Corrected typo here
     if (targetItem == null) {
       lastInputId = null;
       notifyListeners();

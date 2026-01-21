@@ -9,17 +9,20 @@ import '../widgets/input/input_control_panel.dart';
 import '../widgets/input/payment_selector.dart';
 import 'history_screen.dart';
 import 'input/input_tab_tutorial.dart';
-import 'input/input_tab_view_model.dart'; // Import ViewModel
+import 'input/input_tab_view_model.dart';
 import 'settings/category_manage_screen.dart';
+import '../services/input_service.dart'; // 追加
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
   final Function(bool visible)? onTabBarVisibilityChanged;
+  final InputService inputService; // 追加
 
   const InputTab({
     super.key,
     this.dataVersion = 0,
     this.onTabBarVisibilityChanged,
+    required this.inputService, // 追加
   });
 
   @override
@@ -28,10 +31,8 @@ class InputTab extends StatefulWidget {
 
 class _InputTabState extends State<InputTab>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  // ロジックを保持するViewModel
   late final InputTabViewModel _vm;
 
-  // チュートリアル用のKey（View固有のものなのでここに残す）
   final GlobalKey _paymentKey = GlobalKey();
   final GlobalKey _categoryKey = GlobalKey();
 
@@ -45,10 +46,11 @@ class _InputTabState extends State<InputTab>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _vm = InputTabViewModel();
+    _vm = InputTabViewModel(
+      inputService: widget.inputService,
+    ); // inputService を渡す
     _vm.loadData().then((_) => _checkTutorial());
 
-    // キーボード表示状態の変化を監視してTabBar制御
     _vm.addListener(_onVmStateChanged);
   }
 
@@ -71,7 +73,6 @@ class _InputTabState extends State<InputTab>
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    // システムキーボードが出たかどうかの判定
     final bottomInset = View.of(context).viewInsets.bottom;
     if (bottomInset > 0) {
       _vm.onSystemKeyboardShown();
@@ -79,8 +80,6 @@ class _InputTabState extends State<InputTab>
   }
 
   void _onVmStateChanged() {
-    // ViewModelの状態に応じてTabBarの表示/非表示を親に通知
-    // (カスタムキーボード表示中ならTabBarを隠す)
     widget.onTabBarVisibilityChanged?.call(!_vm.showCustomKeyboard);
   }
 
@@ -99,7 +98,6 @@ class _InputTabState extends State<InputTab>
     }
   }
 
-  // --- Navigation Helpers ---
   void _onCategoryLongPress(int index) {
     if (!_vm.data!.isCategoryLongPressEnabled) return;
     if (index >= _vm.data!.expenses.length) return;
@@ -125,7 +123,6 @@ class _InputTabState extends State<InputTab>
   }
 
   Future<void> _openCategorySettings() async {
-    // 現在の状態を保存
     _vm.setExpenseIndex(_vm.selectedExpenseIndex);
 
     if (!mounted) return;
@@ -140,7 +137,6 @@ class _InputTabState extends State<InputTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // ViewModelの変更を監視して再描画
     return AnimatedBuilder(
       animation: _vm,
       builder: (context, child) {
@@ -148,7 +144,6 @@ class _InputTabState extends State<InputTab>
           return const Center(child: CircularProgressIndicator());
         }
 
-        // レイアウト計算
         final bottomInset = MediaQuery.of(context).viewInsets.bottom;
         final double additionalPadding = _vm.showCustomKeyboard
             ? _keyboardHeight
@@ -160,7 +155,6 @@ class _InputTabState extends State<InputTab>
           behavior: HitTestBehavior.opaque,
           child: Stack(
             children: [
-              // メインコンテンツエリア
               Positioned.fill(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
@@ -214,7 +208,6 @@ class _InputTabState extends State<InputTab>
                 ),
               ),
 
-              // カスタムキーボード
               if (_vm.showCustomKeyboard)
                 Positioned(
                   left: 0,
@@ -230,13 +223,11 @@ class _InputTabState extends State<InputTab>
                         : null,
                     onClose: _vm.closeKeyboard,
                     onChanged: (_) {},
-                    // ▼▼ 追加: デモデータ注入用コールバック ▼▼
                     onDebugCodeEntered: () =>
                         _vm.confirmAndInjectDemoData(context),
                   ),
                 ),
 
-              // フラッシュメッセージ
               FlashMessage(
                 isVisible: _vm.isFlashVisible,
                 message: _vm.flashMsg,

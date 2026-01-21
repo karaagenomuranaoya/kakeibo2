@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../repositories/settings_repository.dart';
-// ▼▼ 追加: リポジトリのインポート ▼▼
+import '../services/input_service.dart'; // 追加
 import '../repositories/gacha_repository.dart';
 import '../widgets/app_drawer.dart';
 import 'input_tab.dart';
@@ -16,10 +16,11 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
-  // ▼▼ 追加 ▼▼
   final GachaRepository _gachaRepository = GachaRepository();
+  final InputService _inputService = InputService(); // 追加
 
-  int _dataVersion = 0;
+  int _dataVersion = 0; // InputTab用として残す
+  int _gachaDataVersion = 0; // ガチャ画面用として追加
   bool _isTabBarVisible = true;
   bool _isGachaEnabled = true;
   bool _isLoading = true;
@@ -28,12 +29,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _gachaDataVersion = _inputService.gachaDataVersionNotifier.value; // 初期値を設定
+    _inputService.gachaDataVersionNotifier.addListener(
+      _onGachaDataVersionChanged,
+    ); // リスナーを登録
     _loadSettings();
-    // ▼▼ 追加: 初回ボーナスチェックを実行 ▼▼
     _gachaRepository.checkInitialBonus();
   }
 
-  // ... 以下、変更なし ...
   Future<void> _loadSettings() async {
     try {
       final enabled = await _settingsRepository.loadGachaEnabled();
@@ -82,13 +85,22 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _tabController.dispose();
+    _inputService.gachaDataVersionNotifier.removeListener(
+      _onGachaDataVersionChanged,
+    ); // リスナーを解除
     super.dispose();
+  }
+
+  void _onGachaDataVersionChanged() {
+    setState(() {
+      _gachaDataVersion = _inputService.gachaDataVersionNotifier.value;
+    });
   }
 
   void _refreshData() async {
     await _loadSettings();
     setState(() {
-      _dataVersion++;
+      _dataVersion++; // InputTab用の_dataVersionをインクリメント
     });
   }
 
@@ -126,11 +138,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           children: [
             InputTab(
               dataVersion: _dataVersion,
+              inputService: _inputService, // InputServiceインスタンスをInputTabに渡す
               onTabBarVisibilityChanged: _setTabBarVisible,
             ),
             const MonthlyHistoryScreen(),
-            // ▼▼ 修正: ガチャ画面に dataVersion を渡す ▼▼
-            if (_isGachaEnabled) GachaScreen(dataVersion: _dataVersion),
+            if (_isGachaEnabled)
+              GachaScreen(
+                dataVersion: _gachaDataVersion,
+              ), // _gachaDataVersionをGachaScreenに渡す
           ],
         ),
       ),
