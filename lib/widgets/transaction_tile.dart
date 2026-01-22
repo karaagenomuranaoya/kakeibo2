@@ -5,8 +5,9 @@ import '../utils/app_date_utils.dart';
 class TransactionTile extends StatelessWidget {
   final TransactionItem item;
   final Color categoryColor;
-  // ▼▼ 追加: カテゴリアイコンを受け取る ▼▼
+  final Color? paymentColor;
   final IconData? categoryIcon;
+  final IconData? paymentIcon;
   // ▼▼ 追加: カテゴリ名（ID管理移行に伴い、表示名を外部から受け取る） ▼▼
   final String? categoryName;
   final VoidCallback? onTap;
@@ -17,6 +18,8 @@ class TransactionTile extends StatelessWidget {
     required this.item,
     required this.categoryColor,
     this.categoryIcon,
+    this.paymentColor,
+    this.paymentIcon,
     this.categoryName,
     this.onTap,
     this.showDate = true,
@@ -80,10 +83,19 @@ class TransactionTile extends StatelessWidget {
               maxLines: 1,
             ),
           ),
-
-          Text(
-            '¥${item.amount}',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Row(
+            children: [
+              if (paymentIcon != null)
+                Icon(paymentIcon, color: paymentColor ?? Colors.grey, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                '¥${item.amount}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ],
           ),
         ],
       ),

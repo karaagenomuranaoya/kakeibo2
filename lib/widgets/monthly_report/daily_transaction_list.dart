@@ -7,6 +7,7 @@ import '../transaction_tile.dart'; // 既存のTransactionTileをインポート
 class DailyTransactionList extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
+  final List<CategoryTag> cardTags;
   final Map<int, GlobalKey> dayKeys;
   final Function(TransactionItem item) onTransactionTap;
 
@@ -14,6 +15,7 @@ class DailyTransactionList extends StatelessWidget {
     super.key,
     required this.history,
     required this.expenseTags,
+    required this.cardTags,
     required this.dayKeys,
     required this.onTransactionTap,
   });
@@ -48,6 +50,13 @@ class DailyTransactionList extends StatelessWidget {
     };
     final Map<String, CategoryTag> labelToTag = {
       for (var t in expenseTags) t.label: t,
+    };
+
+    final Map<String, CategoryTag> idToTagCard = {
+      for (var t in cardTags) t.id: t,
+    };
+    final Map<String, CategoryTag> labelToTagCard = {
+      for (var t in cardTags) t.label: t,
     };
 
     return Column(
@@ -98,6 +107,8 @@ class DailyTransactionList extends StatelessWidget {
                 Color color = Colors.grey;
                 IconData? icon;
                 String? categoryName;
+                Color colorCard = Colors.grey;
+                IconData? iconCard;
 
                 // ID優先で検索、なければ名前で検索
                 CategoryTag? tag;
@@ -114,12 +125,26 @@ class DailyTransactionList extends StatelessWidget {
                   categoryName = tag.label;
                 }
 
+                CategoryTag? tagCard;
+                if (item.paymentId != null) {
+                  tagCard = idToTagCard[item.paymentId];
+                }
+                if (tagCard == null) {
+                  tagCard = labelToTagCard[item.payment];
+                }
+
+                if (tagCard != null) {
+                  colorCard = tagCard.color;
+                  iconCard = tagCard.displayIcon;
+                }
+
                 return TransactionTile(
                   item: item,
                   categoryColor: color,
                   categoryIcon: icon,
                   categoryName: categoryName,
-                  showDate: false,
+                  paymentColor: colorCard,
+                  paymentIcon: iconCard,
                   onTap: () => onTransactionTap(item),
                 );
               }),

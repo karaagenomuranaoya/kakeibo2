@@ -137,6 +137,7 @@ class MonthPage extends StatefulWidget {
 class _MonthPageState extends State<MonthPage> {
   List<TransactionItem> _history = [];
   List<CategoryTag> _expenseTags = [];
+  List<CategoryTag> _cardTags = [];
   final TransactionRepository _repository = TransactionRepository();
   final SettingsRepository _settingsRepository = SettingsRepository();
   final Map<int, GlobalKey> _dayKeys = {};
@@ -159,6 +160,7 @@ class _MonthPageState extends State<MonthPage> {
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
     final expenses = await _settingsRepository.loadExpenseTags();
+    final payments = await _settingsRepository.loadCardTags();
 
     if (mounted) {
       setState(() {
@@ -167,6 +169,7 @@ class _MonthPageState extends State<MonthPage> {
         }).toList();
         _history.sort((a, b) => b.date.compareTo(a.date));
         _expenseTags = expenses;
+        _cardTags = payments;
       });
     }
   }
@@ -207,6 +210,7 @@ class _MonthPageState extends State<MonthPage> {
           DailyTransactionList(
             history: _history,
             expenseTags: _expenseTags,
+            cardTags: _cardTags,
             dayKeys: _dayKeys,
             onTransactionTap: (item) async {
               await Navigator.push(

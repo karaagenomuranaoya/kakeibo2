@@ -43,6 +43,7 @@ class HistoryMonthlyPage extends StatefulWidget {
 class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
   List<TransactionItem> _history = [];
   List<CategoryTag> _expenseTags = [];
+  List<CategoryTag> _paymentTags = [];
   bool _isLoading = true;
 
   @override
@@ -74,12 +75,14 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     );
 
     final expenses = await widget.service.getExpenseTags();
+    final payments = await widget.service.getCardTags();
 
     if (!mounted) return;
 
     setState(() {
       _history = items;
       _expenseTags = expenses;
+      _paymentTags = payments;
       _isLoading = false;
     });
   }
@@ -95,6 +98,9 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     // ID -> Tag, Label -> Tag のMap作成
     final idToTag = {for (var t in _expenseTags) t.id: t};
     final labelToTag = {for (var t in _expenseTags) t.label: t};
+
+    final idToTagCard = {for (var t in _paymentTags) t.id: t};
+    final labelToTagCard = {for (var t in _paymentTags) t.label: t};
 
     return Column(
       children: [
@@ -186,28 +192,49 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
                   separatorBuilder: (c, i) => const Divider(height: 1),
                   itemBuilder: (c, i) {
                     final item = _history[i];
-                    IconData? icon;
+                    IconData? iconCategory;
                     String? categoryName;
 
                     // ID優先で検索、なければ名前で検索
-                    CategoryTag? tag;
+                    CategoryTag? tagCategory;
                     if (item.expenseId != null) {
-                      tag = idToTag[item.expenseId];
+                      tagCategory = idToTag[item.expenseId];
                     }
-                    if (tag == null) {
-                      tag = labelToTag[item.expense];
+                    if (tagCategory == null) {
+                      tagCategory = labelToTag[item.expense];
                     }
 
-                    if (tag != null) {
-                      icon = tag.displayIcon;
-                      categoryName = tag.label;
+                    if (tagCategory != null) {
+                      iconCategory = tagCategory.displayIcon;
+                      categoryName = tagCategory.label;
+                    }
+
+                    IconData? iconPayment;
+                    String? paymentName;
+                    Color? cardColor;
+
+                    // ID優先で検索、なければ名前で検索
+                    CategoryTag? tagPayment;
+                    if (item.paymentId != null) {
+                      tagPayment = idToTagCard[item.paymentId];
+                    }
+                    if (tagPayment == null) {
+                      tagPayment = labelToTagCard[item.payment];
+                    }
+
+                    if (tagPayment != null) {
+                      iconPayment = tagPayment.displayIcon;
+                      cardColor = tagPayment.color;
+                      paymentName = tagPayment.label;
                     }
 
                     return TransactionTile(
                       item: item,
                       categoryColor: widget.color,
-                      categoryIcon: icon,
+                      categoryIcon: iconCategory,
                       categoryName: categoryName,
+                      paymentColor: cardColor,
+                      paymentIcon: iconPayment,
                       showDate: true,
                       onTap: () async {
                         await Navigator.push(
