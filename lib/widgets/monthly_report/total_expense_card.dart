@@ -3,16 +3,14 @@ import 'package:flutter/material.dart';
 /// 合計金額表示カード
 class TotalExpenseCard extends StatelessWidget {
   final int total;
-  final VoidCallback onTap;
 
-  const TotalExpenseCard({super.key, required this.total, required this.onTap});
+  const TotalExpenseCard({super.key, required this.total});
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.blue.shade50,
       child: InkWell(
-        onTap: onTap,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
@@ -34,19 +32,7 @@ class TotalExpenseCard extends StatelessWidget {
                       color: Colors.black87,
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 6, left: 5),
-                    child: Icon(
-                      Icons.arrow_forward_ios,
-                      size: 14,
-                      color: Colors.grey,
-                    ),
-                  ),
                 ],
-              ),
-              const Text(
-                'タップして詳細を見る',
-                style: TextStyle(fontSize: 10, color: Colors.blueGrey),
               ),
             ],
           ),

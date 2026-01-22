@@ -5,7 +5,6 @@ import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart'; // TotalExpenseCard等のため
 import '../widgets/monthly_report/graph_view.dart'; // グラフ表示用
-import 'summary_detail_screen.dart';
 import 'history_screen.dart';
 
 class GraphScreen extends StatefulWidget {
@@ -178,20 +177,7 @@ class _GraphPageState extends State<GraphPage> {
       child: Column(
         children: [
           // 合計金額カード
-          TotalExpenseCard(
-            total: total,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SummaryDetailScreen(
-                    year: widget.year,
-                    month: widget.month,
-                  ),
-                ),
-              );
-            },
-          ),
+          TotalExpenseCard(total: total),
           const SizedBox(height: 10),
           // グラフビュー
           GraphView(

@@ -4,7 +4,6 @@ import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart';
-import 'summary_detail_screen.dart';
 import 'transaction_edit_screen.dart';
 
 class MonthlyHistoryScreen extends StatefulWidget {
@@ -193,20 +192,7 @@ class _MonthPageState extends State<MonthPage> {
       child: Column(
         children: [
           // 合計カード
-          TotalExpenseCard(
-            total: total,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SummaryDetailScreen(
-                    year: widget.year,
-                    month: widget.month,
-                  ),
-                ),
-              );
-            },
-          ),
+          TotalExpenseCard(total: total),
 
           // グラフ/カレンダー切り替えロジックを削除し、カレンダーのみ表示
           CalendarView(
