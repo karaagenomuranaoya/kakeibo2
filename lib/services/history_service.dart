@@ -37,48 +37,65 @@ class HistoryService {
   }) async {
     final allItems = await _transactionRepo.getAllTransactions();
 
+    // ▼デバッグログ: 何を探そうとしているか確認
+    debugPrint("--- DEBUG SEARCH ---");
+    debugPrint(
+      "Target: $year/$month, Key: $filterKey, Name: $filterValue, ID: $filterId",
+    );
+
+    // ▼デバッグログ: 何を探そうとしているか確認
+    debugPrint("--- DEBUG SEARCH ---");
+    debugPrint(
+      "Target: $year/$month, Key: $filterKey, Name: $filterValue, ID: $filterId",
+    );
+
     final filtered = allItems.where((i) {
-      // 1. キーによるフィルタリング
+      // 1. 年月チェック（ここを先にやると無駄なログが減ります）
+      DateTime targetDate;
+      if (viewMode == 1) {
+        targetDate = i.paymentDate ?? i.date;
+      } else {
+        targetDate = i.date;
+      }
+      if (targetDate.year != year || targetDate.month != month) {
+        return false;
+      }
+
+      // 2. キーによる判定（ID または 名前 が合致すればOKにする）
+      bool isMatch = false;
+
       if (filterKey == 'expense') {
-        // IDが指定されていればIDで判定、なければ名前で判定
-        if (filterId != null) {
-          if (i.expenseId != filterId) {
-            // IDがない古いデータの場合は名前で判定
-            if (i.expenseId == null && i.expense == filterValue) {
-              return true;
-            }
-            return false;
-          }
+        // IDが一致するか？
+        bool idMatches = (filterId != null && i.expenseId == filterId);
+        // 名前が一致するか？
+        bool nameMatches = (i.expense == filterValue);
+
+        // どっちかが合えばOK
+        if (idMatches || nameMatches) {
+          isMatch = true;
+
+          // なぜ一致したかログに出す（確認用）
+          // debugPrint("Match Found: ${i.expense} (ID: ${i.expenseId}) - By ID:$idMatches, By Name:$nameMatches");
         } else {
-          if (i.expense != filterValue) return false;
+          // 同じ月なのに弾かれたデータをログに出す（ここが重要）
+          debugPrint(
+            "Rejected in same month: ${i.expense} (ID: ${i.expenseId}) vs Filter(Name:$filterValue, ID:$filterId)",
+          );
         }
       } else if (filterKey == 'payment') {
         if (filterValue == '記録しない' && i.payment.isEmpty) {
-          // 記録しない扱い（空文字）OK
+          isMatch = true;
         } else {
-          // IDが指定されていればIDで判定
-          if (filterId != null) {
-            if (i.paymentId != filterId) {
-              if (i.paymentId == null && i.payment == filterValue) {
-                return true;
-              }
-              return false;
-            }
-          } else {
-            if (i.payment != filterValue) return false;
+          bool idMatches = (filterId != null && i.paymentId == filterId);
+          bool nameMatches = (i.payment == filterValue);
+
+          if (idMatches || nameMatches) {
+            isMatch = true;
           }
         }
       }
 
-      // 2. 年月によるフィルタリング
-      if (viewMode == 1) {
-        // 引き落とし予定モードなら、paymentDateを見る
-        final targetDate = i.paymentDate ?? i.date; // paymentDateがなければ利用日
-        return targetDate.year == year && targetDate.month == month;
-      } else {
-        // 通常モードなら利用日を見る
-        return i.date.year == year && i.date.month == month;
-      }
+      return isMatch;
     }).toList();
 
     // 日付順に並び替え

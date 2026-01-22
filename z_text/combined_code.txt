@@ -1,649 +1,790 @@
 ==================================================
-PATH: lib/screens/settings/settings_screen.dart
-FILE: settings_screen.dart
+PATH: lib/screens/main_screen.dart
+FILE: main_screen.dart
 ==================================================
 
 import 'package:flutter/material.dart';
-import '../../repositories/settings_repository.dart';
-import 'category_manage_screen.dart';
-import 'developer_tips_screen.dart';
+import '../repositories/settings_repository.dart';
+import '../services/input_service.dart'; // 追加
+import '../repositories/gacha_repository.dart';
+import '../widgets/app_drawer.dart';
+import 'input_tab.dart';
+import 'monthly_report_screen.dart';
+import 'gacha_screen.dart';
 
-class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
-
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  State<MainScreen> createState() => _MainScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  final SettingsRepository _repository = SettingsRepository();
+class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
+  late TabController _tabController;
+  final SettingsRepository _settingsRepository = SettingsRepository();
+  final GachaRepository _gachaRepository = GachaRepository();
+  final InputService _inputService = InputService(); // 追加
+
+  int _dataVersion = 0; // InputTab用として残す
+  int _gachaDataVersion = 0; // ガチャ画面用として追加
+  bool _isTabBarVisible = true;
   bool _isGachaEnabled = true;
-  bool _isCategoryLongPressEnabled = true;
-  // ▼▼ 追加: 入力画面でのカード表示設定 ▼▼
-  bool _showCardOnInput = true;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _gachaDataVersion = _inputService.gachaDataVersionNotifier.value; // 初期値を設定
+    _inputService.gachaDataVersionNotifier.addListener(
+      _onGachaDataVersionChanged,
+    ); // リスナーを登録
     _loadSettings();
+    _gachaRepository.checkInitialBonus();
   }
 
   Future<void> _loadSettings() async {
-    final gacha = await _repository.loadGachaEnabled();
-    final catLongPress = await _repository.loadCategoryLongPressEnabled();
-    final showCard = await _repository.loadShowCardOnInput(); // 追加
-    setState(() {
-      _isGachaEnabled = gacha;
-      _isCategoryLongPressEnabled = catLongPress;
-      _showCardOnInput = showCard;
-    });
-  }
-
-  Future<void> _toggleGacha(bool value) async {
-    setState(() {
-      _isGachaEnabled = value;
-    });
-    await _repository.saveGachaEnabled(value);
-  }
-
-  Future<void> _toggleCategoryLongPress(bool value) async {
-    setState(() {
-      _isCategoryLongPressEnabled = value;
-    });
-    await _repository.saveCategoryLongPressEnabled(value);
-  }
-
-  // ▼▼ 追加: 設定切り替え処理 ▼▼
-  Future<void> _toggleShowCardOnInput(bool value) async {
-    setState(() {
-      _showCardOnInput = value;
-    });
-    await _repository.saveShowCardOnInput(value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('設定')),
-      body: ListView(
-        children: [
-          // カテゴリ管理
-          ListTile(
-            leading: const Icon(Icons.category),
-            title: const Text('カテゴリ・支払い方法管理'),
-            subtitle: const Text('カテゴリや支払い方法の追加・編集・並び替え'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CategoryManageScreen(),
-                ),
-              );
-            },
-          ),
-          const Divider(),
-
-          // カテゴリ長押し設定
-          SwitchListTile(
-            secondary: const Icon(Icons.touch_app, color: Colors.blueGrey),
-            title: const Text('カテゴリ長押しで履歴へ'),
-            subtitle: const Text('入力画面のカテゴリを長押しして詳細へ移動'),
-            value: _isCategoryLongPressEnabled,
-            activeColor: Colors.blue,
-            onChanged: _toggleCategoryLongPress,
-          ),
-          const Divider(),
-
-          // ▼▼ 追加: カード表示設定 ▼▼
-          SwitchListTile(
-            secondary: const Icon(Icons.credit_card, color: Colors.purple),
-            title: const Text('入力画面に支払い方法選択を表示'),
-            subtitle: const Text('オフにしても履歴データは消えません。\n入力画面から隠してシンプルにする機能です。'),
-            isThreeLine: true,
-            value: _showCardOnInput,
-            activeColor: Colors.purple,
-            onChanged: _toggleShowCardOnInput,
-          ),
-          const Divider(),
-
-          // ガチャ機能のオンオフ
-          SwitchListTile(
-            secondary: const Icon(Icons.star, color: Colors.orange),
-            title: const Text('おまけガチャ機能'),
-            subtitle: const Text('入力ごとのポイント付与とガチャタブの表示'),
-            value: _isGachaEnabled,
-            activeColor: Colors.orange,
-            onChanged: _toggleGacha,
-          ),
-          const Divider(),
-
-          // 管理人の独り言
-          ListTile(
-            leading: const Icon(Icons.tips_and_updates, color: Colors.blue),
-            title: const Text('管理人の独り言 & Tips'),
-            subtitle: const Text('使い方や開発の裏話など'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const DeveloperTipsScreen(),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-==================================================
-PATH: lib/screens/gacha/gacha_game_tab.dart
-FILE: gacha_game_tab.dart
-==================================================
-
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../repositories/gacha_repository.dart';
-import '../../models/gacha_item.dart';
-
-import 'dialogs/gacha_rate_dialog.dart';
-import 'dialogs/gacha_result_dialog.dart';
-import 'dialogs/gacha_complete_dialog.dart';
-// ▼▼ 追加 ▼▼
-import 'dialogs/gacha_tutorial_content.dart';
-
-class GachaGameTab extends StatefulWidget {
-  const GachaGameTab({super.key});
-
-  @override
-  State<GachaGameTab> createState() => _GachaGameTabState();
-}
-
-class _GachaGameTabState extends State<GachaGameTab>
-    with AutomaticKeepAliveClientMixin {
-  final GachaRepository _repository = GachaRepository();
-  int _credits = 0;
-  Map<String, int> _itemCounts = {};
-  List<GachaItem> _allItems = [];
-  bool _isLoading = true;
-
-  static const int _maxLevel = 10;
-  static const int _costPerSpin = 1;
-
-  final GlobalKey _ticketKey = GlobalKey();
-  final GlobalKey _spinButtonKey = GlobalKey();
-  final GlobalKey _topBarKey = GlobalKey();
-  final GlobalKey _gridKey = GlobalKey();
-
-  bool _pendingTutorialPhase2 = false;
-
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  // --- チュートリアル関連 ---
-  static const String _tutorialKey = 'is_gacha_tutorial_shown';
-
-  Future<void> _checkTutorialPhase1() async {
-    final prefs = await SharedPreferences.getInstance();
-    final bool isShown = prefs.getBool(_tutorialKey) ?? false;
-
-    if (!isShown && mounted && _credits > 0) {
-      // 画面の描画完了を少し待ってから表示
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _showTutorialPhase1();
-      });
-      _pendingTutorialPhase2 = true;
-    }
-  }
-
-  Future<void> _completeTutorial() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_tutorialKey, true);
-  }
-
-  // ▼▼▼ 修正: 切り出したWidgetを使用 ▼▼▼
-  void _showTutorialPhase1() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return GachaTutorialContent.phase1(
-          onDismiss: () async {
-            Navigator.pop(context);
-            await _completeTutorial();
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _showTutorialPhase2() async {
-    if (!mounted) return;
-    await _completeTutorial();
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return GachaTutorialContent.phase2(
-          onDismiss: () {
-            Navigator.pop(context);
-          },
-        );
-      },
-    );
-  }
-  // ▲▲▲ 修正ここまで ▲▲▲
-
-  Future<void> _loadData() async {
-    await _repository.checkInitialBonus();
-    final credits = await _repository.getCredits();
-    final counts = await _repository.getItemCounts();
-    final items = await _repository.getItems();
-
-    if (mounted) {
-      setState(() {
-        _credits = credits;
-        _itemCounts = Map.from(counts);
-        _allItems = items;
-        _isLoading = false;
-      });
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _checkTutorialPhase1();
-      });
-    }
-  }
-
-  void _showRateDialog() {
-    showDialog(
-      context: context,
-      builder: (context) =>
-          GachaRateDialog(allItems: _allItems, itemCounts: _itemCounts),
-    );
-  }
-
-  Future<void> _spinGacha() async {
-    // 念のためチュートリアル完了フラグを保存
-    await _completeTutorial();
-
-    if (_credits < _costPerSpin) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
     try {
-      final item = await _repository.drawItem();
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      if (item == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("エラー: アイテムデータがありません")));
-        return;
-      }
-
-      final success = await _repository.consumeCredits(_costPerSpin);
-      if (!success) return;
-
-      final newCount = await _repository.unlockItem(item.id);
-      await _loadData();
-
-      if (!mounted) return;
-
-      await _showResultDialog(item, newCount);
-
-      if (newCount == _maxLevel) {
-        final maxLevelItems = _itemCounts.entries
-            .where((e) => e.value >= _maxLevel)
-            .length;
-        final isAllComplete =
-            maxLevelItems == _allItems.length && _allItems.isNotEmpty;
-
-        if (isAllComplete) {
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (mounted) {
-            _showCompleteDialog();
-          }
-        }
-      }
-
-      // 初回ガチャ後のチュートリアル表示
-      if (_pendingTutorialPhase2) {
-        _pendingTutorialPhase2 = false;
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted) {
-          _showTutorialPhase2();
-        }
+      final enabled = await _settingsRepository.loadGachaEnabled();
+      if (mounted) {
+        setState(() {
+          _isGachaEnabled = enabled;
+          _isLoading = false;
+          _setupTabController();
+        });
       }
     } catch (e) {
-      debugPrint("Gacha Error: $e");
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.of(context).pop();
+      debugPrint('Settings load error: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
 
-  void _showCompleteDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => const GachaCompleteDialog(),
+  void _setupTabController() {
+    int newIndex = _tabController.index;
+    int length = _isGachaEnabled ? 3 : 2;
+    if (newIndex >= length) newIndex = 0;
+
+    _tabController.dispose();
+    _tabController = TabController(
+      length: length,
+      vsync: this,
+      initialIndex: newIndex,
     );
+
+    _tabController.addListener(() {
+      if (!context.mounted) return;
+      if (_tabController.indexIsChanging) {
+        FocusScope.of(context).unfocus();
+        if (!_isTabBarVisible) {
+          setState(() {
+            _isTabBarVisible = true;
+          });
+        }
+      }
+    });
   }
 
-  Future<void> _showResultDialog(GachaItem item, int count) async {
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => GachaResultDialog(item: item, count: count),
-    );
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _inputService.gachaDataVersionNotifier.removeListener(
+      _onGachaDataVersionChanged,
+    ); // リスナーを解除
+    super.dispose();
+  }
+
+  void _onGachaDataVersionChanged() {
+    setState(() {
+      _gachaDataVersion = _inputService.gachaDataVersionNotifier.value;
+    });
+  }
+
+  void _refreshData() async {
+    await _loadSettings();
+    setState(() {
+      _dataVersion++; // InputTab用の_dataVersionをインクリメント
+    });
+  }
+
+  void _setTabBarVisible(bool visible) {
+    if (_isTabBarVisible != visible) {
+      setState(() {
+        _isTabBarVisible = visible;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final int spins = _credits;
-    final int maxLevelItems = _itemCounts.entries
-        .where((e) => e.value >= _maxLevel)
-        .length;
-    final int totalItems = _allItems.length;
-    final bool isAllComplete = maxLevelItems == totalItems && totalItems > 0;
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          Container(
-            key: _topBarKey,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50.withOpacity(0.5),
-              border: Border(bottom: BorderSide(color: Colors.orange.shade100)),
+      appBar: AppBar(
+        title: const Text(
+          'あつめる家計簿',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      drawer: AppDrawer(onDataChanged: _refreshData),
+      resizeToAvoidBottomInset: false,
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: TabBarView(
+          controller: _tabController,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            InputTab(
+              dataVersion: _dataVersion,
+              inputService: _inputService, // InputServiceインスタンスをInputTabに渡す
+              onTabBarVisibilityChanged: _setTabBarVisible,
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  key: _ticketKey,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.orange.shade200),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.orange.withOpacity(0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.confirmation_number,
-                        size: 18,
-                        color: Colors.orange.shade800,
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        "所持チケット:",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.brown,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        "$spins枚",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepOrange,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _showRateDialog,
-                  icon: const Icon(
-                    Icons.info_outline,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
-                  label: const Text(
-                    "提供割合",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: GridView.builder(
-              key: _gridKey,
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 0.8,
-              ),
-              itemCount: _allItems.length,
-              itemBuilder: (context, index) {
-                final item = _allItems[index];
-                final int count = _itemCounts[item.id] ?? 0;
-                final int level = item.getStage(count);
-                final bool isUnlocked = count > 0;
-                final Color itemColor = item.getColor(count);
-                final bool isOverLimit = count > _maxLevel;
-
-                return GestureDetector(
-                  onTap: isUnlocked
-                      ? () => _showResultDialog(item, count)
-                      : null,
-                  onLongPress: kDebugMode
-                      ? () async {
-                          final newCount = await _repository.unlockItem(
-                            item.id,
-                          );
-                          await _loadData();
-                          if (mounted) _showResultDialog(item, newCount);
-                        }
-                      : null,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isUnlocked
-                            ? itemColor.withOpacity(0.3)
-                            : Colors.grey.shade200,
-                        width: isUnlocked ? 2 : 1,
-                      ),
-                      boxShadow: [
-                        if (isUnlocked)
-                          BoxShadow(
-                            color: itemColor.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                      ],
-                    ),
-                    child: Stack(
-                      children: [
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Center(
-                                child: isUnlocked
-                                    ? Icon(
-                                        item.iconData,
-                                        size: 42,
-                                        color: itemColor,
-                                      )
-                                    : Icon(
-                                        Icons.lock_outline,
-                                        size: 32,
-                                        color: Colors.grey.shade300,
-                                      ),
-                              ),
-                            ),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              decoration: BoxDecoration(
-                                color: isUnlocked
-                                    ? itemColor.withOpacity(0.1)
-                                    : Colors.grey.shade50,
-                                borderRadius: const BorderRadius.vertical(
-                                  bottom: Radius.circular(14),
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    isUnlocked
-                                        ? (isOverLimit
-                                              ? "Lv.$count"
-                                              : "Lv.$level")
-                                        : "???",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: isUnlocked
-                                          ? itemColor
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                  if (isUnlocked && !isOverLimit)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 2,
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(2),
-                                        child: LinearProgressIndicator(
-                                          value: level / _maxLevel,
-                                          minHeight: 3,
-                                          backgroundColor: Colors.white,
-                                          color: itemColor,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (isOverLimit)
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Icon(
-                              Icons.auto_awesome,
-                              size: 16,
-                              color: itemColor.withOpacity(0.8),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
+            MonthlyHistoryScreen(dataVersion: _dataVersion),
+            if (_isGachaEnabled)
+              GachaScreen(
+                dataVersion: _gachaDataVersion,
+              ), // _gachaDataVersionをGachaScreenに渡す
+          ],
+        ),
+      ),
+      bottomNavigationBar: _isTabBarVisible
+          ? NavigationBar(
+              selectedIndex: _tabController.index,
+              onDestinationSelected: (index) {
+                _tabController.animateTo(index);
+                setState(() {});
               },
-            ),
-          ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
+              destinations: [
+                const NavigationDestination(
+                  icon: Icon(Icons.edit_outlined),
+                  selectedIcon: Icon(Icons.edit),
+                  label: '入力',
                 ),
+                const NavigationDestination(
+                  icon: Icon(Icons.calendar_month_outlined),
+                  selectedIcon: Icon(Icons.calendar_month),
+                  label: 'レポート',
+                ),
+                if (_isGachaEnabled)
+                  const NavigationDestination(
+                    icon: Icon(Icons.star_outline, color: Colors.orange),
+                    selectedIcon: Icon(Icons.star, color: Colors.orange),
+                    label: 'コレクション',
+                  ),
               ],
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(30),
-              ),
-            ),
-            child: Column(
+            )
+          : null,
+    );
+  }
+}
+
+
+==================================================
+PATH: lib/screens/monthly_report_screen.dart
+FILE: monthly_report_screen.dart
+==================================================
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+import '../models/category_tag.dart';
+import '../models/transaction_item.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
+import '../widgets/monthly_report_components.dart';
+import 'summary_detail_screen.dart';
+import 'transaction_edit_screen.dart';
+import 'history_screen.dart';
+
+class MonthlyHistoryScreen extends StatefulWidget {
+  final int? dataVersion;
+  const MonthlyHistoryScreen({super.key, this.dataVersion});
+  @override
+  State<MonthlyHistoryScreen> createState() => _MonthlyHistoryScreenState();
+}
+
+class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
+    with SingleTickerProviderStateMixin {
+  final PageController _pageController = PageController(initialPage: 1000);
+  late TabController _tabController;
+
+  late int _currentYear;
+  late int _currentMonth;
+  int _currentTabIndex = 0;
+
+  final GlobalKey _titleKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _currentYear = now.year;
+    _currentMonth = now.month;
+
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onPageChanged(int index) {
+    final d = DateTime(
+      DateTime.now().year,
+      DateTime.now().month + (index - 1000),
+    );
+    setState(() {
+      _currentYear = d.year;
+      _currentMonth = d.month;
+    });
+  }
+
+  Future<void> _pickMonth() async {
+    final DateTime now = DateTime.now();
+    final DateTime current = DateTime(_currentYear, _currentMonth);
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: '移動先の年月を選択',
+    );
+
+    if (picked != null) {
+      final int diffMonths =
+          (picked.year - now.year) * 12 + (picked.month - now.month);
+      final int targetPage = 1000 + diffMonths;
+
+      _pageController.jumpToPage(targetPage);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: GestureDetector(
+          key: _titleKey,
+          onTap: _pickMonth,
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    key: _spinButtonKey,
-                    onPressed: spins > 0 ? _spinGacha : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isAllComplete
-                          ? Colors.deepPurple
-                          : Colors.orange,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade200,
-                      disabledForegroundColor: Colors.grey,
-                      elevation: spins > 0 ? 4 : 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Text(
-                      isAllComplete
-                          ? "殿堂入りガチャを回す"
-                          : (spins > 0 ? "ガチャを回す (1枚消費)" : "チケットが足りません"),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
                 Text(
-                  "※入力をすると1日最大5枚までチケットを獲得できます",
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  '$_currentYear年 $_currentMonth月',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down, size: 24),
               ],
             ),
+          ),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'カレンダー', icon: Icon(Icons.calendar_month)),
+            Tab(text: '円グラフ', icon: Icon(Icons.pie_chart)),
+          ],
+        ),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) {
+          final d = DateTime(
+            DateTime.now().year,
+            DateTime.now().month + (index - 1000),
+          );
+          return MonthPage(
+            year: d.year,
+            month: d.month,
+            tabIndex: _currentTabIndex,
+            dataVersion: widget.dataVersion,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class MonthPage extends StatefulWidget {
+  final int year;
+  final int month;
+  final int tabIndex;
+  final int? dataVersion;
+
+  const MonthPage({
+    super.key,
+    required this.year,
+    required this.month,
+    required this.tabIndex,
+    this.dataVersion,
+  });
+
+  @override
+  State<MonthPage> createState() => _MonthPageState();
+}
+
+class _MonthPageState extends State<MonthPage> {
+  List<TransactionItem> _history = [];
+  List<CategoryTag> _expenseTags = [];
+  final TransactionRepository _repository = TransactionRepository();
+  final SettingsRepository _settingsRepository = SettingsRepository();
+  final Map<int, GlobalKey> _dayKeys = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant MonthPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tabIndex != widget.tabIndex ||
+        oldWidget.dataVersion != widget.dataVersion) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final allItems = await _repository.getAllTransactions();
+    final expenses = await _settingsRepository.loadExpenseTags();
+
+    if (mounted) {
+      setState(() {
+        _history = allItems.where((i) {
+          return i.date.year == widget.year && i.date.month == widget.month;
+        }).toList();
+        _history.sort((a, b) => b.date.compareTo(a.date));
+        _expenseTags = expenses;
+      });
+    }
+  }
+
+  void _scrollToDate(int day) {
+    final key = _dayKeys[day];
+    if (key != null && key.currentContext != null) {
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        alignment: 0.0,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int total = _history.fold(0, (s, i) => s + i.amount);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 50),
+      child: Column(
+        children: [
+          // 合計カードコンポーネント
+          TotalExpenseCard(
+            total: total,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SummaryDetailScreen(
+                    year: widget.year,
+                    month: widget.month,
+                  ),
+                ),
+              );
+            },
+          ),
+          // カレンダー/グラフ切り替え
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: widget.tabIndex == 0
+                ? CalendarView(
+                    year: widget.year,
+                    month: widget.month,
+                    history: _history,
+                    onDateTap: _scrollToDate,
+                  )
+                : GraphView(
+                    history: _history,
+                    expenseTags: _expenseTags,
+                    onLegendTap: (expense, color, expenseId) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => HistoryScreen(
+                            filterValue: expense,
+                            filterId: expenseId,
+                            filterKey: 'expense',
+                            color: color,
+                            initialDate: DateTime(widget.year, widget.month),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          const Divider(height: 1),
+          // 日次リストコンポーネント
+          DailyTransactionList(
+            history: _history,
+            expenseTags: _expenseTags,
+            dayKeys: _dayKeys,
+            onTransactionTap: (item) async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TransactionEditScreen(item: item),
+                ),
+              );
+              _load();
+            },
           ),
         ],
       ),
     );
+  }
+}
+
+
+==================================================
+PATH: lib/widgets/monthly_report/graph_view.dart
+FILE: graph_view.dart
+==================================================
+
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../../models/category_tag.dart';
+import '../../models/transaction_item.dart';
+
+/// 円グラフ表示用ウィジェット
+class GraphView extends StatelessWidget {
+  final List<TransactionItem> history;
+  final List<CategoryTag> expenseTags;
+  final Function(String expense, Color color, String? expenseId)? onLegendTap;
+
+  const GraphView({
+    super.key,
+    required this.history,
+    required this.expenseTags,
+    this.onLegendTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    int total = history.fold(0, (s, i) => s + i.amount);
+
+    // ID -> Tag, Label -> Tag のMap作成
+    final idToTag = {for (var t in expenseTags) t.id: t};
+    final labelToTag = {for (var t in expenseTags) t.label: t};
+
+    // 集計: キーは "ID" または "名前(IDなしの場合)"
+    final sums = <String, int>{};
+    // キーから表示情報を引くためのマップ
+    final keyToDisplayInfo = <String, CategoryTag>{};
+
+    for (var item in history) {
+      String key;
+      CategoryTag? tag;
+
+      if (item.expenseId != null) {
+        tag = idToTag[item.expenseId];
+      }
+      if (tag == null) {
+        tag = labelToTag[item.expense];
+      }
+
+      if (tag != null) {
+        key = tag.id; // IDで集計
+        keyToDisplayInfo[key] = tag;
+      } else {
+        key = item.expense; // タグが見つからない場合は名前で集計
+      }
+
+      sums[key] = (sums[key] ?? 0) + item.amount;
+    }
+
+    final sortedEntries = sums.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    List<PieChartSectionData> sections = [];
+    if (total > 0) {
+      sections = sortedEntries.map((e) {
+        final percentage = (e.value / total) * 100;
+        final key = e.key;
+        final tag = keyToDisplayInfo[key];
+
+        Color color = tag?.color ?? Colors.grey;
+
+        return PieChartSectionData(
+          color: color,
+          value: e.value.toDouble(),
+          title: '${percentage.toStringAsFixed(0)}%',
+          radius: 60,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        );
+      }).toList();
+    } else {
+      sections = [
+        PieChartSectionData(
+          color: Colors.grey.shade200,
+          value: 1,
+          title: '',
+          radius: 60,
+        ),
+      ];
+    }
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 220,
+            child: PieChart(
+              PieChartData(
+                sections: sections,
+                centerSpaceRadius: 40,
+                sectionsSpace: 2,
+                borderData: FlBorderData(show: false),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // 凡例エリア
+          if (total > 0)
+            Column(
+              children: sortedEntries.map((e) {
+                final amount = e.value;
+                final key = e.key;
+                final percentage = (amount / total * 100).toStringAsFixed(1);
+                final tag = keyToDisplayInfo[key];
+
+                String label = key;
+                Color color = Colors.grey;
+                IconData icon = Icons.label;
+                String? expenseId;
+
+                if (tag != null) {
+                  label = tag.label;
+                  color = tag.color;
+                  icon = tag.displayIcon;
+                  expenseId = tag.id;
+                }
+
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onLegendTap?.call(label, color, expenseId),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(icon, color: color, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '¥$amount',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 40,
+                            child: Text(
+                              '$percentage%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            )
+          else
+            const Text('データがありません', style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+}
+
+
+==================================================
+PATH: lib/services/history_service.dart
+FILE: history_service.dart
+==================================================
+
+import 'package:flutter/material.dart';
+import '../models/transaction_item.dart';
+import '../models/category_tag.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
+
+class HistoryService {
+  final TransactionRepository _transactionRepo = TransactionRepository();
+  final SettingsRepository _settingsRepo = SettingsRepository();
+
+  /// 指定された年月のデータを取得する
+  Future<List<TransactionItem>> getMonthlyTransactions({
+    required int year,
+    required int month,
+  }) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+
+    // 指定月でフィルタリング
+    final filtered = allItems.where((i) {
+      return i.date.year == year && i.date.month == month;
+    }).toList();
+
+    // 日付順（新しい順）に並び替え
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+
+    return filtered;
+  }
+
+  /// 条件（費目やカード）で絞り込んだデータを取得する
+  Future<List<TransactionItem>> getFilteredTransactions({
+    required String filterKey, // 'expense' or 'payment'
+    required String filterValue,
+    String? filterId, // IDでのフィルタリング用 (追加)
+    required int year,
+    required int month,
+    required int viewMode, // 0: 利用日基準, 1: 支払日基準（引き落とし予定）
+  }) async {
+    final allItems = await _transactionRepo.getAllTransactions();
+
+    final filtered = allItems.where((i) {
+      // 1. キーによるフィルタリング
+      if (filterKey == 'expense') {
+        // IDが指定されていればIDで判定、なければ名前で判定
+        if (filterId != null) {
+          if (i.expenseId != filterId) {
+            // IDがない古いデータの場合は名前で判定
+            if (i.expenseId == null && i.expense == filterValue) {
+              return true;
+            }
+            return false;
+          }
+        } else {
+          if (i.expense != filterValue) return false;
+        }
+      } else if (filterKey == 'payment') {
+        if (filterValue == '記録しない' && i.payment.isEmpty) {
+          // 記録しない扱い（空文字）OK
+        } else {
+          // IDが指定されていればIDで判定
+          if (filterId != null) {
+            if (i.paymentId != filterId) {
+              if (i.paymentId == null && i.payment == filterValue) {
+                return true;
+              }
+              return false;
+            }
+          } else {
+            if (i.payment != filterValue) return false;
+          }
+        }
+      }
+
+      // 2. 年月によるフィルタリング
+      if (viewMode == 1) {
+        // 引き落とし予定モードなら、paymentDateを見る
+        final targetDate = i.paymentDate ?? i.date; // paymentDateがなければ利用日
+        return targetDate.year == year && targetDate.month == month;
+      } else {
+        // 通常モードなら利用日を見る
+        return i.date.year == year && i.date.month == month;
+      }
+    }).toList();
+
+    // 日付順に並び替え
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+
+    return filtered;
+  }
+
+  /// 費目タグのリストを取得（アイコン表示などに必要）
+  Future<List<CategoryTag>> getExpenseTags() async {
+    return await _settingsRepo.loadExpenseTags();
+  }
+
+  /// カードタグのリストを取得
+  Future<List<CategoryTag>> getCardTags() async {
+    return await _settingsRepo.loadCardTags();
+  }
+
+  /// 特定のカード情報を取得（設定変更用）
+  Future<CategoryTag?> getCardTagByLabel(String label) async {
+    final cards = await getCardTags();
+    try {
+      return cards.firstWhere((c) => c.label == label);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// カード設定を更新する
+  Future<void> updateCardTag(CategoryTag newTag) async {
+    final cards = await getCardTags();
+    final index = cards.indexWhere((c) => c.id == newTag.id);
+    if (index != -1) {
+      cards[index] = newTag;
+      await _settingsRepo.saveCardTags(cards);
+    }
   }
 }
 

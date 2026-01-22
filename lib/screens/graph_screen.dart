@@ -3,25 +3,25 @@ import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
-import '../widgets/monthly_report_components.dart';
+import '../widgets/monthly_report_components.dart'; // TotalExpenseCard等のため
+import '../widgets/monthly_report/graph_view.dart'; // グラフ表示用
 import 'summary_detail_screen.dart';
-import 'transaction_edit_screen.dart';
+import 'history_screen.dart';
 
-class MonthlyHistoryScreen extends StatefulWidget {
+class GraphScreen extends StatefulWidget {
   final int? dataVersion;
-  const MonthlyHistoryScreen({super.key, this.dataVersion});
+  const GraphScreen({super.key, this.dataVersion});
+
   @override
-  State<MonthlyHistoryScreen> createState() => _MonthlyHistoryScreenState();
+  State<GraphScreen> createState() => _GraphScreenState();
 }
 
-class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
-  // TabController は削除しました
+class _GraphScreenState extends State<GraphScreen> {
+  // 1000ヶ月分(前後約80年)のページングを可能にする設定
   final PageController _pageController = PageController(initialPage: 1000);
 
   late int _currentYear;
   late int _currentMonth;
-  // _currentTabIndex は削除しました
-
   final GlobalKey _titleKey = GlobalKey();
 
   @override
@@ -38,6 +38,7 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
     super.dispose();
   }
 
+  // ページ切り替え時の処理（年月更新）
   void _onPageChanged(int index) {
     final d = DateTime(
       DateTime.now().year,
@@ -49,6 +50,7 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
     });
   }
 
+  // 年月選択ダイアログ
   Future<void> _pickMonth() async {
     final DateTime now = DateTime.now();
     final DateTime current = DateTime(_currentYear, _currentMonth);
@@ -95,7 +97,6 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
             ),
           ),
         ),
-        // bottom: TabBar(...) を削除しました
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -105,10 +106,10 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
             DateTime.now().year,
             DateTime.now().month + (index - 1000),
           );
-          return MonthPage(
+          // 各月のグラフページを表示
+          return GraphPage(
             year: d.year,
             month: d.month,
-            // tabIndex を削除しました
             dataVersion: widget.dataVersion,
           );
         },
@@ -117,30 +118,27 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
   }
 }
 
-class MonthPage extends StatefulWidget {
+class GraphPage extends StatefulWidget {
   final int year;
   final int month;
-  // final int tabIndex; // 削除
   final int? dataVersion;
 
-  const MonthPage({
+  const GraphPage({
     super.key,
     required this.year,
     required this.month,
-    // required this.tabIndex, // 削除
     this.dataVersion,
   });
 
   @override
-  State<MonthPage> createState() => _MonthPageState();
+  State<GraphPage> createState() => _GraphPageState();
 }
 
-class _MonthPageState extends State<MonthPage> {
+class _GraphPageState extends State<GraphPage> {
   List<TransactionItem> _history = [];
   List<CategoryTag> _expenseTags = [];
   final TransactionRepository _repository = TransactionRepository();
   final SettingsRepository _settingsRepository = SettingsRepository();
-  final Map<int, GlobalKey> _dayKeys = {};
 
   @override
   void initState() {
@@ -149,9 +147,8 @@ class _MonthPageState extends State<MonthPage> {
   }
 
   @override
-  void didUpdateWidget(covariant MonthPage oldWidget) {
+  void didUpdateWidget(covariant GraphPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // tabIndexのチェックを削除
     if (oldWidget.dataVersion != widget.dataVersion) {
       _load();
     }
@@ -163,24 +160,12 @@ class _MonthPageState extends State<MonthPage> {
 
     if (mounted) {
       setState(() {
+        // 対象年月のデータのみ抽出
         _history = allItems.where((i) {
           return i.date.year == widget.year && i.date.month == widget.month;
         }).toList();
-        _history.sort((a, b) => b.date.compareTo(a.date));
         _expenseTags = expenses;
       });
-    }
-  }
-
-  void _scrollToDate(int day) {
-    final key = _dayKeys[day];
-    if (key != null && key.currentContext != null) {
-      Scrollable.ensureVisible(
-        key.currentContext!,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.0,
-      );
     }
   }
 
@@ -192,7 +177,7 @@ class _MonthPageState extends State<MonthPage> {
       padding: const EdgeInsets.only(bottom: 50),
       child: Column(
         children: [
-          // 合計カード
+          // 合計金額カード
           TotalExpenseCard(
             total: total,
             onTap: () {
@@ -207,29 +192,26 @@ class _MonthPageState extends State<MonthPage> {
               );
             },
           ),
-
-          // グラフ/カレンダー切り替えロジックを削除し、カレンダーのみ表示
-          CalendarView(
-            year: widget.year,
-            month: widget.month,
-            history: _history,
-            onDateTap: _scrollToDate,
-          ),
-
-          const Divider(height: 1),
-          // 日次リスト
-          DailyTransactionList(
+          const SizedBox(height: 10),
+          // グラフビュー
+          GraphView(
             history: _history,
             expenseTags: _expenseTags,
-            dayKeys: _dayKeys,
-            onTransactionTap: (item) async {
-              await Navigator.push(
+            onLegendTap: (expense, color, expenseId) {
+              Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => TransactionEditScreen(item: item),
+                  builder: (context) => HistoryScreen(
+                    filterValue: expense,
+                    filterId: expenseId,
+                    filterKey: 'expense',
+                    color: color,
+                    year: widget.year,
+                    month: widget.month,
+                    //initialDate: DateTime(widget.year, widget.month),
+                  ),
                 ),
               );
-              _load();
             },
           ),
         ],

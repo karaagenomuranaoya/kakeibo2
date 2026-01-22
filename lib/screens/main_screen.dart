@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../repositories/settings_repository.dart';
-import '../services/input_service.dart'; // 追加
+import '../services/input_service.dart';
 import '../repositories/gacha_repository.dart';
 import '../widgets/app_drawer.dart';
 import 'input_tab.dart';
 import 'monthly_report_screen.dart';
+import 'graph_screen.dart'; // 追加
 import 'gacha_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -17,10 +18,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
   final GachaRepository _gachaRepository = GachaRepository();
-  final InputService _inputService = InputService(); // 追加
+  final InputService _inputService = InputService();
 
-  int _dataVersion = 0; // InputTab用として残す
-  int _gachaDataVersion = 0; // ガチャ画面用として追加
+  int _dataVersion = 0;
+  int _gachaDataVersion = 0;
   bool _isTabBarVisible = true;
   bool _isGachaEnabled = true;
   bool _isLoading = true;
@@ -28,11 +29,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // 初期化時はとりあえず長さ3で作成（ロード後に再設定されます）
     _tabController = TabController(length: 3, vsync: this);
-    _gachaDataVersion = _inputService.gachaDataVersionNotifier.value; // 初期値を設定
+
+    _gachaDataVersion = _inputService.gachaDataVersionNotifier.value;
     _inputService.gachaDataVersionNotifier.addListener(
       _onGachaDataVersionChanged,
-    ); // リスナーを登録
+    );
     _loadSettings();
     _gachaRepository.checkInitialBonus();
   }
@@ -59,7 +62,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _setupTabController() {
     int newIndex = _tabController.index;
-    int length = _isGachaEnabled ? 3 : 2;
+
+    // ガチャONなら4タブ、OFFなら3タブ
+    int length = _isGachaEnabled ? 4 : 3;
+
+    // インデックスが範囲外にならないよう調整
     if (newIndex >= length) newIndex = 0;
 
     _tabController.dispose();
@@ -87,7 +94,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _tabController.dispose();
     _inputService.gachaDataVersionNotifier.removeListener(
       _onGachaDataVersionChanged,
-    ); // リスナーを解除
+    );
     super.dispose();
   }
 
@@ -100,7 +107,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void _refreshData() async {
     await _loadSettings();
     setState(() {
-      _dataVersion++; // InputTab用の_dataVersionをインクリメント
+      _dataVersion++;
     });
   }
 
@@ -136,16 +143,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           controller: _tabController,
           physics: const NeverScrollableScrollPhysics(),
           children: [
+            // 1. 入力タブ
             InputTab(
               dataVersion: _dataVersion,
-              inputService: _inputService, // InputServiceインスタンスをInputTabに渡す
+              inputService: _inputService,
               onTabBarVisibilityChanged: _setTabBarVisible,
             ),
+            // 2. レポート(カレンダー)タブ
             MonthlyHistoryScreen(dataVersion: _dataVersion),
-            if (_isGachaEnabled)
-              GachaScreen(
-                dataVersion: _gachaDataVersion,
-              ), // _gachaDataVersionをGachaScreenに渡す
+
+            // 3. グラフタブ (新規追加)
+            GraphScreen(dataVersion: _dataVersion),
+
+            // 4. コレクションタブ (設定ON時のみ)
+            if (_isGachaEnabled) GachaScreen(dataVersion: _gachaDataVersion),
           ],
         ),
       ),
@@ -166,6 +177,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   icon: Icon(Icons.calendar_month_outlined),
                   selectedIcon: Icon(Icons.calendar_month),
                   label: 'レポート',
+                ),
+                // グラフタブのアイコンを追加
+                const NavigationDestination(
+                  icon: Icon(Icons.pie_chart_outline),
+                  selectedIcon: Icon(Icons.pie_chart),
+                  label: 'グラフ',
                 ),
                 if (_isGachaEnabled)
                   const NavigationDestination(

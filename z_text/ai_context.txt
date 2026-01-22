@@ -30,6 +30,7 @@ atsumeru_kakeibo/
             gacha_item.dart
         screens/
             summary_detail_screen.dart
+            transaction_edit_screen.dart
             history_screen.dart
             gacha_screen.dart
             history_monthly_page.dart
@@ -44,6 +45,7 @@ atsumeru_kakeibo/
                     category_edit_dialog.dart
                     gacha_style_dialog.dart
             input/
+                transaction_edit_view_model.dart
                 input_tab_tutorial.dart
                 input_tab_view_model.dart
             gacha/
@@ -65,6 +67,7 @@ atsumeru_kakeibo/
             history_service.dart
             input_service.dart
         widgets/
+            bar_chart_tab.dart
             category_selector.dart
             card_settings_dialog.dart
             monthly_report_components.dart
@@ -174,7 +177,9 @@ class TransactionItem {
   final String id;
   final int amount;
   final String expense;
+  final String? expenseId; // カテゴリID
   final String payment;
+  final String? paymentId; // 支払い方法ID
   final DateTime date;
   final DateTime? paymentDate;
   final String memo;
@@ -183,7 +188,9 @@ class TransactionItem {
     String? id,
     required this.amount,
     required this.expense,
+    this.expenseId,
     required this.payment,
+    this.paymentId,
     required this.date,
     this.paymentDate,
     this.memo = '',
@@ -194,7 +201,9 @@ class TransactionItem {
       'id': id,
       'amount': amount,
       'expense': expense,
+      'expense_id': expenseId,
       'payment': payment,
+      'payment_id': paymentId,
       'date_iso': date.toIso8601String(),
       'payment_date_iso': paymentDate?.toIso8601String(),
       'memo': memo,
@@ -212,7 +221,9 @@ class TransactionItem {
               (json['date_iso'] as String)),
       amount: json['amount'] as int,
       expense: json['expense'] as String,
+      expenseId: json['expense_id'] as String?,
       payment: json['payment'] as String,
+      paymentId: json['payment_id'] as String?,
       date: DateTime.parse(json['date_iso'] as String),
       paymentDate: json['payment_date_iso'] != null
           ? DateTime.parse(json['payment_date_iso'] as String)
@@ -225,7 +236,9 @@ class TransactionItem {
     String? id, // IDもcopyできるようにしておくと編集時に便利です
     int? amount,
     String? expense,
+    String? expenseId,
     String? payment,
+    String? paymentId,
     DateTime? date,
     DateTime? paymentDate,
     String? memo,
@@ -234,13 +247,17 @@ class TransactionItem {
       id: id ?? this.id,
       amount: amount ?? this.amount,
       expense: expense ?? this.expense,
+      expenseId: expenseId ?? this.expenseId,
       payment: payment ?? this.payment,
+      paymentId: paymentId ?? this.paymentId,
       date: date ?? this.date,
       paymentDate: paymentDate ?? this.paymentDate,
       memo: memo ?? this.memo,
     );
   }
 }
+
+//copywithを利用して、カテゴリや支払いの編集もできるようにしよう。
 
 ```
 
@@ -601,6 +618,7 @@ class GachaRepository {
 
     final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
     if (dailyCount >= _dailyLimit) {
+      //ここで5回制限をかけている
       return (currentTotal, false);
     }
 
@@ -619,6 +637,37 @@ class GachaRepository {
       return true;
     }
     return false;
+  }
+
+  // デバッグ用: ガチャの進行状況をリセットする
+  Future<void> debugResetProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_creditKey);
+    await prefs.remove(_countsKey);
+    await prefs.remove(_initialBonusKey);
+    _counts.clear();
+  }
+
+  // デバッグ用: コンプリート一歩手前まで進める
+  Future<void> debugSetNearComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // データをリセット
+    await debugResetProgress();
+
+    // すべてのアイテムを取得
+    final allItems = GachaData.monsters;
+
+    // 全てLv10に、最後の一つだけLv9にする
+    for (int i = 0; i < allItems.length; i++) {
+      final item = allItems[i];
+      final count = (i == allItems.length - 1) ? 9 : 10;
+      _counts[item.id] = count;
+    }
+    await _saveCounts();
+
+    // クレジットを付与（テスト用）
+    await prefs.setInt(_creditKey, 10);
   }
 }
 
@@ -850,68 +899,6 @@ class TransactionRepository {
     );
     await prefs.setString(_key, jsonString);
   }
-
-  // --- ⬇️ ここから追加機能：日数カウントロジック ---
-
-  /// ユニークな入力日数を取得する
-  /// (1日に複数回入力しても「1日」としてカウント)
-  int getUniqueInputDaysCount() {
-    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
-
-    // Setを使って重複する日付を除去する
-    final uniqueDates = _memoryCache!.map((item) {
-      // 時間情報(HH:mm:ss)を切り捨てて、年月日だけにする
-      return DateTime(item.date.year, item.date.month, item.date.day);
-    }).toSet();
-
-    return uniqueDates.length;
-  }
-
-  /// 継続中の入力日数を取得する（オプション機能：連続記録用）
-  /// 今日から遡って何日連続で入力しているか
-  int getCurrentStreak() {
-    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
-
-    // 日付のみのリストを作成して降順ソート
-    final sortedDates =
-        _memoryCache!
-            .map((item) {
-              return DateTime(item.date.year, item.date.month, item.date.day);
-            })
-            .toSet()
-            .toList()
-          ..sort((a, b) => b.compareTo(a)); // 新しい順
-
-    if (sortedDates.isEmpty) return 0;
-
-    final today = DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
-
-    int streak = 0;
-    // 最新の入力が今日、または昨日でない場合はストリーク途切れとみなす場合などの判定
-    // ここでは単純にリストを遡る
-
-    DateTime checkDate = sortedDates.first;
-
-    // もし最新入力が今日より未来なら（入力ミスなど）、カウント対象にするか要検討ですが
-    // 一旦、最新の日付を基準にカウントを開始します
-
-    // ※ シンプルにするため、最新の日付から「1日ずつ差があるか」をチェック
-    for (int i = 0; i < sortedDates.length - 1; i++) {
-      final current = sortedDates[i];
-      final next = sortedDates[i + 1];
-
-      final diff = current.difference(next).inDays;
-      if (diff == 1) {
-        streak++;
-      } else {
-        break; // 連続が途切れたら終了
-      }
-    }
-
-    // 最初の1日分を加算
-    return streak + 1;
-  }
 }
 
 ```
@@ -950,6 +937,7 @@ class HistoryService {
   Future<List<TransactionItem>> getFilteredTransactions({
     required String filterKey, // 'expense' or 'payment'
     required String filterValue,
+    String? filterId, // IDでのフィルタリング用 (追加)
     required int year,
     required int month,
     required int viewMode, // 0: 利用日基準, 1: 支払日基準（引き落とし予定）
@@ -959,12 +947,33 @@ class HistoryService {
     final filtered = allItems.where((i) {
       // 1. キーによるフィルタリング
       if (filterKey == 'expense') {
-        if (i.expense != filterValue) return false;
+        // IDが指定されていればIDで判定、なければ名前で判定
+        if (filterId != null) {
+          if (i.expenseId != filterId) {
+            // IDがない古いデータの場合は名前で判定
+            if (i.expenseId == null && i.expense == filterValue) {
+              return true;
+            }
+            return false;
+          }
+        } else {
+          if (i.expense != filterValue) return false;
+        }
       } else if (filterKey == 'payment') {
         if (filterValue == '記録しない' && i.payment.isEmpty) {
           // 記録しない扱い（空文字）OK
-        } else if (i.payment != filterValue) {
-          return false;
+        } else {
+          // IDが指定されていればIDで判定
+          if (filterId != null) {
+            if (i.paymentId != filterId) {
+              if (i.paymentId == null && i.payment == filterValue) {
+                return true;
+              }
+              return false;
+            }
+          } else {
+            if (i.payment != filterValue) return false;
+          }
         }
       }
 
@@ -1021,12 +1030,12 @@ class HistoryService {
 ## File: lib/services/input_service.dart
 ```dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Added
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
-import '../repositories/settings_repository.dart'; // Added
+import '../repositories/settings_repository.dart';
 import '../utils/simple_calculator.dart';
 
 /// 初期表示に必要なデータをまとめたクラス
@@ -1060,6 +1069,7 @@ class InputServiceResult {
   final Color messageColor;
   final String? formattedAmount;
   final String? savedId;
+  final bool gachaCreditsAdded; // 追加
 
   InputServiceResult({
     required this.success,
@@ -1067,22 +1077,30 @@ class InputServiceResult {
     this.messageColor = Colors.blue,
     this.formattedAmount,
     this.savedId,
+    this.gachaCreditsAdded = false, // デフォルト値を設定
   });
 }
 
 class InputService {
   final TransactionRepository _transactionRepo = TransactionRepository();
   final GachaRepository _gachaRepo = GachaRepository();
-  final SettingsRepository _settingsRepo = SettingsRepository(); // Added
+  final SettingsRepository _settingsRepo = SettingsRepository();
+  final ValueNotifier<int> gachaDataVersionNotifier = ValueNotifier<int>(
+    0,
+  ); // 追加
 
   // --- keys ---
   static const String _keyLastExpenseIdx = 'last_expense_index';
   static const String _keyLastCardIdx = 'last_card_index';
   static const String _keyLastIsCard = 'last_is_card';
   static const String _keyTutorialShown = 'is_input_tutorial_shown_v1';
+  static const String _keyMigrationV1Done = 'is_category_migration_v1_done';
 
   /// 入力画面に必要な初期データを一括で取得する
   Future<InputInitialData> loadInitialData() async {
+    // データ移行（カテゴリ名管理→ID管理への移行）
+    await _migrateCategoriesToIds();
+
     final expenses = await _settingsRepo.loadExpenseTags();
     final cards = await _settingsRepo.loadCardTags();
     final gachaEnabled = await _settingsRepo.loadGachaEnabled();
@@ -1169,7 +1187,6 @@ class InputService {
     }
 
     // ▼▼ 追加: 桁数（金額）の上限チェック ▼▼
-    // 10桁まで = 9,999,999,999 までOK。10,000,000,000 (100億)以上はNG
     if (amount >= 10000000000) {
       return InputServiceResult(
         success: false,
@@ -1197,12 +1214,20 @@ class InputService {
           int targetMonth = date.month + monthsToAdd;
           int targetDay = cardTag.paymentDay!;
 
-          paymentDate = (targetDay == 99)
-              ? DateTime(targetYear, targetMonth + 1, 0)
-              : DateTime(targetYear, targetMonth, targetDay);
+          final int lastDayOfMonth = DateTime(
+            targetYear,
+            targetMonth + 1,
+            0,
+          ).day;
+
+          final int realPaymentDay = (targetDay > lastDayOfMonth)
+              ? lastDayOfMonth
+              : targetDay;
+
+          paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
         }
       } else {
-        paymentMethod = 'カード';
+        paymentMethod = '不明';
       }
     }
 
@@ -1211,7 +1236,9 @@ class InputService {
       final newItem = TransactionItem(
         amount: amount,
         expense: expenseTag.label,
+        expenseId: expenseTag.id,
         payment: paymentMethod,
+        paymentId: shouldUseCard ? cardTag?.id : null,
         date: DateTime(
           date.year,
           date.month,
@@ -1226,27 +1253,24 @@ class InputService {
       await _transactionRepo.addTransaction(newItem);
 
       // 4. ガチャポイント処理とメッセージ生成
-      String msg = '保存しました'; // 基本のメッセージ
+      String msg = '保存しました';
       Color color = Colors.blue;
+      bool gachaCreditsAdded = false; // 追加
 
-      // ① まず支払日の情報をメッセージに入れる
       if (paymentDate != null) {
         msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
       }
 
-      // ② 次に（elseを使わずに）ガチャ処理を行う
       if (isGachaEnabled) {
-        // addCreditは (int 現在のポイント, bool 追加できたか) の2つを返します
         final result = await _gachaRepo.addCredit();
-
-        // result.$2 が「ポイントが追加できたかどうか(bool)」です
-        // result.$1 は「現在のポイント数(int)」ですが、ここでは使いません（だから囮に見えたのかも！）
-        final bool isAdded = result.$2;
-
-        if (isAdded) {
-          // ポイントが増えたら、メッセージの後ろにチケットを付け足す
-          msg += '🎫';
+        gachaCreditsAdded = result.$2;
+        if (gachaCreditsAdded) {
+          gachaDataVersionNotifier.value++; // gachaDataVersionNotifier をインクリメント
         }
+      }
+
+      if (gachaCreditsAdded) {
+        msg += '🎫'; // チケット絵文字はここで追加
       }
 
       return InputServiceResult(
@@ -1255,6 +1279,7 @@ class InputService {
         messageColor: color,
         formattedAmount: calculatedText,
         savedId: newItem.id,
+        gachaCreditsAdded: gachaCreditsAdded, // gachaCreditsAdded を返す
       );
     } catch (e) {
       return InputServiceResult(
@@ -1275,6 +1300,198 @@ class InputService {
       return allItems.firstWhere((e) => e.id == id);
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<InputServiceResult> updateTransaction({
+    required String id,
+    required String rawAmount,
+    required String memo,
+    required DateTime date,
+    required CategoryTag expenseTag,
+    required bool isCardPayment,
+    required CategoryTag? cardTag,
+    required bool showCardOnInput,
+  }) async {
+    // 1. 計算とバリデーション
+    final calculatedText = SimpleCalculator.calculate(rawAmount);
+
+    if (calculatedText.isEmpty) {
+      return InputServiceResult(
+        success: false,
+        message: '金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
+    if (amount <= 0) {
+      return InputServiceResult(
+        success: false,
+        message: '1円以上の金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    if (amount >= 10000000000) {
+      return InputServiceResult(
+        success: false,
+        message: '金額が大きすぎます',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    // 2. 支払い情報の構築
+    String paymentMethod = '';
+    DateTime? paymentDate;
+
+    final bool shouldUseCard = showCardOnInput && isCardPayment;
+
+    if (shouldUseCard) {
+      if (cardTag != null) {
+        paymentMethod = cardTag.label;
+        if (cardTag.closingDay != null && cardTag.paymentDay != null) {
+          int monthsToAdd = cardTag.paymentMonthOffset;
+          if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
+            monthsToAdd++;
+          }
+          int targetYear = date.year;
+          int targetMonth = date.month + monthsToAdd;
+          int targetDay = cardTag.paymentDay!;
+
+          final int lastDayOfMonth = DateTime(
+            targetYear,
+            targetMonth + 1,
+            0,
+          ).day;
+
+          final int realPaymentDay = (targetDay > lastDayOfMonth)
+              ? lastDayOfMonth
+              : targetDay;
+
+          paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
+        }
+      } else {
+        paymentMethod = '不明';
+      }
+    }
+
+    // 3. データの更新
+    try {
+      // 既存のデータを取得（作成日などを保持するため、必要なら取得するが、今回は上書きでOK）
+      // ただしIDは必須
+      final newItem = TransactionItem(
+        id: id,
+        amount: amount,
+        expense: expenseTag.label,
+        expenseId: expenseTag.id,
+        payment: paymentMethod,
+        paymentId: shouldUseCard ? cardTag?.id : null,
+        date: DateTime(
+          date.year,
+          date.month,
+          date.day,
+          DateTime.now().hour,
+          DateTime.now().minute,
+        ),
+        paymentDate: paymentDate,
+        memo: memo,
+      );
+
+      await _transactionRepo.updateTransaction(newItem);
+
+      String msg = '更新しました';
+      if (paymentDate != null) {
+        msg = '更新しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      return InputServiceResult(
+        success: true,
+        message: msg,
+        formattedAmount: calculatedText,
+        savedId: newItem.id,
+      );
+    } catch (e) {
+      return InputServiceResult(
+        success: false,
+        message: '更新エラー: $e',
+        messageColor: Colors.red,
+      );
+    }
+  }
+
+  /// 既存データのカテゴリ名・カード名をIDに紐付ける移行処理
+  Future<void> _migrateCategoriesToIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool done = prefs.getBool(_keyMigrationV1Done) ?? false;
+    if (done) return;
+
+    try {
+      final allTransactions = await _transactionRepo.getAllTransactions();
+      final expenses = await _settingsRepo.loadExpenseTags();
+      final cards = await _settingsRepo.loadCardTags();
+
+      bool changed = false;
+      final updatedList = <TransactionItem>[];
+
+      for (final item in allTransactions) {
+        String? newExpenseId = item.expenseId;
+        String? newPaymentId = item.paymentId;
+        bool itemChanged = false;
+
+        // 費目の紐付け
+        if (newExpenseId == null) {
+          try {
+            final tag = expenses.firstWhere((e) => e.label == item.expense);
+            newExpenseId = tag.id;
+            itemChanged = true;
+          } catch (_) {
+            // 見つからない場合は古い名前のままIDなし
+          }
+        }
+
+        // 支払いの紐付け
+        if (newPaymentId == null && item.payment.isNotEmpty) {
+          // カードリストから探す
+          try {
+            final tag = cards.firstWhere((c) => c.label == item.payment);
+            newPaymentId = tag.id;
+            itemChanged = true;
+          } catch (_) {
+            // 見つからない場合はIDなし
+          }
+        }
+
+        if (itemChanged) {
+          updatedList.add(
+            item.copyWith(expenseId: newExpenseId, paymentId: newPaymentId),
+          );
+          changed = true;
+        } else {
+          updatedList.add(item);
+        }
+      }
+
+      if (changed) {
+        // TransactionRepositoryには一括更新メソッドがないので、
+        // 内部実装を知っている前提で少し強引だが、一件ずつ更新するか、
+        // あるいはRepositoryに一括更新メソッドを追加するのが筋。
+        // ここでは件数が多いと一件ずつは重いので、Repositoryのメモリキャッシュを書き換えて保存させる
+        // ただし _saveToPrefs は private なので、一件ずつ updateTransaction するしかない。
+        // 件数が数百件程度なら問題ないはず。
+        for (final newItem in updatedList) {
+          // IDが変わっていなくても、copyWithでインスタンスが変わっているものを保存
+          // ただし、getAllTransactionsで取得したリストの要素と updatedList の要素を比較...
+          // ここでは単純に changed フラグが立っている item だけ update する
+          if (newItem.expenseId != null || newItem.paymentId != null) {
+            await _transactionRepo.updateTransaction(newItem);
+          }
+        }
+      }
+
+      await prefs.setBool(_keyMigrationV1Done, true);
+    } catch (e) {
+      debugPrint('Migration failed: $e');
     }
   }
 }

@@ -56,7 +56,9 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.viewMode != widget.viewMode ||
         oldWidget.year != widget.year ||
-        oldWidget.month != widget.month) {
+        oldWidget.month != widget.month ||
+        oldWidget.filterValue != widget.filterValue ||
+        oldWidget.filterId != widget.filterId) {
       _load();
     }
   }
