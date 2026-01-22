@@ -54,47 +54,40 @@ class TransactionTile extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: Text(
-              categoryName ?? item.expense,
-              style: const TextStyle(fontWeight: FontWeight.w500),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  // カテゴリ名
+                  TextSpan(
+                    text: categoryName ?? item.expense,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14, // 必要に応じて調整
+                    ),
+                  ),
+                  // メモがある場合のみ追加
+                  if (subtitleText.isNotEmpty)
+                    TextSpan(
+                      text: ' ($subtitleText)',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w200,
+                        fontSize: 10, // 必要に応じて調整
+                      ),
+                    ),
+                ],
+              ),
               overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
+
           Text(
             '¥${item.amount}',
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
         ],
       ),
-      subtitle: (subtitleText.isNotEmpty || dateText.isNotEmpty)
-          ? Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                children: [
-                  if (showDate) ...[
-                    Text(dateText, style: const TextStyle(fontSize: 11)),
-                    if (subtitleText.isNotEmpty)
-                      const Text(
-                        '  |  ',
-                        style: TextStyle(color: Colors.grey, fontSize: 10),
-                      ),
-                  ],
-                  if (subtitleText.isNotEmpty)
-                    Expanded(
-                      child: Text(
-                        subtitleText,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade700,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-              ),
-            )
-          : null,
+
       trailing: onTap != null
           ? const Icon(Icons.chevron_right, size: 16, color: Colors.grey)
           : null,
