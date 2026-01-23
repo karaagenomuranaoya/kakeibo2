@@ -8,7 +8,6 @@ class TransactionTile extends StatelessWidget {
   final Color? paymentColor;
   final IconData? categoryIcon;
   final IconData? paymentIcon;
-  // ▼▼ 追加: カテゴリ名（ID管理移行に伴い、表示名を外部から受け取る） ▼▼
   final String? categoryName;
   final VoidCallback? onTap;
   final bool showDate;
@@ -27,18 +26,7 @@ class TransactionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> details = [];
-
-    if (item.payment.isNotEmpty &&
-        item.payment != '記録しない' &&
-        item.payment != 'デフォルト') {
-      details.add(item.payment);
-    }
-    if (item.memo.isNotEmpty) {
-      details.add(item.memo);
-    }
-
-    final String subtitleText = details.join(' / ');
+    final String subtitleText = item.memo.isNotEmpty ? item.memo : '';
     final String dateText = showDate
         ? AppDateUtils.formatDateTime(item.date)
         : "";

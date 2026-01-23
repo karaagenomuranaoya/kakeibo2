@@ -17,6 +17,8 @@ class CategoryTag {
   final String? iconFontFamily;
   final String? iconFontPackage;
 
+  static const String systemNoRecordId = 'system_no_record'; // 記録しない
+
   CategoryTag({
     String? id,
     required this.label,
@@ -101,6 +103,13 @@ class CategoryTag {
 
   static List<CategoryTag> get defaultCards => [
     CategoryTag(
+      id: systemNoRecordId,
+      label: '記録しない',
+      color: Colors.grey.shade300,
+      iconCodePoint: Icons.visibility_off.codePoint,
+      iconFontFamily: Icons.visibility_off.fontFamily,
+    ),
+    CategoryTag(
       label: 'クレジット',
       color: Colors.redAccent,
       closingDay: 99,
@@ -117,6 +126,12 @@ class CategoryTag {
       iconFontFamily: Icons.directions_transit.fontFamily,
     ),
   ];
+
+  bool get isManageablePayment {
+    // 固定ID（現金・記録しない）なら false
+    if (id == systemNoRecordId) return false;
+    return true;
+  }
 
   // ▼▼ 変更箇所：ここでアイコンを明示的に指定することで、推定機能を不要にする ▼▼
   static List<CategoryTag> get defaultExpenses => [

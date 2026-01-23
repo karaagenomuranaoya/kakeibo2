@@ -135,7 +135,7 @@ class PaymentPage extends StatefulWidget {
 
 class _PaymentPageState extends State<PaymentPage> {
   List<TransactionItem> _history = [];
-  List<CategoryTag> _expenseTags = [];
+  List<CategoryTag> _paymentTags = [];
   final TransactionRepository _repository = TransactionRepository();
   final SettingsRepository _settingsRepository = SettingsRepository();
 
@@ -155,7 +155,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
-    final expenses = await _settingsRepository.loadExpenseTags();
+    final payments = await _settingsRepository.loadCardTags();
 
     if (mounted) {
       setState(() {
@@ -163,7 +163,7 @@ class _PaymentPageState extends State<PaymentPage> {
         _history = allItems.where((i) {
           return i.date.year == widget.year && i.date.month == widget.month;
         }).toList();
-        _expenseTags = expenses;
+        _paymentTags = payments;
       });
     }
   }
@@ -182,15 +182,15 @@ class _PaymentPageState extends State<PaymentPage> {
           // グラフビュー
           PaymentView(
             history: _history,
-            expenseTags: _expenseTags,
-            onLegendTap: (expense, color, expenseId) {
+            paymentTags: _paymentTags,
+            onLegendTap: (payment, color, paymentId) {
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => HistoryScreen(
-                    filterValue: expense,
-                    filterId: expenseId,
-                    filterKey: 'expense',
+                    filterValue: payment,
+                    filterId: paymentId,
+                    filterKey: 'payment',
                     color: color,
                     initialDate: DateTime(widget.year, widget.month),
                     //initialDate: DateTime(widget.year, widget.month),

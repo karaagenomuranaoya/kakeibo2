@@ -65,7 +65,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     int newIndex = _tabController.index;
 
     // ガチャONなら4タブ、OFFなら3タブ
-    int length = _isGachaEnabled ? 4 : 3;
+    int length = _isGachaEnabled ? 5 : 4;
 
     // インデックスが範囲外にならないよう調整
     if (newIndex >= length) newIndex = 0;
@@ -198,7 +198,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   const NavigationDestination(
                     icon: Icon(Icons.star_outline, color: Colors.orange),
                     selectedIcon: Icon(Icons.star, color: Colors.orange),
-                    label: 'コレクション',
+                    label: 'ガチャ',
                   ),
               ],
             )
