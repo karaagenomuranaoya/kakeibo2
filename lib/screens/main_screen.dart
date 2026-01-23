@@ -180,7 +180,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 const NavigationDestination(
                   icon: Icon(Icons.calendar_month_outlined),
                   selectedIcon: Icon(Icons.calendar_month),
-                  label: 'レポート',
+                  label: 'カレンダー',
                 ),
 
                 const NavigationDestination(

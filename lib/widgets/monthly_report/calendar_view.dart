@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../models/transaction_item.dart';
 
 /// カレンダー表示用ウィジェット
@@ -27,6 +28,17 @@ class CalendarView extends StatelessWidget {
     // 日曜(7)なら0(ズレなし)、月曜(1)なら1つズレる...という「日曜始まり」ロジックになっています。
     final int emptyCount = firstWeekday % 7;
 
+    // 【変更点1】日ごとの合計金額を計算してMapにする
+    // { 1: 5000, 5: 1200, ... } のような形になります
+    final Map<int, int> dailyTotals = {};
+    for (var item in history) {
+      dailyTotals[item.date.day] =
+          (dailyTotals[item.date.day] ?? 0) + item.amount;
+    }
+
+    // 金額フォーマッター (例: 1,200)
+    final formatter = NumberFormat("#,###");
+
     final hasDataDays = history.map((e) => e.date.day).toSet();
 
     return Container(
@@ -53,14 +65,19 @@ class CalendarView extends StatelessWidget {
             itemCount: emptyCount + daysInMonth,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
-              childAspectRatio: 1.2,
+              childAspectRatio: 1.0, //高さ
+              mainAxisSpacing: 2,
+              crossAxisSpacing: 2,
             ),
             itemBuilder: (context, index) {
               if (index < emptyCount) {
                 return const SizedBox.shrink();
               }
               final day = index - emptyCount + 1;
-              final hasData = hasDataDays.contains(day);
+
+              // Mapから金額を取得（なければ0）
+              final amount = dailyTotals[day] ?? 0;
+              final bool hasData = amount > 0;
 
               return GestureDetector(
                 onTap: hasData ? () => onDateTap(day) : null,
@@ -87,13 +104,26 @@ class CalendarView extends StatelessWidget {
                         ),
                       ),
                       if (hasData)
-                        Container(
-                          margin: const EdgeInsets.only(top: 2),
-                          width: 4,
-                          height: 4,
-                          decoration: const BoxDecoration(
-                            color: Colors.orange,
-                            shape: BoxShape.circle,
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2), // 2pxだけ離す
+                          child: SizedBox(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 1,
+                              ),
+                              child: FittedBox(
+                                // 枠内に収まるように縮小
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  formatter.format(amount),
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.deepOrange,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                     ],

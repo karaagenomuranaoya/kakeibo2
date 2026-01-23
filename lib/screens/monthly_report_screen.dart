@@ -142,6 +142,9 @@ class _MonthPageState extends State<MonthPage> {
   final SettingsRepository _settingsRepository = SettingsRepository();
   final Map<int, GlobalKey> _dayKeys = {};
 
+  // ▼ 追加: カレンダー表示かグラフ表示かのフラグ
+  bool _isCalendarView = true;
+
   @override
   void initState() {
     super.initState();
@@ -197,14 +200,52 @@ class _MonthPageState extends State<MonthPage> {
           // 合計カード
           TotalExpenseCard(total: total),
 
-          // グラフ/カレンダー切り替えロジックを削除し、カレンダーのみ表示
-          CalendarView(
-            year: widget.year,
-            month: widget.month,
-            history: _history,
-            onDateTap: _scrollToDate,
+          // ▼▼▼ 切り替えトグルと表示エリア ▼▼▼
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end, // 右寄せ
+              children: [
+                // アイコンで切り替え
+                ToggleButtons(
+                  isSelected: [_isCalendarView, !_isCalendarView],
+                  onPressed: (index) {
+                    setState(() {
+                      _isCalendarView = index == 0;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  constraints: const BoxConstraints(
+                    minHeight: 30,
+                    minWidth: 40,
+                  ),
+                  children: const [
+                    Icon(Icons.calendar_month, size: 18),
+                    Icon(Icons.bar_chart, size: 18),
+                  ],
+                ),
+              ],
+            ),
           ),
 
+          // フラグによって表示するWidgetを切り替え
+          _isCalendarView
+              ? CalendarView(
+                  year: widget.year,
+                  month: widget.month,
+                  history: _history,
+                  onDateTap: _scrollToDate,
+                )
+              : DailyBarChart(
+                  // さっき作ったWidget
+                  year: widget.year,
+                  month: widget.month,
+                  history: _history,
+                  onDateTap: _scrollToDate,
+                ),
+
+          // ▲▲▲ 切り替えエリア終了 ▲▲▲
           const Divider(height: 1),
           // 日次リスト
           DailyTransactionList(
