@@ -5,6 +5,7 @@ import '../repositories/gacha_repository.dart';
 import '../widgets/app_drawer.dart';
 import 'input_tab.dart';
 import 'monthly_report_screen.dart';
+import 'payment_screen.dart';
 import 'graph_screen.dart'; // 追加
 import 'gacha_screen.dart';
 
@@ -152,10 +153,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             // 2. レポート(カレンダー)タブ
             MonthlyHistoryScreen(dataVersion: _dataVersion),
 
-            // 3. グラフタブ (新規追加)
+            // 3. 支払いタブ
+            PaymentScreen(dataVersion: _dataVersion),
+
+            // 4. グラフタブ (新規追加)
             GraphScreen(dataVersion: _dataVersion),
 
-            // 4. コレクションタブ (設定ON時のみ)
+            // 5. コレクションタブ (設定ON時のみ)
             if (_isGachaEnabled) GachaScreen(dataVersion: _gachaDataVersion),
           ],
         ),
@@ -177,6 +181,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   icon: Icon(Icons.calendar_month_outlined),
                   selectedIcon: Icon(Icons.calendar_month),
                   label: 'レポート',
+                ),
+
+                const NavigationDestination(
+                  icon: Icon(Icons.payment_outlined),
+                  selectedIcon: Icon(Icons.payment),
+                  label: '支払い',
                 ),
                 // グラフタブのアイコンを追加
                 const NavigationDestination(

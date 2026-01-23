@@ -1,480 +1,6 @@
 ==================================================
-PATH: lib/screens/main_screen.dart
-FILE: main_screen.dart
-==================================================
-
-import 'package:flutter/material.dart';
-import '../repositories/settings_repository.dart';
-import '../services/input_service.dart'; // 追加
-import '../repositories/gacha_repository.dart';
-import '../widgets/app_drawer.dart';
-import 'input_tab.dart';
-import 'monthly_report_screen.dart';
-import 'gacha_screen.dart';
-
-class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
-  @override
-  State<MainScreen> createState() => _MainScreenState();
-}
-
-class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
-  late TabController _tabController;
-  final SettingsRepository _settingsRepository = SettingsRepository();
-  final GachaRepository _gachaRepository = GachaRepository();
-  final InputService _inputService = InputService(); // 追加
-
-  int _dataVersion = 0; // InputTab用として残す
-  int _gachaDataVersion = 0; // ガチャ画面用として追加
-  bool _isTabBarVisible = true;
-  bool _isGachaEnabled = true;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _gachaDataVersion = _inputService.gachaDataVersionNotifier.value; // 初期値を設定
-    _inputService.gachaDataVersionNotifier.addListener(
-      _onGachaDataVersionChanged,
-    ); // リスナーを登録
-    _loadSettings();
-    _gachaRepository.checkInitialBonus();
-  }
-
-  Future<void> _loadSettings() async {
-    try {
-      final enabled = await _settingsRepository.loadGachaEnabled();
-      if (mounted) {
-        setState(() {
-          _isGachaEnabled = enabled;
-          _isLoading = false;
-          _setupTabController();
-        });
-      }
-    } catch (e) {
-      debugPrint('Settings load error: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _setupTabController() {
-    int newIndex = _tabController.index;
-    int length = _isGachaEnabled ? 3 : 2;
-    if (newIndex >= length) newIndex = 0;
-
-    _tabController.dispose();
-    _tabController = TabController(
-      length: length,
-      vsync: this,
-      initialIndex: newIndex,
-    );
-
-    _tabController.addListener(() {
-      if (!context.mounted) return;
-      if (_tabController.indexIsChanging) {
-        FocusScope.of(context).unfocus();
-        if (!_isTabBarVisible) {
-          setState(() {
-            _isTabBarVisible = true;
-          });
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _inputService.gachaDataVersionNotifier.removeListener(
-      _onGachaDataVersionChanged,
-    ); // リスナーを解除
-    super.dispose();
-  }
-
-  void _onGachaDataVersionChanged() {
-    setState(() {
-      _gachaDataVersion = _inputService.gachaDataVersionNotifier.value;
-    });
-  }
-
-  void _refreshData() async {
-    await _loadSettings();
-    setState(() {
-      _dataVersion++; // InputTab用の_dataVersionをインクリメント
-    });
-  }
-
-  void _setTabBarVisible(bool visible) {
-    if (_isTabBarVisible != visible) {
-      setState(() {
-        _isTabBarVisible = visible;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'あつめる家計簿',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        elevation: 0,
-        scrolledUnderElevation: 0,
-      ),
-      drawer: AppDrawer(onDataChanged: _refreshData),
-      resizeToAvoidBottomInset: false,
-      body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        behavior: HitTestBehavior.translucent,
-        child: TabBarView(
-          controller: _tabController,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            InputTab(
-              dataVersion: _dataVersion,
-              inputService: _inputService, // InputServiceインスタンスをInputTabに渡す
-              onTabBarVisibilityChanged: _setTabBarVisible,
-            ),
-            MonthlyHistoryScreen(dataVersion: _dataVersion),
-            if (_isGachaEnabled)
-              GachaScreen(
-                dataVersion: _gachaDataVersion,
-              ), // _gachaDataVersionをGachaScreenに渡す
-          ],
-        ),
-      ),
-      bottomNavigationBar: _isTabBarVisible
-          ? NavigationBar(
-              selectedIndex: _tabController.index,
-              onDestinationSelected: (index) {
-                _tabController.animateTo(index);
-                setState(() {});
-              },
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.edit_outlined),
-                  selectedIcon: Icon(Icons.edit),
-                  label: '入力',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.calendar_month_outlined),
-                  selectedIcon: Icon(Icons.calendar_month),
-                  label: 'レポート',
-                ),
-                if (_isGachaEnabled)
-                  const NavigationDestination(
-                    icon: Icon(Icons.star_outline, color: Colors.orange),
-                    selectedIcon: Icon(Icons.star, color: Colors.orange),
-                    label: 'コレクション',
-                  ),
-              ],
-            )
-          : null,
-    );
-  }
-}
-
-
-==================================================
-PATH: lib/screens/monthly_report_screen.dart
-FILE: monthly_report_screen.dart
-==================================================
-
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
-import '../models/category_tag.dart';
-import '../models/transaction_item.dart';
-import '../repositories/transaction_repository.dart';
-import '../repositories/settings_repository.dart';
-import '../widgets/monthly_report_components.dart';
-import 'summary_detail_screen.dart';
-import 'transaction_edit_screen.dart';
-import 'history_screen.dart';
-
-class MonthlyHistoryScreen extends StatefulWidget {
-  final int? dataVersion;
-  const MonthlyHistoryScreen({super.key, this.dataVersion});
-  @override
-  State<MonthlyHistoryScreen> createState() => _MonthlyHistoryScreenState();
-}
-
-class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
-    with SingleTickerProviderStateMixin {
-  final PageController _pageController = PageController(initialPage: 1000);
-  late TabController _tabController;
-
-  late int _currentYear;
-  late int _currentMonth;
-  int _currentTabIndex = 0;
-
-  final GlobalKey _titleKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _currentYear = now.year;
-    _currentMonth = now.month;
-
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        setState(() {
-          _currentTabIndex = _tabController.index;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _onPageChanged(int index) {
-    final d = DateTime(
-      DateTime.now().year,
-      DateTime.now().month + (index - 1000),
-    );
-    setState(() {
-      _currentYear = d.year;
-      _currentMonth = d.month;
-    });
-  }
-
-  Future<void> _pickMonth() async {
-    final DateTime now = DateTime.now();
-    final DateTime current = DateTime(_currentYear, _currentMonth);
-
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: current,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-      initialDatePickerMode: DatePickerMode.year,
-      helpText: '移動先の年月を選択',
-    );
-
-    if (picked != null) {
-      final int diffMonths =
-          (picked.year - now.year) * 12 + (picked.month - now.month);
-      final int targetPage = 1000 + diffMonths;
-
-      _pageController.jumpToPage(targetPage);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: GestureDetector(
-          key: _titleKey,
-          onTap: _pickMonth,
-          child: Container(
-            color: Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$_currentYear年 $_currentMonth月',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.arrow_drop_down, size: 24),
-              ],
-            ),
-          ),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'カレンダー', icon: Icon(Icons.calendar_month)),
-            Tab(text: '円グラフ', icon: Icon(Icons.pie_chart)),
-          ],
-        ),
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        onPageChanged: _onPageChanged,
-        itemBuilder: (context, index) {
-          final d = DateTime(
-            DateTime.now().year,
-            DateTime.now().month + (index - 1000),
-          );
-          return MonthPage(
-            year: d.year,
-            month: d.month,
-            tabIndex: _currentTabIndex,
-            dataVersion: widget.dataVersion,
-          );
-        },
-      ),
-    );
-  }
-}
-
-class MonthPage extends StatefulWidget {
-  final int year;
-  final int month;
-  final int tabIndex;
-  final int? dataVersion;
-
-  const MonthPage({
-    super.key,
-    required this.year,
-    required this.month,
-    required this.tabIndex,
-    this.dataVersion,
-  });
-
-  @override
-  State<MonthPage> createState() => _MonthPageState();
-}
-
-class _MonthPageState extends State<MonthPage> {
-  List<TransactionItem> _history = [];
-  List<CategoryTag> _expenseTags = [];
-  final TransactionRepository _repository = TransactionRepository();
-  final SettingsRepository _settingsRepository = SettingsRepository();
-  final Map<int, GlobalKey> _dayKeys = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void didUpdateWidget(covariant MonthPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.tabIndex != widget.tabIndex ||
-        oldWidget.dataVersion != widget.dataVersion) {
-      _load();
-    }
-  }
-
-  Future<void> _load() async {
-    final allItems = await _repository.getAllTransactions();
-    final expenses = await _settingsRepository.loadExpenseTags();
-
-    if (mounted) {
-      setState(() {
-        _history = allItems.where((i) {
-          return i.date.year == widget.year && i.date.month == widget.month;
-        }).toList();
-        _history.sort((a, b) => b.date.compareTo(a.date));
-        _expenseTags = expenses;
-      });
-    }
-  }
-
-  void _scrollToDate(int day) {
-    final key = _dayKeys[day];
-    if (key != null && key.currentContext != null) {
-      Scrollable.ensureVisible(
-        key.currentContext!,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.0,
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final int total = _history.fold(0, (s, i) => s + i.amount);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 50),
-      child: Column(
-        children: [
-          // 合計カードコンポーネント
-          TotalExpenseCard(
-            total: total,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SummaryDetailScreen(
-                    year: widget.year,
-                    month: widget.month,
-                  ),
-                ),
-              );
-            },
-          ),
-          // カレンダー/グラフ切り替え
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: widget.tabIndex == 0
-                ? CalendarView(
-                    year: widget.year,
-                    month: widget.month,
-                    history: _history,
-                    onDateTap: _scrollToDate,
-                  )
-                : GraphView(
-                    history: _history,
-                    expenseTags: _expenseTags,
-                    onLegendTap: (expense, color, expenseId) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => HistoryScreen(
-                            filterValue: expense,
-                            filterId: expenseId,
-                            filterKey: 'expense',
-                            color: color,
-                            initialDate: DateTime(widget.year, widget.month),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          const Divider(height: 1),
-          // 日次リストコンポーネント
-          DailyTransactionList(
-            history: _history,
-            expenseTags: _expenseTags,
-            dayKeys: _dayKeys,
-            onTransactionTap: (item) async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TransactionEditScreen(item: item),
-                ),
-              );
-              _load();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-==================================================
-PATH: lib/widgets/monthly_report/graph_view.dart
-FILE: graph_view.dart
+PATH: lib/widgets/monthly_report/payment_view.dart
+FILE: payment_view.dart
 ==================================================
 
 import 'package:flutter/material.dart';
@@ -483,12 +9,12 @@ import '../../models/category_tag.dart';
 import '../../models/transaction_item.dart';
 
 /// 円グラフ表示用ウィジェット
-class GraphView extends StatelessWidget {
+class PaymentView extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
   final Function(String expense, Color color, String? expenseId)? onLegendTap;
 
-  const GraphView({
+  const PaymentView({
     super.key,
     required this.history,
     required this.expenseTags,
@@ -532,56 +58,12 @@ class GraphView extends StatelessWidget {
     final sortedEntries = sums.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    List<PieChartSectionData> sections = [];
-    if (total > 0) {
-      sections = sortedEntries.map((e) {
-        final percentage = (e.value / total) * 100;
-        final key = e.key;
-        final tag = keyToDisplayInfo[key];
-
-        Color color = tag?.color ?? Colors.grey;
-
-        return PieChartSectionData(
-          color: color,
-          value: e.value.toDouble(),
-          title: '${percentage.toStringAsFixed(0)}%',
-          radius: 60,
-          titleStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        );
-      }).toList();
-    } else {
-      sections = [
-        PieChartSectionData(
-          color: Colors.grey.shade200,
-          value: 1,
-          title: '',
-          radius: 60,
-        ),
-      ];
-    }
-
     return Container(
       width: double.infinity,
       color: Colors.white,
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       child: Column(
         children: [
-          SizedBox(
-            height: 220,
-            child: PieChart(
-              PieChartData(
-                sections: sections,
-                centerSpaceRadius: 40,
-                sectionsSpace: 2,
-                borderData: FlBorderData(show: false),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
           // 凡例エリア
           if (total > 0)
             Column(
@@ -664,127 +146,725 @@ class GraphView extends StatelessWidget {
 
 
 ==================================================
-PATH: lib/services/history_service.dart
-FILE: history_service.dart
+PATH: lib/screens/payment_screen.dart
+FILE: payment_screen.dart
+==================================================
+
+import 'package:flutter/material.dart';
+import '../models/category_tag.dart';
+import '../models/transaction_item.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
+import '../widgets/monthly_report_components.dart'; // TotalExpenseCard等のため
+import '../widgets/monthly_report/payment_view.dart'; // グラフ表示用
+import 'history_screen.dart';
+
+class PaymentScreen extends StatefulWidget {
+  final int? dataVersion;
+  const PaymentScreen({super.key, this.dataVersion});
+
+  @override
+  State<PaymentScreen> createState() => _PaymentScreenState();
+}
+
+class _PaymentScreenState extends State<PaymentScreen> {
+  // 1000ヶ月分(前後約80年)のページングを可能にする設定
+  final PageController _pageController = PageController(initialPage: 1000);
+
+  late int _currentYear;
+  late int _currentMonth;
+  final GlobalKey _titleKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _currentYear = now.year;
+    _currentMonth = now.month;
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // ページ切り替え時の処理（年月更新）
+  void _onPageChanged(int index) {
+    final d = DateTime(
+      DateTime.now().year,
+      DateTime.now().month + (index - 1000),
+    );
+    setState(() {
+      _currentYear = d.year;
+      _currentMonth = d.month;
+    });
+  }
+
+  // 年月選択ダイアログ
+  Future<void> _pickMonth() async {
+    final DateTime now = DateTime.now();
+    final DateTime current = DateTime(_currentYear, _currentMonth);
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: '移動先の年月を選択',
+    );
+
+    if (picked != null) {
+      final int diffMonths =
+          (picked.year - now.year) * 12 + (picked.month - now.month);
+      final int targetPage = 1000 + diffMonths;
+
+      _pageController.jumpToPage(targetPage);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: GestureDetector(
+          key: _titleKey,
+          onTap: _pickMonth,
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$_currentYear年 $_currentMonth月',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down, size: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) {
+          final d = DateTime(
+            DateTime.now().year,
+            DateTime.now().month + (index - 1000),
+          );
+          // 各月のグラフページを表示
+          return PaymentPage(
+            year: d.year,
+            month: d.month,
+            dataVersion: widget.dataVersion,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class PaymentPage extends StatefulWidget {
+  final int year;
+  final int month;
+  final int? dataVersion;
+
+  const PaymentPage({
+    super.key,
+    required this.year,
+    required this.month,
+    this.dataVersion,
+  });
+
+  @override
+  State<PaymentPage> createState() => _PaymentPageState();
+}
+
+class _PaymentPageState extends State<PaymentPage> {
+  List<TransactionItem> _history = [];
+  List<CategoryTag> _expenseTags = [];
+  final TransactionRepository _repository = TransactionRepository();
+  final SettingsRepository _settingsRepository = SettingsRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant PaymentPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dataVersion != widget.dataVersion) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final allItems = await _repository.getAllTransactions();
+    final expenses = await _settingsRepository.loadExpenseTags();
+
+    if (mounted) {
+      setState(() {
+        // 対象年月のデータのみ抽出
+        _history = allItems.where((i) {
+          return i.date.year == widget.year && i.date.month == widget.month;
+        }).toList();
+        _expenseTags = expenses;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int total = _history.fold(0, (s, i) => s + i.amount);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 50),
+      child: Column(
+        children: [
+          // 合計金額カード
+          TotalExpenseCard(total: total),
+          const SizedBox(height: 10),
+          // グラフビュー
+          PaymentView(
+            history: _history,
+            expenseTags: _expenseTags,
+            onLegendTap: (expense, color, expenseId) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => HistoryScreen(
+                    filterValue: expense,
+                    filterId: expenseId,
+                    filterKey: 'expense',
+                    color: color,
+                    year: widget.year,
+                    month: widget.month,
+                    //initialDate: DateTime(widget.year, widget.month),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+==================================================
+PATH: lib/screens/history_monthly_page.dart
+FILE: history_monthly_page.dart
 ==================================================
 
 import 'package:flutter/material.dart';
 import '../models/transaction_item.dart';
 import '../models/category_tag.dart';
-import '../repositories/transaction_repository.dart';
-import '../repositories/settings_repository.dart';
+import '../services/history_service.dart';
+import '../widgets/transaction_tile.dart';
+import '../screens/transaction_edit_screen.dart';
 
-class HistoryService {
-  final TransactionRepository _transactionRepo = TransactionRepository();
-  final SettingsRepository _settingsRepo = SettingsRepository();
+// クラス名を _HistoryPage から HistoryMonthlyPage に変更し、publicにしました
+class HistoryMonthlyPage extends StatefulWidget {
+  final int year;
+  final int month;
+  final String filterValue;
+  final String? filterId; // 追加
+  final String filterKey;
+  final Color color;
+  final int viewMode;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+  final bool showNavButtons;
+  final VoidCallback? onDateTap;
+  final HistoryService service;
 
-  /// 指定された年月のデータを取得する
-  Future<List<TransactionItem>> getMonthlyTransactions({
-    required int year,
-    required int month,
-  }) async {
-    final allItems = await _transactionRepo.getAllTransactions();
+  const HistoryMonthlyPage({
+    super.key,
+    required this.year,
+    required this.month,
+    required this.filterValue,
+    this.filterId, // 追加
+    required this.filterKey,
+    required this.color,
+    required this.viewMode,
+    this.onPrev,
+    this.onNext,
+    this.showNavButtons = true,
+    this.onDateTap,
+    required this.service,
+  });
 
-    // 指定月でフィルタリング
-    final filtered = allItems.where((i) {
-      return i.date.year == year && i.date.month == month;
-    }).toList();
+  @override
+  State<HistoryMonthlyPage> createState() => _HistoryMonthlyPageState();
+}
 
-    // 日付順（新しい順）に並び替え
-    filtered.sort((a, b) => b.date.compareTo(a.date));
+class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
+  List<TransactionItem> _history = [];
+  List<CategoryTag> _expenseTags = [];
+  List<CategoryTag> _paymentTags = [];
+  bool _isLoading = true;
 
-    return filtered;
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  /// 条件（費目やカード）で絞り込んだデータを取得する
-  Future<List<TransactionItem>> getFilteredTransactions({
-    required String filterKey, // 'expense' or 'payment'
-    required String filterValue,
-    String? filterId, // IDでのフィルタリング用 (追加)
-    required int year,
-    required int month,
-    required int viewMode, // 0: 利用日基準, 1: 支払日基準（引き落とし予定）
-  }) async {
-    final allItems = await _transactionRepo.getAllTransactions();
-
-    final filtered = allItems.where((i) {
-      // 1. キーによるフィルタリング
-      if (filterKey == 'expense') {
-        // IDが指定されていればIDで判定、なければ名前で判定
-        if (filterId != null) {
-          if (i.expenseId != filterId) {
-            // IDがない古いデータの場合は名前で判定
-            if (i.expenseId == null && i.expense == filterValue) {
-              return true;
-            }
-            return false;
-          }
-        } else {
-          if (i.expense != filterValue) return false;
-        }
-      } else if (filterKey == 'payment') {
-        if (filterValue == '記録しない' && i.payment.isEmpty) {
-          // 記録しない扱い（空文字）OK
-        } else {
-          // IDが指定されていればIDで判定
-          if (filterId != null) {
-            if (i.paymentId != filterId) {
-              if (i.paymentId == null && i.payment == filterValue) {
-                return true;
-              }
-              return false;
-            }
-          } else {
-            if (i.payment != filterValue) return false;
-          }
-        }
-      }
-
-      // 2. 年月によるフィルタリング
-      if (viewMode == 1) {
-        // 引き落とし予定モードなら、paymentDateを見る
-        final targetDate = i.paymentDate ?? i.date; // paymentDateがなければ利用日
-        return targetDate.year == year && targetDate.month == month;
-      } else {
-        // 通常モードなら利用日を見る
-        return i.date.year == year && i.date.month == month;
-      }
-    }).toList();
-
-    // 日付順に並び替え
-    filtered.sort((a, b) => b.date.compareTo(a.date));
-
-    return filtered;
-  }
-
-  /// 費目タグのリストを取得（アイコン表示などに必要）
-  Future<List<CategoryTag>> getExpenseTags() async {
-    return await _settingsRepo.loadExpenseTags();
-  }
-
-  /// カードタグのリストを取得
-  Future<List<CategoryTag>> getCardTags() async {
-    return await _settingsRepo.loadCardTags();
-  }
-
-  /// 特定のカード情報を取得（設定変更用）
-  Future<CategoryTag?> getCardTagByLabel(String label) async {
-    final cards = await getCardTags();
-    try {
-      return cards.firstWhere((c) => c.label == label);
-    } catch (_) {
-      return null;
+  @override
+  void didUpdateWidget(covariant HistoryMonthlyPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.viewMode != widget.viewMode ||
+        oldWidget.year != widget.year ||
+        oldWidget.month != widget.month ||
+        oldWidget.filterValue != widget.filterValue ||
+        oldWidget.filterId != widget.filterId) {
+      _load();
     }
   }
 
-  /// カード設定を更新する
-  Future<void> updateCardTag(CategoryTag newTag) async {
-    final cards = await getCardTags();
-    final index = cards.indexWhere((c) => c.id == newTag.id);
-    if (index != -1) {
-      cards[index] = newTag;
-      await _settingsRepo.saveCardTags(cards);
+  Future<void> _load() async {
+    final items = await widget.service.getFilteredTransactions(
+      filterKey: widget.filterKey,
+      filterValue: widget.filterValue,
+      filterId: widget.filterId, // 追加
+      year: widget.year,
+      month: widget.month,
+      viewMode: widget.viewMode,
+    );
+
+    final expenses = await widget.service.getExpenseTags();
+    final payments = await widget.service.getCardTags();
+
+    if (!mounted) return;
+
+    setState(() {
+      _history = items;
+      _expenseTags = expenses;
+      _paymentTags = payments;
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
     }
+
+    final int total = _history.fold(0, (s, i) => s + i.amount);
+
+    // ID -> Tag, Label -> Tag のMap作成
+    final idToTag = {for (var t in _expenseTags) t.id: t};
+    final labelToTag = {for (var t in _expenseTags) t.label: t};
+
+    final idToTagCard = {for (var t in _paymentTags) t.id: t};
+    final labelToTagCard = {for (var t in _paymentTags) t.label: t};
+
+    return Column(
+      children: [
+        // ヘッダー部分（金額・ナビゲーション）
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+          color: widget.color.withOpacity(0.1),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (widget.showNavButtons)
+                    IconButton(
+                      icon: Icon(Icons.chevron_left, color: widget.color),
+                      onPressed: widget.onPrev,
+                    )
+                  else
+                    const SizedBox(width: 48),
+
+                  GestureDetector(
+                    onTap: widget.onDateTap,
+                    child: Container(
+                      color: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${widget.year}年 ${widget.month}月',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: widget.color,
+                            ),
+                          ),
+                          if (widget.onDateTap != null) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              color: widget.color,
+                              size: 20,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (widget.showNavButtons)
+                    IconButton(
+                      icon: Icon(Icons.chevron_right, color: widget.color),
+                      onPressed: widget.onNext,
+                    )
+                  else
+                    const SizedBox(width: 48),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Text(
+                widget.viewMode == 1
+                    ? '引き落とし予定額'
+                    : (widget.filterKey == 'expense' ? '月間支出計' : '月間利用額'),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              Text(
+                '¥ $total',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: widget.color,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // リスト部分
+        Expanded(
+          child: _history.isEmpty
+              ? Center(
+                  child: Text(
+                    "この月の履歴はありません",
+                    style: TextStyle(color: Colors.grey.shade400),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.only(bottom: 20, top: 10),
+                  itemCount: _history.length,
+                  separatorBuilder: (c, i) => const Divider(height: 1),
+                  itemBuilder: (c, i) {
+                    final item = _history[i];
+                    IconData? iconCategory;
+                    String? categoryName;
+
+                    // ID優先で検索、なければ名前で検索
+                    CategoryTag? tagCategory;
+                    if (item.expenseId != null) {
+                      tagCategory = idToTag[item.expenseId];
+                    }
+                    if (tagCategory == null) {
+                      tagCategory = labelToTag[item.expense];
+                    }
+
+                    if (tagCategory != null) {
+                      iconCategory = tagCategory.displayIcon;
+                      categoryName = tagCategory.label;
+                    }
+
+                    IconData? iconPayment;
+                    String? paymentName;
+                    Color? cardColor;
+
+                    // ID優先で検索、なければ名前で検索
+                    CategoryTag? tagPayment;
+                    if (item.paymentId != null) {
+                      tagPayment = idToTagCard[item.paymentId];
+                    }
+                    if (tagPayment == null) {
+                      tagPayment = labelToTagCard[item.payment];
+                    }
+
+                    if (tagPayment != null) {
+                      iconPayment = tagPayment.displayIcon;
+                      cardColor = tagPayment.color;
+                      paymentName = tagPayment.label;
+                    }
+
+                    return TransactionTile(
+                      item: item,
+                      categoryColor: widget.color,
+                      categoryIcon: iconCategory,
+                      categoryName: categoryName,
+                      paymentColor: cardColor,
+                      paymentIcon: iconPayment,
+                      showDate: true,
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                TransactionEditScreen(item: item),
+                          ),
+                        );
+                        _load();
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+
+==================================================
+PATH: lib/screens/history_screen.dart
+FILE: history_screen.dart
+==================================================
+
+import 'package:flutter/material.dart';
+import '../models/category_tag.dart';
+import '../services/history_service.dart';
+import '../widgets/card_settings_dialog.dart';
+// ▼ 作成したファイルをインポート
+import 'history_monthly_page.dart';
+
+class HistoryScreen extends StatefulWidget {
+  final String filterValue;
+  final String? filterId; // 追加
+  final String filterKey; // 'expense' or 'payment'
+  final Color? color;
+  final int? year; // 指定年月がある場合
+  final int? month;
+  final DateTime? initialDate; // カレンダーから遷移した場合の初期表示位置
+
+  const HistoryScreen({
+    super.key,
+    required this.filterValue,
+    this.filterId, // 追加
+    required this.filterKey,
+    this.color,
+    this.year,
+    this.month,
+    this.initialDate,
+  });
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  int _viewMode = 0; // 0:利用履歴, 1:引き落とし予定
+  bool _showTab = false; // クレカ等の場合のみタブを表示
+  CategoryTag? _currentCardTag;
+
+  late PageController _pageController;
+  final HistoryService _historyService = HistoryService();
+
+  @override
+  void initState() {
+    super.initState();
+    _setupPageController();
+    _checkIfCardType();
+  }
+
+  void _setupPageController() {
+    int initialPage = 1000;
+    if (widget.initialDate != null) {
+      final now = DateTime.now();
+      final diff =
+          (widget.initialDate!.year - now.year) * 12 +
+          (widget.initialDate!.month - now.month);
+      initialPage = 1000 + diff;
+    }
+    _pageController = PageController(initialPage: initialPage);
+  }
+
+  Future<void> _checkIfCardType() async {
+    if (widget.filterKey == 'payment' && widget.filterValue != '記録しない') {
+      final card = await _historyService.getCardTagByLabel(widget.filterValue);
+      if (card != null && mounted) {
+        setState(() {
+          _currentCardTag = card;
+          _showTab = card.closingDay != null;
+          if (!_showTab) _viewMode = 0;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _showSetupDialog() {
+    if (_currentCardTag == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => CardSettingsDialog(
+        currentTag: _currentCardTag!,
+        onSave: (closing, payment, offset) async {
+          final newTag = CategoryTag(
+            id: _currentCardTag!.id,
+            label: _currentCardTag!.label,
+            color: _currentCardTag!.color,
+            isCircle: _currentCardTag!.isCircle,
+            closingDay: closing,
+            paymentDay: payment,
+            paymentMonthOffset: offset,
+          );
+
+          await _historyService.updateCardTag(newTag);
+
+          if (mounted) {
+            setState(() {
+              _currentCardTag = newTag;
+              _showTab = newTag.closingDay != null;
+              if (!_showTab) _viewMode = 0;
+            });
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('設定を保存しました')));
+          }
+        },
+      ),
+    );
+  }
+
+  void _jumpToDate(DateTime date) {
+    final DateTime now = DateTime.now();
+    final int diffMonths =
+        (date.year - now.year) * 12 + (date.month - now.month);
+    final int targetPage = 1000 + diffMonths;
+    _pageController.jumpToPage(targetPage);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String title = widget.filterValue;
+    // 特定の年月指定モード（カレンダーからの遷移ではなく、レポートからのドリルダウン等）の場合
+    if (widget.year != null && widget.month != null) {
+      title = "${widget.year}/${widget.month} $title";
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          if (_currentCardTag != null)
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'カード設定',
+              onPressed: _showSetupDialog,
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (_showTab)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(
+                    value: 0,
+                    label: Text('利用履歴'),
+                    icon: Icon(Icons.shopping_bag_outlined),
+                  ),
+                  ButtonSegment(
+                    value: 1,
+                    label: Text('引き落とし予定'),
+                    icon: Icon(Icons.account_balance_wallet_outlined),
+                  ),
+                ],
+                selected: {_viewMode},
+                onSelectionChanged: (newSelection) {
+                  setState(() => _viewMode = newSelection.first);
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: MaterialStateProperty.resolveWith((states) {
+                    if (states.contains(MaterialState.selected)) {
+                      return widget.color?.withOpacity(0.2) ??
+                          Colors.blue.shade100;
+                    }
+                    return null;
+                  }),
+                ),
+              ),
+            ),
+          Expanded(
+            child: (widget.year != null && widget.month != null)
+                // 年月固定モード
+                ? HistoryMonthlyPage(
+                    year: widget.year!,
+                    month: widget.month!,
+                    filterValue: widget.filterValue,
+                    filterId: widget.filterId, // 追加
+                    filterKey: widget.filterKey,
+                    color: widget.color ?? Colors.blue,
+                    viewMode: _viewMode,
+                    showNavButtons: false,
+                    service: _historyService,
+                  )
+                // スワイプ可能なページビューモード
+                : PageView.builder(
+                    controller: _pageController,
+                    itemBuilder: (context, index) {
+                      final now = DateTime.now();
+                      final targetDate = DateTime(
+                        now.year,
+                        now.month + (index - 1000),
+                      );
+                      return HistoryMonthlyPage(
+                        year: targetDate.year,
+                        month: targetDate.month,
+                        filterValue: widget.filterValue,
+                        filterId: widget.filterId, // 追加
+                        filterKey: widget.filterKey,
+                        color: widget.color ?? Colors.blue,
+                        viewMode: _viewMode,
+                        onPrev: () => _pageController.previousPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        ),
+                        onNext: () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        ),
+                        onDateTap: () async {
+                          final DateTime current = DateTime(
+                            targetDate.year,
+                            targetDate.month,
+                          );
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: current,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2101),
+                            initialDatePickerMode: DatePickerMode.year,
+                            helpText: '移動先の年月を選択',
+                          );
+                          if (picked != null) {
+                            _jumpToDate(picked);
+                          }
+                        },
+                        service: _historyService,
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

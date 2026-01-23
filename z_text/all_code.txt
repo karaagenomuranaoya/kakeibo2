@@ -85,6 +85,285 @@ linter:
 ```
 
 
+--- FILE: test/gacha_complete_dialog_test.dart ---
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:atsumeru_kakeibo/screens/gacha/gacha_game_tab.dart';
+import 'package:atsumeru_kakeibo/screens/gacha/dialogs/gacha_complete_dialog.dart';
+import 'package:atsumeru_kakeibo/repositories/gacha_repository.dart';
+import 'package:atsumeru_kakeibo/data/gacha_data.dart';
+import 'dart:convert';
+
+void main() {
+  group('ガチャコンプリートダイアログのテスト', () {
+    // デバッグ用: コンプリートダイアログが直接表示できるかテスト
+    testWidgets('コンプリートダイアログが直接表示できる', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => const GachaCompleteDialog(),
+                  );
+                },
+                child: const Text('ダイアログを表示'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // ボタンをタップ
+      await tester.tap(find.text('ダイアログを表示'));
+      await tester.pumpAndSettle();
+
+      // コンプリートダイアログが表示されているか確認
+      final completeDialog = find.byType(GachaCompleteDialog);
+      expect(completeDialog, findsOneWidget, reason: 'コンプリートダイアログが表示されていない');
+
+      // タイトルが正しいか確認
+      final title = find.text('🎉 コンプリート＆殿堂入り！');
+      expect(title, findsOneWidget, reason: 'タイトルが見つからない');
+    });
+
+    // デバッグ用: コンプリート状態の判定ロジックをテスト
+    test('コンプリート状態の判定ロジック', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final monsters = GachaData.monsters;
+
+      // すべてのアイテムをLv10に設定
+      final Map<String, int> counts = {};
+      for (var monster in monsters) {
+        counts[monster.id] = 10;
+      }
+
+      final jsonString = json.encode(counts);
+      await prefs.setString('gacha_counts_v2', jsonString);
+
+      final repo = GachaRepository();
+      final itemCounts = await repo.getItemCounts();
+
+      // すべてのアイテムがLv10か確認
+      int maxLevelItems = 0;
+      for (var entry in itemCounts.entries) {
+        if (entry.value >= 10) {
+          maxLevelItems++;
+        }
+      }
+
+      final isAllComplete = maxLevelItems == monsters.length && monsters.isNotEmpty;
+      expect(isAllComplete, isTrue, reason: 'すべてのアイテムがLv10であるべき');
+    });
+
+    testWidgets('全てのアイテムがLv10に達した時にコンプリートダイアログが表示される', (WidgetTester tester) async {
+      // SharedPreferencesのモックを初期化
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      // すべてのアイテムを取得
+      final monsters = GachaData.monsters;
+
+      // すべてのアイテムをLv9に設定（最後の1つを10にする準備）
+      // 最後のアイテムだけLv9のままにする
+      final Map<String, int> counts = {};
+      for (int i = 0; i < monsters.length - 1; i++) {
+        counts[monsters[i].id] = 10; // 最後以外はLv10
+      }
+      counts[monsters.last.id] = 9; // 最後のアイテムはLv9
+
+      // JSONエンコードして保存
+      final jsonString = json.encode(counts);
+      await prefs.setString('gacha_counts_v2', jsonString);
+
+      // クレジットを1枚設定
+      await prefs.setInt('gacha_credits', 1);
+
+      // チュートリアルは既に表示済みにする
+      await prefs.setBool('is_gacha_tutorial_shown', true);
+
+      // GachaGameTabを表示
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GachaGameTab(dataVersion: 0),
+          ),
+        ),
+      );
+
+      // データ読み込み完了を待つ
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // ガチャをスピンするボタンを探してタップ
+      // ボタンはGachaActionPanel内にある
+      final spinButton = find.byType(ElevatedButton);
+      expect(spinButton, findsWidgets, reason: 'スピンボタンが見つからない');
+
+      // デバッグ: 初期状態を確認
+      final initialCredits = await prefs.getInt('gacha_credits') ?? 0;
+      print('DEBUG: 初期クレジット = $initialCredits');
+      
+      // スピンボタンをタップ（通常は最初のElevatedButtonがスピンボタン）
+      print('DEBUG: スピンボタンをタップ');
+      await tester.tap(spinButton.first);
+      await tester.pump(); // 最初の更新
+
+      // ローディングダイアログが表示されるのを待つ
+      await tester.pump(const Duration(milliseconds: 100));
+      
+      // デバッグ: ローディングダイアログが表示されているか確認
+      final loadingIndicator = find.byType(CircularProgressIndicator);
+      print('DEBUG: ローディングダイアログ表示 = ${loadingIndicator.evaluate().isNotEmpty}');
+
+      // ガチャ抽選の完了を待つ（非同期処理を待つ）
+      // drawItem()で1秒の遅延があるので、それ以上待つ
+      print('DEBUG: ガチャ抽選の完了を待つ...');
+      await tester.pump(const Duration(seconds: 2)); // drawItem()の遅延（1秒）+ 余裕
+      
+      // 結果ダイアログが表示されるまで待つ（最大10秒）
+      // _showResultDialog()がawait showDialog()で待っているので、結果ダイアログが表示されるまで待つ
+      bool foundCloseButton = false;
+      for (int i = 0; i < 20; i++) {
+        // フレームを更新する
+        await tester.pump(const Duration(milliseconds: 500));
+        
+        // デバッグ: 現在の状態を確認
+        final dialog = find.byType(Dialog);
+        final closeButton = find.text('閉じる');
+        final errorSnack = find.textContaining('エラー');
+        final currentLoading = find.byType(CircularProgressIndicator);
+        
+        print('DEBUG: ループ $i - Dialog: ${dialog.evaluate().length}, 閉じるボタン: ${closeButton.evaluate().isNotEmpty}, エラー: ${errorSnack.evaluate().isNotEmpty}, ローディング: ${currentLoading.evaluate().isNotEmpty}');
+        
+        // 結果ダイアログが表示されているか確認
+        if (closeButton.evaluate().isNotEmpty) {
+          foundCloseButton = true;
+          print('DEBUG: 結果ダイアログが見つかりました');
+          // 結果ダイアログの「閉じる」ボタンをタップ
+          await tester.tap(closeButton);
+          await tester.pump();
+          break;
+        }
+        
+        // エラーメッセージが表示されているか確認
+        if (errorSnack.evaluate().isNotEmpty) {
+          final errorText = (errorSnack.evaluate().first.widget as Text).data ?? '';
+          print('DEBUG: エラーが発生: $errorText');
+          fail('エラーが発生しました: $errorText');
+        }
+      }
+
+      expect(foundCloseButton, isTrue, reason: '結果ダイアログの閉じるボタンが見つかりません。結果ダイアログが表示されていない可能性があります。\n'
+          '考えられる原因:\n'
+          '1. _spinGacha()内でエラーが発生している\n'
+          '2. 非同期処理が完了していない\n'
+          '3. drawItem()がnullを返している\n'
+          '4. クレジットが不足している\n'
+          '初期クレジット: $initialCredits');
+
+      // 結果ダイアログが閉じるのを待つ
+      print('DEBUG: 結果ダイアログを閉じました。コンプリートダイアログの表示を待ちます...');
+      await tester.pumpAndSettle();
+
+      // コンプリートダイアログが表示されるまで待つ
+      // _showCompleteDialog内で300msの遅延があるので、それを考慮
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+
+      // デバッグ: すべてのダイアログを確認
+      final allDialogs = find.byType(Dialog);
+      print('DEBUG: 現在表示されているダイアログ数: ${allDialogs.evaluate().length}');
+
+      // コンプリートダイアログが表示されているか確認
+      final completeDialog = find.byType(GachaCompleteDialog);
+      print('DEBUG: コンプリートダイアログ: ${completeDialog.evaluate().isNotEmpty}');
+      expect(completeDialog, findsOneWidget, reason: 'コンプリートダイアログが表示されていない');
+
+      // ダイアログのタイトルが正しいか確認
+      final title = find.text('🎉 コンプリート＆殿堂入り！');
+      print('DEBUG: タイトルが見つかった: ${title.evaluate().isNotEmpty}');
+      expect(title, findsOneWidget, reason: 'コンプリートダイアログのタイトルが見つからない');
+    });
+
+    testWidgets('一部のアイテムがLv10に達しても、全てがLv10でない場合はコンプリートダイアログが表示されない', (WidgetTester tester) async {
+      // SharedPreferencesのモックを初期化
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      // すべてのアイテムを取得
+      final monsters = GachaData.monsters;
+
+      // すべてのアイテムをLv9に設定（まだコンプリートしていない状態）
+      final Map<String, int> counts = {};
+      for (int i = 0; i < monsters.length; i++) {
+        counts[monsters[i].id] = 9; // すべてLv9
+      }
+
+      // JSONエンコードして保存
+      final jsonString = json.encode(counts);
+      await prefs.setString('gacha_counts_v2', jsonString);
+
+      // クレジットを1枚設定
+      await prefs.setInt('gacha_credits', 1);
+
+      // チュートリアルは既に表示済みにする
+      await prefs.setBool('is_gacha_tutorial_shown', true);
+
+      // GachaGameTabを表示
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GachaGameTab(dataVersion: 0),
+          ),
+        ),
+      );
+
+      // データ読み込み完了を待つ
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // ガチャをスピンするボタンを探してタップ
+      final spinButton = find.byType(ElevatedButton).first;
+      await tester.tap(spinButton);
+      await tester.pump();
+
+      // ローディングダイアログが表示されるのを待つ
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // ガチャ抽選の完了を待つ
+      await tester.pump(const Duration(seconds: 2));
+
+      // 結果ダイアログが表示されるまで待つ
+      await tester.pumpAndSettle();
+
+      // 結果ダイアログを閉じる（"閉じる"ボタンを探す）
+      final closeButton = find.text('閉じる');
+      if (closeButton.evaluate().isNotEmpty) {
+        await tester.tap(closeButton);
+        await tester.pump();
+      }
+
+      // 結果ダイアログが閉じるのを待つ
+      await tester.pumpAndSettle();
+
+      // コンプリートダイアログが表示されないことを確認
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+
+      final completeDialog = find.byType(GachaCompleteDialog);
+      expect(completeDialog, findsNothing, reason: 'コンプリートダイアログが表示されるべきではない');
+    });
+  });
+}
+// flutter test test/gacha_complete_dialog_test.dart
+
+```
+
+
 --- FILE: test/input_service_test.dart ---
 ```dart
 import 'package:flutter/material.dart';
@@ -528,7 +807,7 @@ void main() {
 
       // "保存して閉じる" ボタンを探してタップ
       // テキストボタンなのでラベルで探す
-      await tester.tap(find.text('保存して閉じる'));
+      await tester.tap(find.text('保存'));
 
       expect(isSaved, isTrue);
     });
@@ -699,6 +978,79 @@ void main() {
   });
 }
 //flutter test test/history_service_test.dart
+```
+
+
+--- FILE: test/gacha_credit_test.dart ---
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:atsumeru_kakeibo/repositories/gacha_repository.dart';
+
+void main() {
+  late GachaRepository repository;
+
+  setUp(() {
+    // テストのたびにデータを空っぽにする
+    SharedPreferences.setMockInitialValues({});
+    repository = GachaRepository();
+  });
+
+  group('ガチャチケット獲得ロジックのテスト', () {
+    test('1回追加すると、正しく増えて「追加成功(true)」が返る', () async {
+      // 実行
+      final (total, added) = await repository.addCredit();
+
+      // 検証
+      expect(added, isTrue, reason: '最初は必ずtrueが返るはず');
+      expect(total, 1, reason: '所持数が0→1になるはず');
+    });
+
+    test('5回連続で追加でき、6回目は「追加失敗(false)」になる（1日上限テスト）', () async {
+      // 5回まわす
+      for (int i = 1; i <= 5; i++) {
+        final (total, added) = await repository.addCredit();
+        expect(added, isTrue, reason: '$i回目は追加できるはず');
+        expect(total, i, reason: '所持数が$iになるはず');
+      }
+
+      // 運命の6回目
+      final (limitTotal, limitAdded) = await repository.addCredit();
+
+      expect(limitAdded, isFalse, reason: '6回目は制限にかかってfalseになるはず');
+      expect(limitTotal, 5, reason: '所持数は5から増えないはず');
+    });
+
+    test('「日付が変わった」と認識されれば、回数がリセットされてまた追加できる', () async {
+      // 状況再現:
+      // 「今日のカウントは5回(満タン)」だが、
+      // 「最後に保存した日付は昔(2000年)」という矛盾したデータをセットする
+      // → これでaddCreditを呼べば、ロジックが正しければ「日付変更」とみなしてリセットするはず
+      SharedPreferences.setMockInitialValues({
+        'gacha_daily_count': 5,
+        'gacha_credits': 10,
+        'gacha_last_input_date': '2000-1-1',
+      });
+
+      // 実行
+      final (total, added) = await repository.addCredit();
+
+      // 検証
+      expect(added, isTrue, reason: '日付が変わっていれば、カウント5でも追加できるはず');
+      expect(total, 11, reason: '所持数は10→11になるはず');
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getInt('gacha_daily_count'),
+        1,
+        reason: '今日のカウントは1にリセットされているはず',
+      );
+    });
+  });
+}
+
+//flutter test test/gacha_credit_test.dart
+
 ```
 
 
@@ -1263,6 +1615,7 @@ class GachaRepository {
 
     final int dailyCount = prefs.getInt(_dailyCountKey) ?? 0;
     if (dailyCount >= _dailyLimit) {
+      //ここで5回制限をかけている
       return (currentTotal, false);
     }
 
@@ -1281,6 +1634,37 @@ class GachaRepository {
       return true;
     }
     return false;
+  }
+
+  // デバッグ用: ガチャの進行状況をリセットする
+  Future<void> debugResetProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_creditKey);
+    await prefs.remove(_countsKey);
+    await prefs.remove(_initialBonusKey);
+    _counts.clear();
+  }
+
+  // デバッグ用: コンプリート一歩手前まで進める
+  Future<void> debugSetNearComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // データをリセット
+    await debugResetProgress();
+
+    // すべてのアイテムを取得
+    final allItems = GachaData.monsters;
+
+    // 全てLv10に、最後の一つだけLv9にする
+    for (int i = 0; i < allItems.length; i++) {
+      final item = allItems[i];
+      final count = (i == allItems.length - 1) ? 9 : 10;
+      _counts[item.id] = count;
+    }
+    await _saveCounts();
+
+    // クレジットを付与（テスト用）
+    await prefs.setInt(_creditKey, 10);
   }
 }
 
@@ -1306,11 +1690,17 @@ class SettingsRepository {
   Future<List<CategoryTag>> loadExpenseTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_expenseTagsKey);
+
+    List<CategoryTag> tags;
     if (jsonString == null) {
-      return CategoryTag.defaultExpenses;
+      tags = CategoryTag.defaultExpenses;
+    } else {
+      final List<dynamic> jsonList = json.decode(jsonString);
+      tags = jsonList.map((e) => CategoryTag.fromJson(e)).toList();
     }
-    final List<dynamic> jsonList = json.decode(jsonString);
-    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+
+    // ▼▼ 修正: ID重複チェックと修復処理を通してから返す ▼▼
+    return _sanitizeTags(tags);
   }
 
   Future<void> saveExpenseTags(List<CategoryTag> tags) async {
@@ -1323,11 +1713,17 @@ class SettingsRepository {
   Future<List<CategoryTag>> loadCardTags() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_cardTagsKey);
+
+    List<CategoryTag> tags;
     if (jsonString == null) {
-      return CategoryTag.defaultCards;
+      tags = CategoryTag.defaultCards;
+    } else {
+      final List<dynamic> jsonList = json.decode(jsonString);
+      tags = jsonList.map((e) => CategoryTag.fromJson(e)).toList();
     }
-    final List<dynamic> jsonList = json.decode(jsonString);
-    return jsonList.map((e) => CategoryTag.fromJson(e)).toList();
+
+    // ▼▼ 修正: ID重複チェックと修復処理を通してから返す ▼▼
+    return _sanitizeTags(tags);
   }
 
   Future<void> saveCardTags(List<CategoryTag> tags) async {
@@ -1369,7 +1765,7 @@ class SettingsRepository {
     await prefs.setBool(_showCardOnInputKey, enabled);
   }
 
-  // ▼▼ 追加: バイブレーション設定の管理 ▼▼
+  // --- バイブレーション設定の管理 ---
   Future<bool> loadVibrationEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     // デフォルトは true (振動する)
@@ -1379,6 +1775,41 @@ class SettingsRepository {
   Future<void> saveVibrationEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_vibrationEnabledKey, enabled);
+  }
+
+  // ▼▼ 追加: 重複IDを検知してユニークにするヘルパーメソッド ▼▼
+  // これにより、IDが被ってReorderableListViewでエラーになったり
+  // 項目が表示されなかったりするバグを自動的に直します。
+  List<CategoryTag> _sanitizeTags(List<CategoryTag> rawTags) {
+    final Set<String> seenIds = {};
+    final List<CategoryTag> sanitized = [];
+
+    for (var tag in rawTags) {
+      if (seenIds.contains(tag.id)) {
+        // IDが重複している場合、IDをnullにして再生成させた新しいタグを作る
+        // (CategoryTagのコンストラクタでid: nullなら自動生成される仕組みを利用)
+        final newTag = CategoryTag(
+          id: null, // 新規ID生成トリガー
+          label: tag.label,
+          color: tag.color,
+          isCircle: tag.isCircle,
+          closingDay: tag.closingDay,
+          paymentDay: tag.paymentDay,
+          paymentMonthOffset: tag.paymentMonthOffset,
+          iconCodePoint: tag.iconCodePoint,
+          iconFontFamily: tag.iconFontFamily,
+          iconFontPackage: tag.iconFontPackage,
+        );
+        sanitized.add(newTag);
+        // 新しく生成されたIDを記録（理論上被らないが念のため）
+        seenIds.add(newTag.id);
+      } else {
+        // 重複していない正常なデータ
+        sanitized.add(tag);
+        seenIds.add(tag.id);
+      }
+    }
+    return sanitized;
   }
 }
 
@@ -1467,68 +1898,6 @@ class TransactionRepository {
     );
     await prefs.setString(_key, jsonString);
   }
-
-  // --- ⬇️ ここから追加機能：日数カウントロジック ---
-
-  /// ユニークな入力日数を取得する
-  /// (1日に複数回入力しても「1日」としてカウント)
-  int getUniqueInputDaysCount() {
-    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
-
-    // Setを使って重複する日付を除去する
-    final uniqueDates = _memoryCache!.map((item) {
-      // 時間情報(HH:mm:ss)を切り捨てて、年月日だけにする
-      return DateTime(item.date.year, item.date.month, item.date.day);
-    }).toSet();
-
-    return uniqueDates.length;
-  }
-
-  /// 継続中の入力日数を取得する（オプション機能：連続記録用）
-  /// 今日から遡って何日連続で入力しているか
-  int getCurrentStreak() {
-    if (_memoryCache == null || _memoryCache!.isEmpty) return 0;
-
-    // 日付のみのリストを作成して降順ソート
-    final sortedDates =
-        _memoryCache!
-            .map((item) {
-              return DateTime(item.date.year, item.date.month, item.date.day);
-            })
-            .toSet()
-            .toList()
-          ..sort((a, b) => b.compareTo(a)); // 新しい順
-
-    if (sortedDates.isEmpty) return 0;
-
-    final today = DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
-
-    int streak = 0;
-    // 最新の入力が今日、または昨日でない場合はストリーク途切れとみなす場合などの判定
-    // ここでは単純にリストを遡る
-
-    DateTime checkDate = sortedDates.first;
-
-    // もし最新入力が今日より未来なら（入力ミスなど）、カウント対象にするか要検討ですが
-    // 一旦、最新の日付を基準にカウントを開始します
-
-    // ※ シンプルにするため、最新の日付から「1日ずつ差があるか」をチェック
-    for (int i = 0; i < sortedDates.length - 1; i++) {
-      final current = sortedDates[i];
-      final next = sortedDates[i + 1];
-
-      final diff = current.difference(next).inDays;
-      if (diff == 1) {
-        streak++;
-      } else {
-        break; // 連続が途切れたら終了
-      }
-    }
-
-    // 最初の1日分を加算
-    return streak + 1;
-  }
 }
 
 ```
@@ -1540,7 +1909,9 @@ class TransactionItem {
   final String id;
   final int amount;
   final String expense;
+  final String? expenseId; // カテゴリID
   final String payment;
+  final String? paymentId; // 支払い方法ID
   final DateTime date;
   final DateTime? paymentDate;
   final String memo;
@@ -1549,7 +1920,9 @@ class TransactionItem {
     String? id,
     required this.amount,
     required this.expense,
+    this.expenseId,
     required this.payment,
+    this.paymentId,
     required this.date,
     this.paymentDate,
     this.memo = '',
@@ -1560,7 +1933,9 @@ class TransactionItem {
       'id': id,
       'amount': amount,
       'expense': expense,
+      'expense_id': expenseId,
       'payment': payment,
+      'payment_id': paymentId,
       'date_iso': date.toIso8601String(),
       'payment_date_iso': paymentDate?.toIso8601String(),
       'memo': memo,
@@ -1578,7 +1953,9 @@ class TransactionItem {
               (json['date_iso'] as String)),
       amount: json['amount'] as int,
       expense: json['expense'] as String,
+      expenseId: json['expense_id'] as String?,
       payment: json['payment'] as String,
+      paymentId: json['payment_id'] as String?,
       date: DateTime.parse(json['date_iso'] as String),
       paymentDate: json['payment_date_iso'] != null
           ? DateTime.parse(json['payment_date_iso'] as String)
@@ -1591,7 +1968,9 @@ class TransactionItem {
     String? id, // IDもcopyできるようにしておくと編集時に便利です
     int? amount,
     String? expense,
+    String? expenseId,
     String? payment,
+    String? paymentId,
     DateTime? date,
     DateTime? paymentDate,
     String? memo,
@@ -1600,7 +1979,9 @@ class TransactionItem {
       id: id ?? this.id,
       amount: amount ?? this.amount,
       expense: expense ?? this.expense,
+      expenseId: expenseId ?? this.expenseId,
       payment: payment ?? this.payment,
+      paymentId: paymentId ?? this.paymentId,
       date: date ?? this.date,
       paymentDate: paymentDate ?? this.paymentDate,
       memo: memo ?? this.memo,
@@ -1608,12 +1989,15 @@ class TransactionItem {
   }
 }
 
+//copywithを利用して、カテゴリや支払いの編集もできるようにしよう。
+
 ```
 
 
 --- FILE: lib/models/category_tag.dart ---
 ```dart
 import 'package:flutter/material.dart';
+import 'dart:math'; // ▼ 追加
 
 class CategoryTag {
   final String id;
@@ -1642,7 +2026,9 @@ class CategoryTag {
     this.iconCodePoint,
     this.iconFontFamily,
     this.iconFontPackage,
-  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+  }) : id =
+           id ??
+           "${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(10000)}";
 
   // 保存された情報からIconDataを復元するgetter
   IconData? get icon {
@@ -1855,193 +2241,234 @@ class GachaItem {
 ```
 
 
---- FILE: lib/screens/summary_detail_screen.dart ---
+--- FILE: lib/screens/transaction_edit_screen.dart ---
 ```dart
 import 'package:flutter/material.dart';
-import '../models/category_tag.dart';
+
 import '../models/transaction_item.dart';
-import '../repositories/transaction_repository.dart';
-import '../repositories/settings_repository.dart';
-import 'history_screen.dart';
+import '../services/input_service.dart';
+import '../widgets/category_selector.dart';
+import '../widgets/custom_number_keyboard.dart';
+import '../widgets/flash_message.dart';
+import '../widgets/input/amount_input_area.dart';
+import '../widgets/input/payment_selector.dart';
+import 'input/transaction_edit_view_model.dart';
+import 'settings/category_manage_screen.dart';
 
-class SummaryDetailScreen extends StatefulWidget {
-  final int year;
-  final int month;
+class TransactionEditScreen extends StatefulWidget {
+  final TransactionItem item;
+  final VoidCallback? onSuccess;
 
-  const SummaryDetailScreen({
-    super.key,
-    required this.year,
-    required this.month,
-  });
+  const TransactionEditScreen({super.key, required this.item, this.onSuccess});
 
   @override
-  State<SummaryDetailScreen> createState() => _SummaryDetailScreenState();
+  State<TransactionEditScreen> createState() => _TransactionEditScreenState();
 }
 
-class _SummaryDetailScreenState extends State<SummaryDetailScreen> {
-  final TransactionRepository _repository = TransactionRepository();
-  final SettingsRepository _settingsRepository = SettingsRepository();
+class _TransactionEditScreenState extends State<TransactionEditScreen> {
+  late final TransactionEditViewModel _vm;
+  final InputService _inputService = InputService();
 
-  List<TransactionItem> _history = [];
-  List<CategoryTag> _expenseList = [];
-  bool _isLoading = true;
+  final GlobalKey _paymentKey = GlobalKey();
+  final GlobalKey _categoryKey = GlobalKey();
+
+  static const double _keyboardHeight = 312.0;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm = TransactionEditViewModel(
+      inputService: _inputService,
+      initialItem: widget.item,
+    );
+    _vm.loadData();
   }
 
-  Future<void> _load() async {
-    final allItems = await _repository.getAllTransactions();
-    final expenses = await _settingsRepository.loadExpenseTags();
+  @override
+  void dispose() {
+    _vm.dispose();
+    super.dispose();
+  }
 
-    if (mounted) {
-      setState(() {
-        _history = allItems.where((i) {
-          return i.date.year == widget.year && i.date.month == widget.month;
-        }).toList();
-        _expenseList = expenses;
-        _isLoading = false;
-      });
-    }
+  Future<void> _openCategorySettings() async {
+    // 編集画面からカテゴリ管理を開く場合の挙動（必要なら実装）
+    // 今回はシンプルに開くだけ
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CategoryManageScreen()),
+    );
+    _vm.loadData();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    final int total = _history.fold(0, (s, i) => s + i.amount);
-
-    final expenseSums = <String, int>{};
-    for (var item in _history) {
-      expenseSums[item.expense] =
-          (expenseSums[item.expense] ?? 0) + item.amount;
-    }
-
-    final sortedEntries = expenseSums.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.year}年${widget.month}月 内訳詳細')),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            color: Colors.blue.shade50,
-            padding: const EdgeInsets.all(20),
-            child: Column(
+      appBar: AppBar(title: const Text('履歴の編集')),
+      body: AnimatedBuilder(
+        animation: _vm,
+        builder: (context, child) {
+          if (_vm.isLoading || _vm.data == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+          final double additionalPadding = _vm.showCustomKeyboard
+              ? _keyboardHeight
+              : bottomInset;
+          final double bottomPadding = 80 + additionalPadding;
+
+          return GestureDetector(
+            onTap: _vm.closeKeyboard,
+            behavior: HitTestBehavior.opaque,
+            child: Stack(
               children: [
-                const Text(
-                  '合計支出',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  '¥ $total',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                Positioned.fill(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
+                    child: Column(
+                      children: [
+                        AmountInputArea(
+                          selectedDate: _vm.selectedDate,
+                          amountController: _vm.amountController,
+                          amountFocusNode: _vm.amountFocusNode,
+                          memoController: _vm.memoController,
+                          memoFocusNode: _vm.memoFocusNode,
+                          onDateTap: () => _vm.pickDate(context),
+                          onAmountTap: () => _vm.amountFocusNode.requestFocus(),
+                        ),
+
+                        if (_vm.data!.showCardOnInput)
+                          GestureDetector(
+                            key: _paymentKey,
+                            child: PaymentSelector(
+                              isCardPayment: _vm.isCardPayment,
+                              onToggle: _vm.toggleCardPayment,
+                              cardList: _vm.data!.cards,
+                              selectedCardIndex: _vm.selectedCardIndex,
+                              onCardSelected: _vm.setCardIndex,
+                              onCardLongPress: (_) {}, // 編集画面では履歴遷移なし
+                            ),
+                          )
+                        else
+                          const SizedBox(height: 24),
+
+                        CategorySelector(
+                          key: _categoryKey,
+                          tags: _vm.data!.expenses,
+                          selectedIndex: _vm.selectedExpenseIndex,
+                          onSelected: _vm.setExpenseIndex,
+                          onLongPress: null, // 編集画面では履歴遷移なし
+                          onAddPressed: _openCategorySettings,
+                        ),
+                        const SizedBox(height: 30),
+
+                        // 保存ボタン
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final success = await _vm.saveData(context);
+                              if (success && mounted) {
+                                widget.onSuccess?.call();
+                                Navigator.pop(context);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text(
+                              '更新する',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // 削除ボタン
+                        TextButton.icon(
+                          onPressed: () async {
+                            await _vm.deleteTransaction(context);
+                            // deleteTransaction内でダイアログ表示 -> 削除 -> popまで行う想定だが、
+                            // ViewModel側でpopするとここには戻ってこないかもしれない。
+                            // ViewModelの実装を見ると、削除後にpopしている。
+                            // なのでここでonSuccessを呼ぶ必要があるが、ViewModelがpopした後だと遅いか？
+                            // ViewModelでpopしているので、ここではonSuccessを呼べないかも。
+                            // -> ViewModelのdeleteTransactionを修正するか、ここでハンドリングする方が良い。
+                            // ViewModel側を確認すると、contextを使ってpopしている。
+                            // 修正が必要そうだが、一旦このまま進めて、ViewModel側でonSuccess相当のことができるか考える。
+                            // 実際はViewModelでdelete完了 -> pop しているので、
+                            // 呼び出し元のHistoryMonthlyPageでawait Navigator.push()しているので、
+                            // 戻ってきたときにrefreshすれば良い。
+                            widget.onSuccess?.call();
+                          },
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          label: const Text(
+                            'この履歴を削除する',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 24,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ),
+
+                if (_vm.showCustomKeyboard)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: _keyboardHeight,
+                    child: CustomNumberKeyboard(
+                      controller: _vm.amountController,
+                      onSubmitted: () async {
+                        final success = await _vm.saveData(context);
+                        if (success && mounted) {
+                          widget.onSuccess?.call();
+                          Navigator.pop(context);
+                        }
+                      },
+                      onSaveAndClose: () async {
+                        final success = await _vm.saveData(context);
+                        if (success && mounted) {
+                          widget.onSuccess?.call();
+                          Navigator.pop(context);
+                        }
+                      },
+                      onUndo: null,
+                      onClose: _vm.closeKeyboard,
+                      onChanged: (_) {},
+                      onDebugCodeEntered: null,
+                    ),
+                  ),
+
+                FlashMessage(
+                  isVisible: _vm.isFlashVisible,
+                  message: _vm.flashMsg,
+                  color: _vm.flashColor,
                 ),
               ],
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: sortedEntries.isEmpty
-                ? Center(
-                    child: Text(
-                      'データがありません',
-                      style: TextStyle(color: Colors.grey.shade400),
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: sortedEntries.length,
-                    separatorBuilder: (c, i) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final entry = sortedEntries[index];
-                      final label = entry.key;
-                      final amount = entry.value;
-
-                      Color color = Colors.grey;
-                      IconData icon = Icons.label;
-
-                      try {
-                        final tag = _expenseList.firstWhere(
-                          (t) => t.label == label,
-                        );
-                        color = tag.color;
-                        icon = tag.displayIcon;
-                      } catch (_) {}
-
-                      final percentage = (total > 0)
-                          ? (amount / total * 100).toStringAsFixed(1)
-                          : "0.0";
-
-                      return ListTile(
-                        leading: Icon(icon, color: color),
-                        title: Row(
-                          children: [
-                            Expanded(child: Text(label)),
-                            Text(
-                              '¥$amount',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        subtitle: LinearProgressIndicator(
-                          value: total > 0 ? amount / total : 0,
-                          backgroundColor: Colors.grey.shade100,
-                          color: color,
-                          minHeight: 4,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '$percentage%',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            const Icon(
-                              Icons.chevron_right,
-                              size: 16,
-                              color: Colors.grey,
-                            ),
-                          ],
-                        ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => HistoryScreen(
-                                filterValue: label,
-                                filterKey: 'expense',
-                                color: color,
-                                // ▼▼ 変更: 固定月ではなく、初期表示月として渡す ▼▼
-                                // これにより詳細画面から飛んだ先でも前後の月に移動可能になる
-                                initialDate: DateTime(
-                                  widget.year,
-                                  widget.month,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -2061,6 +2488,7 @@ import 'history_monthly_page.dart';
 
 class HistoryScreen extends StatefulWidget {
   final String filterValue;
+  final String? filterId; // 追加
   final String filterKey; // 'expense' or 'payment'
   final Color? color;
   final int? year; // 指定年月がある場合
@@ -2070,6 +2498,7 @@ class HistoryScreen extends StatefulWidget {
   const HistoryScreen({
     super.key,
     required this.filterValue,
+    this.filterId, // 追加
     required this.filterKey,
     this.color,
     this.year,
@@ -2231,6 +2660,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     year: widget.year!,
                     month: widget.month!,
                     filterValue: widget.filterValue,
+                    filterId: widget.filterId, // 追加
                     filterKey: widget.filterKey,
                     color: widget.color ?? Colors.blue,
                     viewMode: _viewMode,
@@ -2250,6 +2680,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         year: targetDate.year,
                         month: targetDate.month,
                         filterValue: widget.filterValue,
+                        filterId: widget.filterId, // 追加
                         filterKey: widget.filterKey,
                         color: widget.color ?? Colors.blue,
                         viewMode: _viewMode,
@@ -2333,13 +2764,14 @@ import '../models/transaction_item.dart';
 import '../models/category_tag.dart';
 import '../services/history_service.dart';
 import '../widgets/transaction_tile.dart';
-import '../widgets/transaction_edit_dialog.dart';
+import '../screens/transaction_edit_screen.dart';
 
 // クラス名を _HistoryPage から HistoryMonthlyPage に変更し、publicにしました
 class HistoryMonthlyPage extends StatefulWidget {
   final int year;
   final int month;
   final String filterValue;
+  final String? filterId; // 追加
   final String filterKey;
   final Color color;
   final int viewMode;
@@ -2354,6 +2786,7 @@ class HistoryMonthlyPage extends StatefulWidget {
     required this.year,
     required this.month,
     required this.filterValue,
+    this.filterId, // 追加
     required this.filterKey,
     required this.color,
     required this.viewMode,
@@ -2371,6 +2804,7 @@ class HistoryMonthlyPage extends StatefulWidget {
 class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
   List<TransactionItem> _history = [];
   List<CategoryTag> _expenseTags = [];
+  List<CategoryTag> _paymentTags = [];
   bool _isLoading = true;
 
   @override
@@ -2384,7 +2818,9 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.viewMode != widget.viewMode ||
         oldWidget.year != widget.year ||
-        oldWidget.month != widget.month) {
+        oldWidget.month != widget.month ||
+        oldWidget.filterValue != widget.filterValue ||
+        oldWidget.filterId != widget.filterId) {
       _load();
     }
   }
@@ -2393,18 +2829,21 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     final items = await widget.service.getFilteredTransactions(
       filterKey: widget.filterKey,
       filterValue: widget.filterValue,
+      filterId: widget.filterId, // 追加
       year: widget.year,
       month: widget.month,
       viewMode: widget.viewMode,
     );
 
     final expenses = await widget.service.getExpenseTags();
+    final payments = await widget.service.getCardTags();
 
     if (!mounted) return;
 
     setState(() {
       _history = items;
       _expenseTags = expenses;
+      _paymentTags = payments;
       _isLoading = false;
     });
   }
@@ -2416,6 +2855,13 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     }
 
     final int total = _history.fold(0, (s, i) => s + i.amount);
+
+    // ID -> Tag, Label -> Tag のMap作成
+    final idToTag = {for (var t in _expenseTags) t.id: t};
+    final labelToTag = {for (var t in _expenseTags) t.label: t};
+
+    final idToTagCard = {for (var t in _paymentTags) t.id: t};
+    final labelToTagCard = {for (var t in _paymentTags) t.label: t};
 
     return Column(
       children: [
@@ -2507,29 +2953,59 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
                   separatorBuilder: (c, i) => const Divider(height: 1),
                   itemBuilder: (c, i) {
                     final item = _history[i];
-                    IconData? icon;
-                    try {
-                      final tag = _expenseTags.firstWhere(
-                        (t) => t.label == item.expense,
-                      );
-                      icon = tag.displayIcon;
-                    } catch (_) {}
+                    IconData? iconCategory;
+                    String? categoryName;
+
+                    // ID優先で検索、なければ名前で検索
+                    CategoryTag? tagCategory;
+                    if (item.expenseId != null) {
+                      tagCategory = idToTag[item.expenseId];
+                    }
+                    if (tagCategory == null) {
+                      tagCategory = labelToTag[item.expense];
+                    }
+
+                    if (tagCategory != null) {
+                      iconCategory = tagCategory.displayIcon;
+                      categoryName = tagCategory.label;
+                    }
+
+                    IconData? iconPayment;
+                    String? paymentName;
+                    Color? cardColor;
+
+                    // ID優先で検索、なければ名前で検索
+                    CategoryTag? tagPayment;
+                    if (item.paymentId != null) {
+                      tagPayment = idToTagCard[item.paymentId];
+                    }
+                    if (tagPayment == null) {
+                      tagPayment = labelToTagCard[item.payment];
+                    }
+
+                    if (tagPayment != null) {
+                      iconPayment = tagPayment.displayIcon;
+                      cardColor = tagPayment.color;
+                      paymentName = tagPayment.label;
+                    }
 
                     return TransactionTile(
                       item: item,
                       categoryColor: widget.color,
-                      categoryIcon: icon,
+                      categoryIcon: iconCategory,
+                      categoryName: categoryName,
+                      paymentColor: cardColor,
+                      paymentIcon: iconPayment,
                       showDate: true,
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => TransactionEditDialog(
-                            item: item,
-                            onSuccess: () {
-                              _load();
-                            },
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                TransactionEditScreen(item: item),
                           ),
                         );
+                        _load();
                       },
                     );
                   },
@@ -2543,15 +3019,229 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
 ```
 
 
+--- FILE: lib/screens/graph_screen.dart ---
+```dart
+import 'package:flutter/material.dart';
+import '../models/category_tag.dart';
+import '../models/transaction_item.dart';
+import '../repositories/transaction_repository.dart';
+import '../repositories/settings_repository.dart';
+import '../widgets/monthly_report_components.dart'; // TotalExpenseCard等のため
+import '../widgets/monthly_report/graph_view.dart'; // グラフ表示用
+import 'history_screen.dart';
+
+class GraphScreen extends StatefulWidget {
+  final int? dataVersion;
+  const GraphScreen({super.key, this.dataVersion});
+
+  @override
+  State<GraphScreen> createState() => _GraphScreenState();
+}
+
+class _GraphScreenState extends State<GraphScreen> {
+  // 1000ヶ月分(前後約80年)のページングを可能にする設定
+  final PageController _pageController = PageController(initialPage: 1000);
+
+  late int _currentYear;
+  late int _currentMonth;
+  final GlobalKey _titleKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _currentYear = now.year;
+    _currentMonth = now.month;
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // ページ切り替え時の処理（年月更新）
+  void _onPageChanged(int index) {
+    final d = DateTime(
+      DateTime.now().year,
+      DateTime.now().month + (index - 1000),
+    );
+    setState(() {
+      _currentYear = d.year;
+      _currentMonth = d.month;
+    });
+  }
+
+  // 年月選択ダイアログ
+  Future<void> _pickMonth() async {
+    final DateTime now = DateTime.now();
+    final DateTime current = DateTime(_currentYear, _currentMonth);
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: '移動先の年月を選択',
+    );
+
+    if (picked != null) {
+      final int diffMonths =
+          (picked.year - now.year) * 12 + (picked.month - now.month);
+      final int targetPage = 1000 + diffMonths;
+
+      _pageController.jumpToPage(targetPage);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: GestureDetector(
+          key: _titleKey,
+          onTap: _pickMonth,
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$_currentYear年 $_currentMonth月',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down, size: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) {
+          final d = DateTime(
+            DateTime.now().year,
+            DateTime.now().month + (index - 1000),
+          );
+          // 各月のグラフページを表示
+          return GraphPage(
+            year: d.year,
+            month: d.month,
+            dataVersion: widget.dataVersion,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class GraphPage extends StatefulWidget {
+  final int year;
+  final int month;
+  final int? dataVersion;
+
+  const GraphPage({
+    super.key,
+    required this.year,
+    required this.month,
+    this.dataVersion,
+  });
+
+  @override
+  State<GraphPage> createState() => _GraphPageState();
+}
+
+class _GraphPageState extends State<GraphPage> {
+  List<TransactionItem> _history = [];
+  List<CategoryTag> _expenseTags = [];
+  final TransactionRepository _repository = TransactionRepository();
+  final SettingsRepository _settingsRepository = SettingsRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant GraphPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dataVersion != widget.dataVersion) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final allItems = await _repository.getAllTransactions();
+    final expenses = await _settingsRepository.loadExpenseTags();
+
+    if (mounted) {
+      setState(() {
+        // 対象年月のデータのみ抽出
+        _history = allItems.where((i) {
+          return i.date.year == widget.year && i.date.month == widget.month;
+        }).toList();
+        _expenseTags = expenses;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int total = _history.fold(0, (s, i) => s + i.amount);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 50),
+      child: Column(
+        children: [
+          // 合計金額カード
+          TotalExpenseCard(total: total),
+          const SizedBox(height: 10),
+          // グラフビュー
+          GraphView(
+            history: _history,
+            expenseTags: _expenseTags,
+            onLegendTap: (expense, color, expenseId) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => HistoryScreen(
+                    filterValue: expense,
+                    filterId: expenseId,
+                    filterKey: 'expense',
+                    color: color,
+                    year: widget.year,
+                    month: widget.month,
+                    //initialDate: DateTime(widget.year, widget.month),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+```
+
+
 --- FILE: lib/screens/main_screen.dart ---
 ```dart
 import 'package:flutter/material.dart';
 import '../repositories/settings_repository.dart';
-// ▼▼ 追加: リポジトリのインポート ▼▼
+import '../services/input_service.dart';
 import '../repositories/gacha_repository.dart';
 import '../widgets/app_drawer.dart';
 import 'input_tab.dart';
 import 'monthly_report_screen.dart';
+import 'graph_screen.dart'; // 追加
 import 'gacha_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -2563,10 +3253,11 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   final SettingsRepository _settingsRepository = SettingsRepository();
-  // ▼▼ 追加 ▼▼
   final GachaRepository _gachaRepository = GachaRepository();
+  final InputService _inputService = InputService();
 
   int _dataVersion = 0;
+  int _gachaDataVersion = 0;
   bool _isTabBarVisible = true;
   bool _isGachaEnabled = true;
   bool _isLoading = true;
@@ -2574,13 +3265,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // 初期化時はとりあえず長さ3で作成（ロード後に再設定されます）
     _tabController = TabController(length: 3, vsync: this);
+
+    _gachaDataVersion = _inputService.gachaDataVersionNotifier.value;
+    _inputService.gachaDataVersionNotifier.addListener(
+      _onGachaDataVersionChanged,
+    );
     _loadSettings();
-    // ▼▼ 追加: 初回ボーナスチェックを実行 ▼▼
     _gachaRepository.checkInitialBonus();
   }
 
-  // ... 以下、変更なし ...
   Future<void> _loadSettings() async {
     try {
       final enabled = await _settingsRepository.loadGachaEnabled();
@@ -2603,7 +3298,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _setupTabController() {
     int newIndex = _tabController.index;
-    int length = _isGachaEnabled ? 3 : 2;
+
+    // ガチャONなら4タブ、OFFなら3タブ
+    int length = _isGachaEnabled ? 4 : 3;
+
+    // インデックスが範囲外にならないよう調整
     if (newIndex >= length) newIndex = 0;
 
     _tabController.dispose();
@@ -2629,7 +3328,16 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _tabController.dispose();
+    _inputService.gachaDataVersionNotifier.removeListener(
+      _onGachaDataVersionChanged,
+    );
     super.dispose();
+  }
+
+  void _onGachaDataVersionChanged() {
+    setState(() {
+      _gachaDataVersion = _inputService.gachaDataVersionNotifier.value;
+    });
   }
 
   void _refreshData() async {
@@ -2671,13 +3379,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           controller: _tabController,
           physics: const NeverScrollableScrollPhysics(),
           children: [
+            // 1. 入力タブ
             InputTab(
               dataVersion: _dataVersion,
+              inputService: _inputService,
               onTabBarVisibilityChanged: _setTabBarVisible,
             ),
-            const MonthlyHistoryScreen(),
-            // ▼▼ 修正: ガチャ画面に dataVersion を渡す ▼▼
-            if (_isGachaEnabled) GachaScreen(dataVersion: _dataVersion),
+            // 2. レポート(カレンダー)タブ
+            MonthlyHistoryScreen(dataVersion: _dataVersion),
+
+            // 3. グラフタブ (新規追加)
+            GraphScreen(dataVersion: _dataVersion),
+
+            // 4. コレクションタブ (設定ON時のみ)
+            if (_isGachaEnabled) GachaScreen(dataVersion: _gachaDataVersion),
           ],
         ),
       ),
@@ -2698,6 +3413,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   icon: Icon(Icons.calendar_month_outlined),
                   selectedIcon: Icon(Icons.calendar_month),
                   label: 'レポート',
+                ),
+                // グラフタブのアイコンを追加
+                const NavigationDestination(
+                  icon: Icon(Icons.pie_chart_outline),
+                  selectedIcon: Icon(Icons.pie_chart),
+                  label: 'グラフ',
                 ),
                 if (_isGachaEnabled)
                   const NavigationDestination(
@@ -2728,17 +3449,20 @@ import '../widgets/input/input_control_panel.dart';
 import '../widgets/input/payment_selector.dart';
 import 'history_screen.dart';
 import 'input/input_tab_tutorial.dart';
-import 'input/input_tab_view_model.dart'; // Import ViewModel
+import 'input/input_tab_view_model.dart';
 import 'settings/category_manage_screen.dart';
+import '../services/input_service.dart'; // 追加
 
 class InputTab extends StatefulWidget {
   final int dataVersion;
   final Function(bool visible)? onTabBarVisibilityChanged;
+  final InputService inputService; // 追加
 
   const InputTab({
     super.key,
     this.dataVersion = 0,
     this.onTabBarVisibilityChanged,
+    required this.inputService, // 追加
   });
 
   @override
@@ -2747,10 +3471,8 @@ class InputTab extends StatefulWidget {
 
 class _InputTabState extends State<InputTab>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  // ロジックを保持するViewModel
   late final InputTabViewModel _vm;
 
-  // チュートリアル用のKey（View固有のものなのでここに残す）
   final GlobalKey _paymentKey = GlobalKey();
   final GlobalKey _categoryKey = GlobalKey();
 
@@ -2764,10 +3486,11 @@ class _InputTabState extends State<InputTab>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _vm = InputTabViewModel();
+    _vm = InputTabViewModel(
+      inputService: widget.inputService,
+    ); // inputService を渡す
     _vm.loadData().then((_) => _checkTutorial());
 
-    // キーボード表示状態の変化を監視してTabBar制御
     _vm.addListener(_onVmStateChanged);
   }
 
@@ -2790,7 +3513,6 @@ class _InputTabState extends State<InputTab>
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    // システムキーボードが出たかどうかの判定
     final bottomInset = View.of(context).viewInsets.bottom;
     if (bottomInset > 0) {
       _vm.onSystemKeyboardShown();
@@ -2798,8 +3520,6 @@ class _InputTabState extends State<InputTab>
   }
 
   void _onVmStateChanged() {
-    // ViewModelの状態に応じてTabBarの表示/非表示を親に通知
-    // (カスタムキーボード表示中ならTabBarを隠す)
     widget.onTabBarVisibilityChanged?.call(!_vm.showCustomKeyboard);
   }
 
@@ -2818,7 +3538,6 @@ class _InputTabState extends State<InputTab>
     }
   }
 
-  // --- Navigation Helpers ---
   void _onCategoryLongPress(int index) {
     if (!_vm.data!.isCategoryLongPressEnabled) return;
     if (index >= _vm.data!.expenses.length) return;
@@ -2844,7 +3563,6 @@ class _InputTabState extends State<InputTab>
   }
 
   Future<void> _openCategorySettings() async {
-    // 現在の状態を保存
     _vm.setExpenseIndex(_vm.selectedExpenseIndex);
 
     if (!mounted) return;
@@ -2859,7 +3577,6 @@ class _InputTabState extends State<InputTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // ViewModelの変更を監視して再描画
     return AnimatedBuilder(
       animation: _vm,
       builder: (context, child) {
@@ -2867,7 +3584,6 @@ class _InputTabState extends State<InputTab>
           return const Center(child: CircularProgressIndicator());
         }
 
-        // レイアウト計算
         final bottomInset = MediaQuery.of(context).viewInsets.bottom;
         final double additionalPadding = _vm.showCustomKeyboard
             ? _keyboardHeight
@@ -2879,7 +3595,6 @@ class _InputTabState extends State<InputTab>
           behavior: HitTestBehavior.opaque,
           child: Stack(
             children: [
-              // メインコンテンツエリア
               Positioned.fill(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
@@ -2933,7 +3648,6 @@ class _InputTabState extends State<InputTab>
                 ),
               ),
 
-              // カスタムキーボード
               if (_vm.showCustomKeyboard)
                 Positioned(
                   left: 0,
@@ -2949,13 +3663,11 @@ class _InputTabState extends State<InputTab>
                         : null,
                     onClose: _vm.closeKeyboard,
                     onChanged: (_) {},
-                    // ▼▼ 追加: デモデータ注入用コールバック ▼▼
                     onDebugCodeEntered: () =>
                         _vm.confirmAndInjectDemoData(context),
                   ),
                 ),
 
-              // フラッシュメッセージ
               FlashMessage(
                 isVisible: _vm.isFlashVisible,
                 message: _vm.flashMsg,
@@ -2975,31 +3687,27 @@ class _InputTabState extends State<InputTab>
 --- FILE: lib/screens/monthly_report_screen.dart ---
 ```dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart';
-import '../widgets/transaction_edit_dialog.dart';
-import 'summary_detail_screen.dart';
-import 'history_screen.dart';
+import 'transaction_edit_screen.dart';
 
 class MonthlyHistoryScreen extends StatefulWidget {
-  const MonthlyHistoryScreen({super.key});
+  final int? dataVersion;
+  const MonthlyHistoryScreen({super.key, this.dataVersion});
   @override
   State<MonthlyHistoryScreen> createState() => _MonthlyHistoryScreenState();
 }
 
-class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
-    with SingleTickerProviderStateMixin {
+class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen> {
+  // TabController は削除しました
   final PageController _pageController = PageController(initialPage: 1000);
-  late TabController _tabController;
 
   late int _currentYear;
   late int _currentMonth;
-  int _currentTabIndex = 0;
+  // _currentTabIndex は削除しました
 
   final GlobalKey _titleKey = GlobalKey();
 
@@ -3009,20 +3717,10 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
     final now = DateTime.now();
     _currentYear = now.year;
     _currentMonth = now.month;
-
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        setState(() {
-          _currentTabIndex = _tabController.index;
-        });
-      }
-    });
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -3084,13 +3782,7 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
             ),
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'カレンダー', icon: Icon(Icons.calendar_month)),
-            Tab(text: '円グラフ', icon: Icon(Icons.pie_chart)),
-          ],
-        ),
+        // bottom: TabBar(...) を削除しました
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -3103,7 +3795,8 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
           return MonthPage(
             year: d.year,
             month: d.month,
-            tabIndex: _currentTabIndex,
+            // tabIndex を削除しました
+            dataVersion: widget.dataVersion,
           );
         },
       ),
@@ -3114,13 +3807,15 @@ class _MonthlyHistoryScreenState extends State<MonthlyHistoryScreen>
 class MonthPage extends StatefulWidget {
   final int year;
   final int month;
-  final int tabIndex;
+  // final int tabIndex; // 削除
+  final int? dataVersion;
 
   const MonthPage({
     super.key,
     required this.year,
     required this.month,
-    required this.tabIndex,
+    // required this.tabIndex, // 削除
+    this.dataVersion,
   });
 
   @override
@@ -3130,6 +3825,7 @@ class MonthPage extends StatefulWidget {
 class _MonthPageState extends State<MonthPage> {
   List<TransactionItem> _history = [];
   List<CategoryTag> _expenseTags = [];
+  List<CategoryTag> _cardTags = [];
   final TransactionRepository _repository = TransactionRepository();
   final SettingsRepository _settingsRepository = SettingsRepository();
   final Map<int, GlobalKey> _dayKeys = {};
@@ -3140,9 +3836,19 @@ class _MonthPageState extends State<MonthPage> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant MonthPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // tabIndexのチェックを削除
+    if (oldWidget.dataVersion != widget.dataVersion) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
     final allItems = await _repository.getAllTransactions();
     final expenses = await _settingsRepository.loadExpenseTags();
+    final payments = await _settingsRepository.loadCardTags();
 
     if (mounted) {
       setState(() {
@@ -3151,6 +3857,7 @@ class _MonthPageState extends State<MonthPage> {
         }).toList();
         _history.sort((a, b) => b.date.compareTo(a.date));
         _expenseTags = expenses;
+        _cardTags = payments;
       });
     }
   }
@@ -3175,65 +3882,32 @@ class _MonthPageState extends State<MonthPage> {
       padding: const EdgeInsets.only(bottom: 50),
       child: Column(
         children: [
-          // 合計カードコンポーネント
-          TotalExpenseCard(
-            total: total,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SummaryDetailScreen(
-                    year: widget.year,
-                    month: widget.month,
-                  ),
-                ),
-              );
-            },
+          // 合計カード
+          TotalExpenseCard(total: total),
+
+          // グラフ/カレンダー切り替えロジックを削除し、カレンダーのみ表示
+          CalendarView(
+            year: widget.year,
+            month: widget.month,
+            history: _history,
+            onDateTap: _scrollToDate,
           ),
-          // カレンダー/グラフ切り替え
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: widget.tabIndex == 0
-                ? CalendarView(
-                    year: widget.year,
-                    month: widget.month,
-                    history: _history,
-                    onDateTap: _scrollToDate,
-                  )
-                : GraphView(
-                    history: _history,
-                    expenseTags: _expenseTags,
-                    onLegendTap: (expense, color) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => HistoryScreen(
-                            filterValue: expense,
-                            filterKey: 'expense',
-                            color: color,
-                            initialDate: DateTime(widget.year, widget.month),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
+
           const Divider(height: 1),
-          // 日次リストコンポーネント
+          // 日次リスト
           DailyTransactionList(
             history: _history,
             expenseTags: _expenseTags,
+            cardTags: _cardTags,
             dayKeys: _dayKeys,
-            onTransactionTap: (item) {
-              showDialog(
-                context: context,
-                builder: (context) => TransactionEditDialog(
-                  item: item,
-                  onSuccess: () {
-                    _load();
-                  },
+            onTransactionTap: (item) async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TransactionEditScreen(item: item),
                 ),
               );
+              _load();
             },
           ),
         ],
@@ -3605,9 +4279,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 import 'package:flutter/material.dart';
 import '../../models/category_tag.dart';
 import '../../models/gacha_item.dart';
+import '../../models/transaction_item.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/gacha_repository.dart';
+import '../../repositories/transaction_repository.dart';
 import 'dialogs/category_edit_dialog.dart';
+
+enum _DeleteAction { deleteAll, move }
 
 class CategoryManageScreen extends StatefulWidget {
   const CategoryManageScreen({super.key});
@@ -3707,6 +4385,113 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
   }
 
   void _deleteItem(bool isExpense, int index) async {
+    final list = isExpense ? _expenseList : _cardList;
+    final itemToDelete = list[index];
+
+    // 使用状況の確認
+    final transactionRepo = TransactionRepository();
+    final allTransactions = await transactionRepo.getAllTransactions();
+
+    int usageCount = 0;
+    if (isExpense) {
+      usageCount = allTransactions
+          .where(
+            (t) =>
+                (t.expenseId != null && t.expenseId == itemToDelete.id) ||
+                (t.expenseId == null && t.expense == itemToDelete.label),
+          )
+          .length;
+    } else {
+      usageCount = allTransactions
+          .where(
+            (t) =>
+                (t.paymentId != null && t.paymentId == itemToDelete.id) ||
+                (t.paymentId == null && t.payment == itemToDelete.label),
+          )
+          .length;
+    }
+
+    if (usageCount == 0) {
+      // 使用されていない場合でも確認ダイアログを表示
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('カテゴリの削除'),
+          content: Text('カテゴリ「${itemToDelete.label}」を削除しますか？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('削除'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        _performDelete(isExpense, index);
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // ダイアログ表示
+    final action = await showDialog<_DeleteAction>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('カテゴリの削除'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('「${itemToDelete.label}」は $usageCount 件のデータで使用されています。'),
+              const SizedBox(height: 16),
+              const Text('削除にあたり、これらのデータの扱いを選択してください。'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, _DeleteAction.deleteAll),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('データごと削除'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, _DeleteAction.move),
+              child: const Text('移動して削除'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (action == null) return;
+
+    if (action == _DeleteAction.deleteAll) {
+      // 関連データを削除してカテゴリも削除
+      await _deleteTransactions(itemToDelete, isExpense);
+      _performDelete(isExpense, index);
+    } else if (action == _DeleteAction.move) {
+      // 移動先を選択
+      final target = await _showMoveTargetDialog(isExpense, itemToDelete);
+      if (target != null) {
+        await _moveTransactions(itemToDelete, target, isExpense);
+        _performDelete(isExpense, index);
+      }
+    }
+  }
+
+  Future<void> _performDelete(bool isExpense, int index) async {
     setState(() {
       if (isExpense) {
         _expenseList.removeAt(index);
@@ -3715,6 +4500,112 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
       }
     });
     await _saveCurrentList();
+  }
+
+  Future<void> _deleteTransactions(
+    CategoryTag itemToDelete,
+    bool isExpense,
+  ) async {
+    final transactionRepo = TransactionRepository();
+    final allTransactions = await transactionRepo.getAllTransactions();
+    final toDelete = <String>[];
+
+    for (final t in allTransactions) {
+      bool match = false;
+      if (isExpense) {
+        match =
+            (t.expenseId != null && t.expenseId == itemToDelete.id) ||
+            (t.expenseId == null && t.expense == itemToDelete.label);
+      } else {
+        match =
+            (t.paymentId != null && t.paymentId == itemToDelete.id) ||
+            (t.paymentId == null && t.payment == itemToDelete.label);
+      }
+      if (match) {
+        toDelete.add(t.id);
+      }
+    }
+
+    for (final id in toDelete) {
+      await transactionRepo.deleteTransaction(id);
+    }
+  }
+
+  Future<CategoryTag?> _showMoveTargetDialog(
+    bool isExpense,
+    CategoryTag itemToDelete,
+  ) async {
+    final list = isExpense ? _expenseList : _cardList;
+    final candidates = list.where((e) => e.id != itemToDelete.id).toList();
+
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('移動先のカテゴリがありません')));
+      return null;
+    }
+
+    return await showDialog<CategoryTag>(
+      context: context,
+      builder: (context) {
+        return SimpleDialog(
+          title: const Text('移動先を選択'),
+          children: candidates.map((c) {
+            return SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, c),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(c.displayIcon, color: c.color, size: 20),
+                    const SizedBox(width: 12),
+                    Text(c.label),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Future<void> _moveTransactions(
+    CategoryTag from,
+    CategoryTag to,
+    bool isExpense,
+  ) async {
+    final transactionRepo = TransactionRepository();
+    final allTransactions = await transactionRepo.getAllTransactions();
+    final toUpdate = <TransactionItem>[];
+
+    for (final t in allTransactions) {
+      bool match = false;
+      if (isExpense) {
+        match =
+            (t.expenseId != null && t.expenseId == from.id) ||
+            (t.expenseId == null && t.expense == from.label);
+      } else {
+        match =
+            (t.paymentId != null && t.paymentId == from.id) ||
+            (t.paymentId == null && t.payment == from.label);
+      }
+
+      if (match) {
+        // 更新
+        if (isExpense) {
+          toUpdate.add(
+            t.copyWith(expense: to.label, expenseId: to.id),
+          ); // labelも更新しておく(display fallback用)
+        } else {
+          toUpdate.add(t.copyWith(payment: to.label, paymentId: to.id));
+        }
+      }
+    }
+
+    for (final item in toUpdate) {
+      await transactionRepo.updateTransaction(item);
+    }
   }
 
   @override
@@ -4338,6 +5229,260 @@ class GachaStyleDialog extends StatelessWidget {
 ```
 
 
+--- FILE: lib/screens/input/transaction_edit_view_model.dart ---
+```dart
+import 'package:flutter/material.dart';
+
+import '../../models/category_tag.dart';
+import '../../models/transaction_item.dart';
+import '../../services/input_service.dart';
+import '../../utils/flash_message_mixin.dart';
+
+class TransactionEditViewModel extends ChangeNotifier with FlashMessageMixin {
+  final InputService _service;
+  final TransactionItem initialItem;
+
+  // --- Controllers & FocusNodes ---
+  final TextEditingController amountController = TextEditingController();
+  final TextEditingController memoController = TextEditingController();
+  final FocusNode amountFocusNode = FocusNode();
+  final FocusNode memoFocusNode = FocusNode();
+
+  // --- State Data ---
+  InputInitialData? data;
+  bool isLoading = true;
+
+  // --- Selections ---
+  int selectedExpenseIndex = 0;
+  DateTime selectedDate = DateTime.now();
+  bool isCardPayment = false;
+  int selectedCardIndex = 0;
+
+  // --- UI Control State ---
+  bool showCustomKeyboard = false;
+
+  TransactionEditViewModel({
+    required InputService inputService,
+    required this.initialItem,
+  }) : _service = inputService {
+    amountFocusNode.addListener(_onAmountFocusChange);
+    memoFocusNode.addListener(_onMemoFocusChange);
+  }
+
+  @override
+  void dispose() {
+    amountController.dispose();
+    memoController.dispose();
+    amountFocusNode.dispose();
+    memoFocusNode.dispose();
+    super.dispose();
+  }
+
+  // --- Initialization ---
+  Future<void> loadData() async {
+    // 1. カテゴリ等のマスタデータを読み込む
+    data = await _service.loadInitialData();
+
+    // 2. 初期値の設定
+    amountController.text = initialItem.amount.toString();
+    memoController.text = initialItem.memo;
+    selectedDate = initialItem.date;
+
+    // 費目の初期選択
+    if (initialItem.expenseId != null) {
+      final index = data!.expenses.indexWhere(
+        (e) => e.id == initialItem.expenseId,
+      );
+      if (index != -1) {
+        selectedExpenseIndex = index;
+      } else {
+        // IDで見つからなければ名前で検索
+        final indexByName = data!.expenses.indexWhere(
+          (e) => e.label == initialItem.expense,
+        );
+        if (indexByName != -1) selectedExpenseIndex = indexByName;
+      }
+    } else {
+      // IDがない場合（古いデータなど）は名前で検索
+      final indexByName = data!.expenses.indexWhere(
+        (e) => e.label == initialItem.expense,
+      );
+      if (indexByName != -1) selectedExpenseIndex = indexByName;
+    }
+
+    // 支払いの初期選択
+    if (initialItem.paymentId != null) {
+      isCardPayment = true;
+      final index = data!.cards.indexWhere(
+        (c) => c.id == initialItem.paymentId,
+      );
+      if (index != -1) {
+        selectedCardIndex = index;
+      } else {
+        // IDで見つからなければ名前で検索
+        final indexByName = data!.cards.indexWhere(
+          (c) => c.label == initialItem.payment,
+        );
+        if (indexByName != -1) selectedCardIndex = indexByName;
+      }
+    } else {
+      // 支払い方法が記録されているがIDがない場合
+      if (initialItem.payment.isNotEmpty &&
+          initialItem.payment != '現金' &&
+          initialItem.payment != '不明') {
+        // カードリストにあるかチェック
+        final indexByName = data!.cards.indexWhere(
+          (c) => c.label == initialItem.payment,
+        );
+        if (indexByName != -1) {
+          isCardPayment = true;
+          selectedCardIndex = indexByName;
+        } else {
+          // 現金扱いまたは不明
+          isCardPayment = false;
+        }
+      } else {
+        isCardPayment = false;
+      }
+    }
+
+    isLoading = false;
+    notifyListeners();
+  }
+
+  // --- Focus & Keyboard Logic ---
+  void _onAmountFocusChange() {
+    if (amountFocusNode.hasFocus) {
+      showCustomKeyboard = true;
+      notifyListeners();
+    }
+  }
+
+  void _onMemoFocusChange() {
+    if (memoFocusNode.hasFocus) {
+      showCustomKeyboard = false;
+      notifyListeners();
+    }
+  }
+
+  void closeKeyboard() {
+    amountFocusNode.unfocus();
+    memoFocusNode.unfocus();
+    showCustomKeyboard = false;
+    notifyListeners();
+  }
+
+  void onSystemKeyboardShown() {
+    if (showCustomKeyboard && !amountFocusNode.hasFocus) {
+      showCustomKeyboard = false;
+      notifyListeners();
+    }
+  }
+
+  // --- User Actions ---
+  Future<void> pickDate(BuildContext context) async {
+    closeKeyboard();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+    );
+    if (picked != null) {
+      selectedDate = picked;
+      notifyListeners();
+    }
+  }
+
+  void setExpenseIndex(int index) {
+    selectedExpenseIndex = index;
+    notifyListeners();
+  }
+
+  void toggleCardPayment(bool value) {
+    isCardPayment = value;
+    notifyListeners();
+  }
+
+  void setCardIndex(int index) {
+    selectedCardIndex = index;
+    notifyListeners();
+  }
+
+  // --- Save Logic ---
+  Future<bool> saveData(BuildContext context) async {
+    if (isLoading || data == null) return false;
+    if (data!.expenses.isEmpty) {
+      showFlash("カテゴリがありません", Colors.redAccent);
+      return false;
+    }
+
+    if (selectedExpenseIndex >= data!.expenses.length) {
+      selectedExpenseIndex = 0;
+    }
+
+    closeKeyboard();
+
+    CategoryTag? selectedCardTag;
+    if (data!.cards.isNotEmpty && selectedCardIndex < data!.cards.length) {
+      selectedCardTag = data!.cards[selectedCardIndex];
+    }
+
+    final result = await _service.updateTransaction(
+      id: initialItem.id,
+      rawAmount: amountController.text,
+      memo: memoController.text.trim(),
+      date: selectedDate,
+      expenseTag: data!.expenses[selectedExpenseIndex],
+      isCardPayment: isCardPayment,
+      cardTag: selectedCardTag,
+      showCardOnInput: data!.showCardOnInput,
+    );
+
+    if (result.success) {
+      showFlash(result.message, result.messageColor);
+      return true;
+    } else {
+      showFlash(result.message, result.messageColor);
+      return false;
+    }
+  }
+
+  Future<void> deleteTransaction(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('履歴を削除しますか？'),
+        content: Text(
+          '¥${initialItem.amount} (${initialItem.expense})\n'
+          '日時: ${initialItem.date.month}/${initialItem.date.day}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('削除する'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _service.deleteTransaction(initialItem.id);
+      if (context.mounted) {
+        Navigator.pop(context); // 画面を閉じる
+      }
+    }
+  }
+}
+
+```
+
+
 --- FILE: lib/screens/input/input_tab_tutorial.dart ---
 ```dart
 import 'package:flutter/material.dart';
@@ -4470,7 +5615,7 @@ import '../../repositories/transaction_repository.dart'; // Repository用
 import '../../repositories/gacha_repository.dart'; // Repository用
 
 class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
-  final InputService _service = InputService();
+  final InputService _service; // Injected InputService
 
   // --- Controllers & FocusNodes ---
   final TextEditingController amountController = TextEditingController();
@@ -4492,7 +5637,9 @@ class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
   bool showCustomKeyboard = false;
   String? lastInputId;
 
-  InputTabViewModel() {
+  // Modified constructor to accept InputService
+  InputTabViewModel({required InputService inputService})
+    : _service = inputService {
     amountFocusNode.addListener(_onAmountFocusChange);
     memoFocusNode.addListener(_onMemoFocusChange);
   }
@@ -4584,7 +5731,7 @@ class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
   Future<void> saveData({bool keepKeyboard = false}) async {
     if (isLoading || data == null) return;
     if (data!.expenses.isEmpty) {
-      showFlash('カテゴリがありません', Colors.redAccent);
+      showFlash("カテゴリがありません", Colors.redAccent);
       return;
     }
 
@@ -4639,7 +5786,9 @@ class InputTabViewModel extends ChangeNotifier with FlashMessageMixin {
   Future<void> undoLastInput(BuildContext context) async {
     if (lastInputId == null) return;
 
-    final targetItem = await _service.getTransaction(lastInputId!);
+    final targetItem = await _service.getTransaction(
+      lastInputId!,
+    ); // Corrected typo here
     if (targetItem == null) {
       lastInputId = null;
       notifyListeners();
@@ -4999,9 +6148,28 @@ class _GachaGameTabState extends State<GachaGameTab>
   void _showCompleteDialog() {
     showDialog(
       context: context,
-      builder: (context) => const GachaCompleteDialog(),
+      builder: (context) => GachaCompleteDialog(
+        onDebugReset: kDebugMode ? _debugResetGachaProgress : null,
+      ),
     );
   }
+
+  // ▼▼ 追加: デバッグ機能 ▼▼
+  Future<void> _debugResetGachaProgress() async {
+    await _repository.debugResetProgress();
+    await _loadData();
+  }
+
+  Future<void> _debugSetNearComplete() async {
+    await _repository.debugSetNearComplete();
+    await _loadData();
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('デバッグ: コンプリート一歩手前に設定しました')));
+    }
+  }
+  // ▲▲ 追加ここまで ▲▲
 
   Future<void> _showResultDialog(GachaItem item, int count) async {
     await showDialog(
@@ -5028,6 +6196,14 @@ class _GachaGameTabState extends State<GachaGameTab>
 
     return Scaffold(
       backgroundColor: Colors.white,
+      floatingActionButton: kDebugMode
+          ? FloatingActionButton(
+              onPressed: _debugSetNearComplete,
+              backgroundColor: Colors.purple,
+              tooltip: 'デバッグ: あと1つでコンプリート',
+              child: const Icon(Icons.fast_forward),
+            )
+          : null,
       body: Column(
         children: [
           GachaHeader(
@@ -5643,10 +6819,13 @@ class GachaTutorialContent {
 
 --- FILE: lib/screens/gacha/dialogs/gacha_complete_dialog.dart ---
 ```dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class GachaCompleteDialog extends StatelessWidget {
-  const GachaCompleteDialog({super.key});
+  final VoidCallback? onDebugReset;
+
+  const GachaCompleteDialog({super.key, this.onDebugReset});
 
   @override
   Widget build(BuildContext context) {
@@ -5659,19 +6838,38 @@ class GachaCompleteDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text("おめでとうございます！\n全てのキャラクターが最大レベル(Lv.10)に到達しました。"),
-            SizedBox(height: 16),
-            Text("【殿堂入りモード解禁】", style: TextStyle(fontWeight: FontWeight.bold)),
-            Text(
+          children: [
+            const Text("おめでとうございます！\n全てのキャラクターが最大レベル(Lv.10)に到達しました。"),
+            const SizedBox(height: 16),
+            const Text(
+              "【殿堂入りモード解禁】",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const Text(
               "これからもチケットを使ってガチャを回すことができます。\n\nLv.11以降はフレーバーテキストはありませんが、キャラクターの色が無限に変化します。\nあなただけのカラーを集めてみてください！",
               style: TextStyle(fontSize: 13, color: Colors.black87),
             ),
-            SizedBox(height: 12),
-            Text(
+            const SizedBox(height: 12),
+            const Text(
               "※将来新しいキャラクターが追加された場合は、そのキャラたちをLv.10にするまで殿堂入りモードは一時お休みになります。",
               style: TextStyle(fontSize: 11, color: Colors.grey),
             ),
+            if (onDebugReset != null) ...[
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  onDebugReset!();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                ),
+                child: const Text(
+                  "デバッグ: ガチャ履歴をリセット",
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -6044,7 +7242,7 @@ class GachaData {
         // Lv3
         "昔とある有名大学の計算機が故障を起こし、いつまで経っても直らなかった。",
         // Lv4
-        "しかし、当時のうコンピュータ科学の先駆者が率いるチームが決定的な原因を見つけたんだ。なんだと思う？",
+        "しかし、当時のコンピュータ科学の先駆者が率いるチームが決定的な原因を見つけたんだ。なんだと思う？",
         // Lv5
         "計算機のリレー（スイッチ）に挟まっていた小さな「蛾（ガ）」だよ。",
         // Lv6
@@ -6192,11 +7390,11 @@ class GachaData {
         // Lv2
         "多くの伝説を持つが、実はナス科マンドラゴラ属の植物として実在するらしい。",
         // Lv3
-        "幻覚、幻聴、そして過剰摂取による死をもたらす毒性を含む。",
+        "幻覚、幻聴、そして過剰摂取による死をもたらす毒性を含む。これは本当。",
         // Lv4
-        "伝説をいくつか語ろう。有名なもので言えば、引き抜くとこの世のものとは思えない声で泣き叫び、聞いたものはショック死してしまうという伝説。",
+        "伝説をいくつか語ろう。有名なもので言えば、引き抜くとこの世のものとは思えない声で泣き叫び、聞いたものはショック死してしまうという伝説がある。",
         // Lv5
-        "絞首刑に処された罪人の体液から生えると言う伝説がある。",
+        "絞首刑に処された罪人の体液から生えると言う伝説もある。",
         // Lv6
         "このように死と強く結び付けられていたため、人間の代わりに犬に引き抜かせるというひどい方法もあったらしい。犬に謝れ！",
         // Lv7
@@ -6352,7 +7550,7 @@ class GachaData {
         // Lv8: 目的の開示
         "素敵だと思わないか？純粋な憎しみよりも、汚された希望から生まれる絶望の方が、はるかに芳醇で良質な闇を育む。",
         // Lv9: 光の天使の現状
-        "今や私はかつてないほどに強大だ。最も、私の「愛しき半身」は、地下深くで光を奪われ、干からびた苗木のようになっているのだがね。。",
+        "今や私はかつてないほどに強大だ。最も、私の「愛しき半身」は、地下深くで光を奪われ、干からびた苗木のようになっているのだがね。",
         // Lv10: 結末。永遠の呪い
         "私こそが闇の魔神。おい、光よ。まだ死ぬなよ。お前が消えれば私の存在（かたち）も消えてしまう。貴様はただ、私のために永遠に『生きて』さえいればいいのだ。",
       ],
@@ -6637,33 +7835,72 @@ class HistoryService {
   Future<List<TransactionItem>> getFilteredTransactions({
     required String filterKey, // 'expense' or 'payment'
     required String filterValue,
+    String? filterId, // IDでのフィルタリング用 (追加)
     required int year,
     required int month,
     required int viewMode, // 0: 利用日基準, 1: 支払日基準（引き落とし予定）
   }) async {
     final allItems = await _transactionRepo.getAllTransactions();
 
+    // ▼デバッグログ: 何を探そうとしているか確認
+    debugPrint("--- DEBUG SEARCH ---");
+    debugPrint(
+      "Target: $year/$month, Key: $filterKey, Name: $filterValue, ID: $filterId",
+    );
+
+    // ▼デバッグログ: 何を探そうとしているか確認
+    debugPrint("--- DEBUG SEARCH ---");
+    debugPrint(
+      "Target: $year/$month, Key: $filterKey, Name: $filterValue, ID: $filterId",
+    );
+
     final filtered = allItems.where((i) {
-      // 1. キーによるフィルタリング
+      // 1. 年月チェック（ここを先にやると無駄なログが減ります）
+      DateTime targetDate;
+      if (viewMode == 1) {
+        targetDate = i.paymentDate ?? i.date;
+      } else {
+        targetDate = i.date;
+      }
+      if (targetDate.year != year || targetDate.month != month) {
+        return false;
+      }
+
+      // 2. キーによる判定（ID または 名前 が合致すればOKにする）
+      bool isMatch = false;
+
       if (filterKey == 'expense') {
-        if (i.expense != filterValue) return false;
+        // IDが一致するか？
+        bool idMatches = (filterId != null && i.expenseId == filterId);
+        // 名前が一致するか？
+        bool nameMatches = (i.expense == filterValue);
+
+        // どっちかが合えばOK
+        if (idMatches || nameMatches) {
+          isMatch = true;
+
+          // なぜ一致したかログに出す（確認用）
+          // debugPrint("Match Found: ${i.expense} (ID: ${i.expenseId}) - By ID:$idMatches, By Name:$nameMatches");
+        } else {
+          // 同じ月なのに弾かれたデータをログに出す（ここが重要）
+          debugPrint(
+            "Rejected in same month: ${i.expense} (ID: ${i.expenseId}) vs Filter(Name:$filterValue, ID:$filterId)",
+          );
+        }
       } else if (filterKey == 'payment') {
         if (filterValue == '記録しない' && i.payment.isEmpty) {
-          // 記録しない扱い（空文字）OK
-        } else if (i.payment != filterValue) {
-          return false;
+          isMatch = true;
+        } else {
+          bool idMatches = (filterId != null && i.paymentId == filterId);
+          bool nameMatches = (i.payment == filterValue);
+
+          if (idMatches || nameMatches) {
+            isMatch = true;
+          }
         }
       }
 
-      // 2. 年月によるフィルタリング
-      if (viewMode == 1) {
-        // 引き落とし予定モードなら、paymentDateを見る
-        final targetDate = i.paymentDate ?? i.date; // paymentDateがなければ利用日
-        return targetDate.year == year && targetDate.month == month;
-      } else {
-        // 通常モードなら利用日を見る
-        return i.date.year == year && i.date.month == month;
-      }
+      return isMatch;
     }).toList();
 
     // 日付順に並び替え
@@ -6709,12 +7946,12 @@ class HistoryService {
 --- FILE: lib/services/input_service.dart ---
 ```dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Added
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_tag.dart';
 import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/gacha_repository.dart';
-import '../repositories/settings_repository.dart'; // Added
+import '../repositories/settings_repository.dart';
 import '../utils/simple_calculator.dart';
 
 /// 初期表示に必要なデータをまとめたクラス
@@ -6748,6 +7985,7 @@ class InputServiceResult {
   final Color messageColor;
   final String? formattedAmount;
   final String? savedId;
+  final bool gachaCreditsAdded; // 追加
 
   InputServiceResult({
     required this.success,
@@ -6755,22 +7993,30 @@ class InputServiceResult {
     this.messageColor = Colors.blue,
     this.formattedAmount,
     this.savedId,
+    this.gachaCreditsAdded = false, // デフォルト値を設定
   });
 }
 
 class InputService {
   final TransactionRepository _transactionRepo = TransactionRepository();
   final GachaRepository _gachaRepo = GachaRepository();
-  final SettingsRepository _settingsRepo = SettingsRepository(); // Added
+  final SettingsRepository _settingsRepo = SettingsRepository();
+  final ValueNotifier<int> gachaDataVersionNotifier = ValueNotifier<int>(
+    0,
+  ); // 追加
 
   // --- keys ---
   static const String _keyLastExpenseIdx = 'last_expense_index';
   static const String _keyLastCardIdx = 'last_card_index';
   static const String _keyLastIsCard = 'last_is_card';
   static const String _keyTutorialShown = 'is_input_tutorial_shown_v1';
+  static const String _keyMigrationV1Done = 'is_category_migration_v1_done';
 
   /// 入力画面に必要な初期データを一括で取得する
   Future<InputInitialData> loadInitialData() async {
+    // データ移行（カテゴリ名管理→ID管理への移行）
+    await _migrateCategoriesToIds();
+
     final expenses = await _settingsRepo.loadExpenseTags();
     final cards = await _settingsRepo.loadCardTags();
     final gachaEnabled = await _settingsRepo.loadGachaEnabled();
@@ -6856,6 +8102,16 @@ class InputService {
       );
     }
 
+    // ▼▼ 追加: 桁数（金額）の上限チェック ▼▼
+    if (amount >= 10000000000) {
+      return InputServiceResult(
+        success: false,
+        message: '金額が大きすぎます',
+        messageColor: Colors.redAccent,
+      );
+    }
+    // ▲▲ 追加ここまで ▲▲
+
     // 2. 支払い情報の構築
     String paymentMethod = '';
     DateTime? paymentDate;
@@ -6874,12 +8130,20 @@ class InputService {
           int targetMonth = date.month + monthsToAdd;
           int targetDay = cardTag.paymentDay!;
 
-          paymentDate = (targetDay == 99)
-              ? DateTime(targetYear, targetMonth + 1, 0)
-              : DateTime(targetYear, targetMonth, targetDay);
+          final int lastDayOfMonth = DateTime(
+            targetYear,
+            targetMonth + 1,
+            0,
+          ).day;
+
+          final int realPaymentDay = (targetDay > lastDayOfMonth)
+              ? lastDayOfMonth
+              : targetDay;
+
+          paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
         }
       } else {
-        paymentMethod = 'カード';
+        paymentMethod = '不明';
       }
     }
 
@@ -6888,7 +8152,9 @@ class InputService {
       final newItem = TransactionItem(
         amount: amount,
         expense: expenseTag.label,
+        expenseId: expenseTag.id,
         payment: paymentMethod,
+        paymentId: shouldUseCard ? cardTag?.id : null,
         date: DateTime(
           date.year,
           date.month,
@@ -6902,24 +8168,25 @@ class InputService {
 
       await _transactionRepo.addTransaction(newItem);
 
-      // 4. ガチャポイント処理
+      // 4. ガチャポイント処理とメッセージ生成
       String msg = '保存しました';
       Color color = Colors.blue;
+      bool gachaCreditsAdded = false; // 追加
+
+      if (paymentDate != null) {
+        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
 
       if (isGachaEnabled) {
         final result = await _gachaRepo.addCredit();
-        // final int currentCredits = result.$1;
-        final bool isAdded = result.$2;
-
-        if (isAdded) {
-          msg = 'ガチャチケット獲得！';
-          color = Colors.orange;
-        } else {
-          msg = '保存しました（本日の上限到達）';
-          color = Colors.grey;
+        gachaCreditsAdded = result.$2;
+        if (gachaCreditsAdded) {
+          gachaDataVersionNotifier.value++; // gachaDataVersionNotifier をインクリメント
         }
-      } else if (paymentDate != null) {
-        msg = '保存しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      if (gachaCreditsAdded) {
+        msg += '🎫'; // チケット絵文字はここで追加
       }
 
       return InputServiceResult(
@@ -6928,6 +8195,7 @@ class InputService {
         messageColor: color,
         formattedAmount: calculatedText,
         savedId: newItem.id,
+        gachaCreditsAdded: gachaCreditsAdded, // gachaCreditsAdded を返す
       );
     } catch (e) {
       return InputServiceResult(
@@ -6948,6 +8216,198 @@ class InputService {
       return allItems.firstWhere((e) => e.id == id);
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<InputServiceResult> updateTransaction({
+    required String id,
+    required String rawAmount,
+    required String memo,
+    required DateTime date,
+    required CategoryTag expenseTag,
+    required bool isCardPayment,
+    required CategoryTag? cardTag,
+    required bool showCardOnInput,
+  }) async {
+    // 1. 計算とバリデーション
+    final calculatedText = SimpleCalculator.calculate(rawAmount);
+
+    if (calculatedText.isEmpty) {
+      return InputServiceResult(
+        success: false,
+        message: '金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    final int amount = double.tryParse(calculatedText)?.toInt() ?? 0;
+    if (amount <= 0) {
+      return InputServiceResult(
+        success: false,
+        message: '1円以上の金額を入力してください',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    if (amount >= 10000000000) {
+      return InputServiceResult(
+        success: false,
+        message: '金額が大きすぎます',
+        messageColor: Colors.redAccent,
+      );
+    }
+
+    // 2. 支払い情報の構築
+    String paymentMethod = '';
+    DateTime? paymentDate;
+
+    final bool shouldUseCard = showCardOnInput && isCardPayment;
+
+    if (shouldUseCard) {
+      if (cardTag != null) {
+        paymentMethod = cardTag.label;
+        if (cardTag.closingDay != null && cardTag.paymentDay != null) {
+          int monthsToAdd = cardTag.paymentMonthOffset;
+          if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
+            monthsToAdd++;
+          }
+          int targetYear = date.year;
+          int targetMonth = date.month + monthsToAdd;
+          int targetDay = cardTag.paymentDay!;
+
+          final int lastDayOfMonth = DateTime(
+            targetYear,
+            targetMonth + 1,
+            0,
+          ).day;
+
+          final int realPaymentDay = (targetDay > lastDayOfMonth)
+              ? lastDayOfMonth
+              : targetDay;
+
+          paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
+        }
+      } else {
+        paymentMethod = '不明';
+      }
+    }
+
+    // 3. データの更新
+    try {
+      // 既存のデータを取得（作成日などを保持するため、必要なら取得するが、今回は上書きでOK）
+      // ただしIDは必須
+      final newItem = TransactionItem(
+        id: id,
+        amount: amount,
+        expense: expenseTag.label,
+        expenseId: expenseTag.id,
+        payment: paymentMethod,
+        paymentId: shouldUseCard ? cardTag?.id : null,
+        date: DateTime(
+          date.year,
+          date.month,
+          date.day,
+          DateTime.now().hour,
+          DateTime.now().minute,
+        ),
+        paymentDate: paymentDate,
+        memo: memo,
+      );
+
+      await _transactionRepo.updateTransaction(newItem);
+
+      String msg = '更新しました';
+      if (paymentDate != null) {
+        msg = '更新しました（支払日: ${paymentDate.month}/${paymentDate.day}）';
+      }
+
+      return InputServiceResult(
+        success: true,
+        message: msg,
+        formattedAmount: calculatedText,
+        savedId: newItem.id,
+      );
+    } catch (e) {
+      return InputServiceResult(
+        success: false,
+        message: '更新エラー: $e',
+        messageColor: Colors.red,
+      );
+    }
+  }
+
+  /// 既存データのカテゴリ名・カード名をIDに紐付ける移行処理
+  Future<void> _migrateCategoriesToIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool done = prefs.getBool(_keyMigrationV1Done) ?? false;
+    if (done) return;
+
+    try {
+      final allTransactions = await _transactionRepo.getAllTransactions();
+      final expenses = await _settingsRepo.loadExpenseTags();
+      final cards = await _settingsRepo.loadCardTags();
+
+      bool changed = false;
+      final updatedList = <TransactionItem>[];
+
+      for (final item in allTransactions) {
+        String? newExpenseId = item.expenseId;
+        String? newPaymentId = item.paymentId;
+        bool itemChanged = false;
+
+        // 費目の紐付け
+        if (newExpenseId == null) {
+          try {
+            final tag = expenses.firstWhere((e) => e.label == item.expense);
+            newExpenseId = tag.id;
+            itemChanged = true;
+          } catch (_) {
+            // 見つからない場合は古い名前のままIDなし
+          }
+        }
+
+        // 支払いの紐付け
+        if (newPaymentId == null && item.payment.isNotEmpty) {
+          // カードリストから探す
+          try {
+            final tag = cards.firstWhere((c) => c.label == item.payment);
+            newPaymentId = tag.id;
+            itemChanged = true;
+          } catch (_) {
+            // 見つからない場合はIDなし
+          }
+        }
+
+        if (itemChanged) {
+          updatedList.add(
+            item.copyWith(expenseId: newExpenseId, paymentId: newPaymentId),
+          );
+          changed = true;
+        } else {
+          updatedList.add(item);
+        }
+      }
+
+      if (changed) {
+        // TransactionRepositoryには一括更新メソッドがないので、
+        // 内部実装を知っている前提で少し強引だが、一件ずつ更新するか、
+        // あるいはRepositoryに一括更新メソッドを追加するのが筋。
+        // ここでは件数が多いと一件ずつは重いので、Repositoryのメモリキャッシュを書き換えて保存させる
+        // ただし _saveToPrefs は private なので、一件ずつ updateTransaction するしかない。
+        // 件数が数百件程度なら問題ないはず。
+        for (final newItem in updatedList) {
+          // IDが変わっていなくても、copyWithでインスタンスが変わっているものを保存
+          // ただし、getAllTransactionsで取得したリストの要素と updatedList の要素を比較...
+          // ここでは単純に changed フラグが立っている item だけ update する
+          if (newItem.expenseId != null || newItem.paymentId != null) {
+            await _transactionRepo.updateTransaction(newItem);
+          }
+        }
+      }
+
+      await prefs.setBool(_keyMigrationV1Done, true);
+    } catch (e) {
+      debugPrint('Migration failed: $e');
     }
   }
 }
@@ -7358,6 +8818,7 @@ class _AppDrawerState extends State<AppDrawer> {
           MaterialPageRoute(
             builder: (context) => HistoryScreen(
               filterValue: tag.label,
+              filterId: tag.id, // IDも渡す
               filterKey: filterKey,
               color: tag.color,
             ),
@@ -8029,16 +9490,45 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
 
     if (text.isEmpty && isInputOperator) return;
 
-    if (!isInputOperator && text.length >= widget.maxLength) {
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('これ以上入力できません'),
-          duration: Duration(milliseconds: 500),
-        ),
-      );
+    // ▼▼ 変更: ここから桁数制限ロジック ▼▼
+
+    // 1. 全体の文字数制限（計算式が長くなりすぎてエラーになるのを防ぐ安全弁）
+    // 数字だけでなく演算子も含んだ全体の長さチェック
+    if (text.length >= 30) {
+      // 少し余裕を持たせて30文字くらいで止める
+      _showWarning(context, 'これ以上入力できません');
       return;
     }
+
+    // 2. 数値単体の桁数制限（これがメインの10桁制限）
+    // 入力しようとしているのが「数字」の場合のみチェック
+    if (!isInputOperator) {
+      // 今入力している数値の部分を取り出す（演算子で区切られた最後の塊）
+      // 例: "100+1234" -> ["100", "1234"] -> "1234"
+      final parts = text.split(RegExp(r'[\+\-x÷]'));
+      final currentNumStr = parts.isNotEmpty ? parts.last : "";
+
+      // カンマを除去して純粋な数字の長さをカウント
+      final currentDigits = currentNumStr.replaceAll(',', '').length;
+
+      // 既に10桁あって、さらに数字を足そうとしているならブロック
+      if (currentDigits >= 10) {
+        _showWarning(context, '10桁までしか入力できません');
+        return;
+      }
+    }
+    // ▲▲ 変更ここまで ▲▲
+
+    // if (!isInputOperator && text.length >= widget.maxLength) {
+    //   ScaffoldMessenger.of(context).clearSnackBars();
+    //   ScaffoldMessenger.of(context).showSnackBar(
+    //     const SnackBar(
+    //       content: Text('これ以上入力できません'),
+    //       duration: Duration(milliseconds: 500),
+    //     ),
+    //   );
+    //   return;
+    // }
 
     // 演算子の連続入力防止（置換）
     if (isInputOperator && text.isNotEmpty) {
@@ -8061,6 +9551,17 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     String newText = text.replaceRange(start, end, value);
     String formattedText = _formatExpression(newText);
     _updateController(formattedText);
+  }
+
+  // ▼▼ 追加: 警告メッセージを出すヘルパーメソッド ▼▼
+  void _showWarning(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        duration: const Duration(milliseconds: 1000),
+      ),
+    );
   }
 
   void _handleDelete() {
@@ -8091,8 +9592,41 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
   }
 
   void _handleCalculate() {
-    final result = SimpleCalculator.calculate(widget.controller.text);
-    final formattedResult = _formatExpression(result);
+    // 1. 計算実行
+    final resultString = SimpleCalculator.calculate(widget.controller.text);
+    double? val = double.tryParse(resultString);
+
+    if (val == null) return; // 計算不能
+
+    // 2. 例外チェック（ここを強化！）
+
+    // A. ゼロ除算 (例: 100 ÷ 0) -> 無限大(Infinity)になる
+    if (val.isInfinite || val.isNaN) {
+      _showWarning(context, '0では割れません');
+      return;
+    }
+
+    // B. 金額が大きすぎる (10桁以上)
+    if (val.abs() >= 10000000000) {
+      _showWarning(context, '金額が大きすぎます');
+      return;
+    }
+
+    // C. マイナスになる (例: 100 - 200)
+    if (val < 0) {
+      _showWarning(context, 'マイナスの金額は入力できません');
+      return;
+    }
+
+    // D. 0円になる (例: 100 - 100)
+    // ※ 入力中は0でもいいですが、計算結果として0が確定するのは無意味なので弾きます
+    if (val == 0) {
+      _showWarning(context, '金額が0円になってしまいます');
+      return;
+    }
+
+    // 3. 問題なければ表示を更新
+    final formattedResult = _formatExpression(resultString);
     _updateController(formattedResult);
   }
 
@@ -8168,8 +9702,11 @@ import '../utils/app_date_utils.dart';
 class TransactionTile extends StatelessWidget {
   final TransactionItem item;
   final Color categoryColor;
-  // ▼▼ 追加: カテゴリアイコンを受け取る ▼▼
+  final Color? paymentColor;
   final IconData? categoryIcon;
+  final IconData? paymentIcon;
+  // ▼▼ 追加: カテゴリ名（ID管理移行に伴い、表示名を外部から受け取る） ▼▼
+  final String? categoryName;
   final VoidCallback? onTap;
   final bool showDate;
 
@@ -8177,7 +9714,10 @@ class TransactionTile extends StatelessWidget {
     super.key,
     required this.item,
     required this.categoryColor,
-    this.categoryIcon, // 追加
+    this.categoryIcon,
+    this.paymentColor,
+    this.paymentIcon,
+    this.categoryName,
     this.onTap,
     this.showDate = true,
   });
@@ -8214,47 +9754,49 @@ class TransactionTile extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: Text(
-              item.expense,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Text(
-            '¥${item.amount}',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-        ],
-      ),
-      subtitle: (subtitleText.isNotEmpty || dateText.isNotEmpty)
-          ? Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
+            child: Text.rich(
+              TextSpan(
                 children: [
-                  if (showDate) ...[
-                    Text(dateText, style: const TextStyle(fontSize: 11)),
-                    if (subtitleText.isNotEmpty)
-                      const Text(
-                        '  |  ',
-                        style: TextStyle(color: Colors.grey, fontSize: 10),
-                      ),
-                  ],
+                  // カテゴリ名
+                  TextSpan(
+                    text: categoryName ?? item.expense,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14, // 必要に応じて調整
+                    ),
+                  ),
+                  // メモがある場合のみ追加
                   if (subtitleText.isNotEmpty)
-                    Expanded(
-                      child: Text(
-                        subtitleText,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade700,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    TextSpan(
+                      text: ' ($subtitleText)',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w200,
+                        fontSize: 10, // 必要に応じて調整
                       ),
                     ),
                 ],
               ),
-            )
-          : null,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+          Row(
+            children: [
+              if (paymentIcon != null)
+                Icon(paymentIcon, color: paymentColor ?? Colors.grey, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                '¥${item.amount}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+
       trailing: onTap != null
           ? const Icon(Icons.chevron_right, size: 16, color: Colors.grey)
           : null,
@@ -8277,6 +9819,7 @@ import '../transaction_tile.dart'; // 既存のTransactionTileをインポート
 class DailyTransactionList extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
+  final List<CategoryTag> cardTags;
   final Map<int, GlobalKey> dayKeys;
   final Function(TransactionItem item) onTransactionTap;
 
@@ -8284,6 +9827,7 @@ class DailyTransactionList extends StatelessWidget {
     super.key,
     required this.history,
     required this.expenseTags,
+    required this.cardTags,
     required this.dayKeys,
     required this.onTransactionTap,
   });
@@ -8310,6 +9854,22 @@ class DailyTransactionList extends StatelessWidget {
 
     final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
     const weekDays = ["月", "火", "水", "木", "金", "土", "日"];
+
+    // 検索高速化のためにMap化
+    // ID -> Tag と Label -> Tag の両方を用意
+    final Map<String, CategoryTag> idToTag = {
+      for (var t in expenseTags) t.id: t,
+    };
+    final Map<String, CategoryTag> labelToTag = {
+      for (var t in expenseTags) t.label: t,
+    };
+
+    final Map<String, CategoryTag> idToTagCard = {
+      for (var t in cardTags) t.id: t,
+    };
+    final Map<String, CategoryTag> labelToTagCard = {
+      for (var t in cardTags) t.label: t,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -8358,20 +9918,45 @@ class DailyTransactionList extends StatelessWidget {
               ...items.map((item) {
                 Color color = Colors.grey;
                 IconData? icon;
+                String? categoryName;
+                Color colorCard = Colors.grey;
+                IconData? iconCard;
 
-                try {
-                  final tag = expenseTags.firstWhere(
-                    (t) => t.label == item.expense,
-                  );
+                // ID優先で検索、なければ名前で検索
+                CategoryTag? tag;
+                if (item.expenseId != null) {
+                  tag = idToTag[item.expenseId];
+                }
+                if (tag == null) {
+                  tag = labelToTag[item.expense];
+                }
+
+                if (tag != null) {
                   color = tag.color;
                   icon = tag.displayIcon;
-                } catch (_) {}
+                  categoryName = tag.label;
+                }
+
+                CategoryTag? tagCard;
+                if (item.paymentId != null) {
+                  tagCard = idToTagCard[item.paymentId];
+                }
+                if (tagCard == null) {
+                  tagCard = labelToTagCard[item.payment];
+                }
+
+                if (tagCard != null) {
+                  colorCard = tagCard.color;
+                  iconCard = tagCard.displayIcon;
+                }
 
                 return TransactionTile(
                   item: item,
                   categoryColor: color,
                   categoryIcon: icon,
-                  showDate: false,
+                  categoryName: categoryName,
+                  paymentColor: colorCard,
+                  paymentIcon: iconCard,
                   onTap: () => onTransactionTap(item),
                 );
               }),
@@ -8398,7 +9983,7 @@ import '../../models/transaction_item.dart';
 class GraphView extends StatelessWidget {
   final List<TransactionItem> history;
   final List<CategoryTag> expenseTags;
-  final Function(String expense, Color color)? onLegendTap;
+  final Function(String expense, Color color, String? expenseId)? onLegendTap;
 
   const GraphView({
     super.key,
@@ -8411,23 +9996,47 @@ class GraphView extends StatelessWidget {
   Widget build(BuildContext context) {
     int total = history.fold(0, (s, i) => s + i.amount);
 
-    final expenseSums = <String, int>{};
+    // ID -> Tag, Label -> Tag のMap作成
+    final idToTag = {for (var t in expenseTags) t.id: t};
+    final labelToTag = {for (var t in expenseTags) t.label: t};
+
+    // 集計: キーは "ID" または "名前(IDなしの場合)"
+    final sums = <String, int>{};
+    // キーから表示情報を引くためのマップ
+    final keyToDisplayInfo = <String, CategoryTag>{};
+
     for (var item in history) {
-      expenseSums[item.expense] =
-          (expenseSums[item.expense] ?? 0) + item.amount;
+      String key;
+      CategoryTag? tag;
+
+      if (item.expenseId != null) {
+        tag = idToTag[item.expenseId];
+      }
+      if (tag == null) {
+        tag = labelToTag[item.expense];
+      }
+
+      if (tag != null) {
+        key = tag.id; // IDで集計
+        keyToDisplayInfo[key] = tag;
+      } else {
+        key = item.expense; // タグが見つからない場合は名前で集計
+      }
+
+      sums[key] = (sums[key] ?? 0) + item.amount;
     }
-    final sortedEntries = expenseSums.entries.toList()
+
+    final sortedEntries = sums.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
     List<PieChartSectionData> sections = [];
     if (total > 0) {
       sections = sortedEntries.map((e) {
         final percentage = (e.value / total) * 100;
+        final key = e.key;
+        final tag = keyToDisplayInfo[key];
 
-        Color color = Colors.grey;
-        try {
-          color = expenseTags.firstWhere((t) => t.label == e.key).color;
-        } catch (_) {}
+        Color color = tag?.color ?? Colors.grey;
 
         return PieChartSectionData(
           color: color,
@@ -8475,21 +10084,26 @@ class GraphView extends StatelessWidget {
             Column(
               children: sortedEntries.map((e) {
                 final amount = e.value;
+                final key = e.key;
                 final percentage = (amount / total * 100).toStringAsFixed(1);
+                final tag = keyToDisplayInfo[key];
 
+                String label = key;
                 Color color = Colors.grey;
                 IconData icon = Icons.label;
+                String? expenseId;
 
-                try {
-                  final tag = expenseTags.firstWhere((t) => t.label == e.key);
+                if (tag != null) {
+                  label = tag.label;
                   color = tag.color;
                   icon = tag.displayIcon;
-                } catch (_) {}
+                  expenseId = tag.id;
+                }
 
                 return Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: () => onLegendTap?.call(e.key, color),
+                    onTap: () => onLegendTap?.call(label, color, expenseId),
                     borderRadius: BorderRadius.circular(4),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -8501,7 +10115,7 @@ class GraphView extends StatelessWidget {
                           Icon(icon, color: color, size: 20),
                           const SizedBox(width: 8),
                           Text(
-                            e.key,
+                            label,
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
@@ -8555,16 +10169,14 @@ import 'package:flutter/material.dart';
 /// 合計金額表示カード
 class TotalExpenseCard extends StatelessWidget {
   final int total;
-  final VoidCallback onTap;
 
-  const TotalExpenseCard({super.key, required this.total, required this.onTap});
+  const TotalExpenseCard({super.key, required this.total});
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.blue.shade50,
       child: InkWell(
-        onTap: onTap,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
@@ -8586,19 +10198,7 @@ class TotalExpenseCard extends StatelessWidget {
                       color: Colors.black87,
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 6, left: 5),
-                    child: Icon(
-                      Icons.arrow_forward_ios,
-                      size: 14,
-                      color: Colors.grey,
-                    ),
-                  ),
                 ],
-              ),
-              const Text(
-                'タップして詳細を見る',
-                style: TextStyle(fontSize: 10, color: Colors.blueGrey),
               ),
             ],
           ),

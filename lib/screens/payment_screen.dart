@@ -4,18 +4,18 @@ import '../models/transaction_item.dart';
 import '../repositories/transaction_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../widgets/monthly_report_components.dart'; // TotalExpenseCard等のため
-import '../widgets/monthly_report/graph_view.dart'; // グラフ表示用
+import '../widgets/monthly_report/payment_view.dart'; // グラフ表示用
 import 'history_screen.dart';
 
-class GraphScreen extends StatefulWidget {
+class PaymentScreen extends StatefulWidget {
   final int? dataVersion;
-  const GraphScreen({super.key, this.dataVersion});
+  const PaymentScreen({super.key, this.dataVersion});
 
   @override
-  State<GraphScreen> createState() => _GraphScreenState();
+  State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _GraphScreenState extends State<GraphScreen> {
+class _PaymentScreenState extends State<PaymentScreen> {
   // 1000ヶ月分(前後約80年)のページングを可能にする設定
   final PageController _pageController = PageController(initialPage: 1000);
 
@@ -106,7 +106,7 @@ class _GraphScreenState extends State<GraphScreen> {
             DateTime.now().month + (index - 1000),
           );
           // 各月のグラフページを表示
-          return GraphPage(
+          return PaymentPage(
             year: d.year,
             month: d.month,
             dataVersion: widget.dataVersion,
@@ -117,12 +117,12 @@ class _GraphScreenState extends State<GraphScreen> {
   }
 }
 
-class GraphPage extends StatefulWidget {
+class PaymentPage extends StatefulWidget {
   final int year;
   final int month;
   final int? dataVersion;
 
-  const GraphPage({
+  const PaymentPage({
     super.key,
     required this.year,
     required this.month,
@@ -130,10 +130,10 @@ class GraphPage extends StatefulWidget {
   });
 
   @override
-  State<GraphPage> createState() => _GraphPageState();
+  State<PaymentPage> createState() => _PaymentPageState();
 }
 
-class _GraphPageState extends State<GraphPage> {
+class _PaymentPageState extends State<PaymentPage> {
   List<TransactionItem> _history = [];
   List<CategoryTag> _expenseTags = [];
   final TransactionRepository _repository = TransactionRepository();
@@ -146,7 +146,7 @@ class _GraphPageState extends State<GraphPage> {
   }
 
   @override
-  void didUpdateWidget(covariant GraphPage oldWidget) {
+  void didUpdateWidget(covariant PaymentPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.dataVersion != widget.dataVersion) {
       _load();
@@ -180,7 +180,7 @@ class _GraphPageState extends State<GraphPage> {
           TotalExpenseCard(total: total),
           const SizedBox(height: 10),
           // グラフビュー
-          GraphView(
+          PaymentView(
             history: _history,
             expenseTags: _expenseTags,
             onLegendTap: (expense, color, expenseId) {
@@ -193,6 +193,7 @@ class _GraphPageState extends State<GraphPage> {
                     filterKey: 'expense',
                     color: color,
                     initialDate: DateTime(widget.year, widget.month),
+                    //initialDate: DateTime(widget.year, widget.month),
                   ),
                 ),
               );
