@@ -106,6 +106,79 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     }
   }
 
+  // 共通のスタイル定義（関数化しておくと便利）
+  Future<T?> showRichBottomSheet<T>({
+    required BuildContext context,
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String message,
+    required List<Widget> actions,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true, // コンテンツ量に合わせて高さを調整
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 1. ハンドルバー（つまみ）
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // 2. アイコン
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 32, color: iconColor),
+                ),
+                const SizedBox(height: 16),
+                // 3. タイトル
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // 4. メッセージ
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey[600], height: 1.5),
+                ),
+                const SizedBox(height: 24),
+                // 5. アクションボタンたち
+                ...actions.map(
+                  (w) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: SizedBox(width: double.infinity, child: w),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _deleteItem(bool isExpense, int index) async {
     final list = isExpense ? _expenseList : _cardList;
     final itemToDelete = list[index];
@@ -134,13 +207,109 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
     }
 
     if (usageCount == 0) {
-      // 使用されていない場合でも確認ダイアログを表示
+      final confirm = await showRichBottomSheet<bool>(
+        context: context,
+        icon: Icons.delete_outline,
+        iconColor: Colors.red, // 0件でも削除は破壊的操作なので赤系が良いかも
+        title: 'カテゴリの削除',
+        message: '「${itemToDelete.label}」は現在使用されていません。\nこのカテゴリを削除しますか？',
+        actions: [
+          FilledButton(
+            // Flutter 3以降の推奨ボタン
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            child: const Text(
+              '削除する',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('キャンセル', style: TextStyle(color: Colors.grey)),
+          ),
+        ],
+      );
+
+      if (confirm == true) _performDelete(isExpense, index);
+      return;
+    }
+
+    if (!mounted) return;
+
+    // ダイアログ表示
+    final action = await showRichBottomSheet<_DeleteAction>(
+      context: context,
+      icon: Icons.warning_amber_rounded, // 警告アイコン
+      iconColor: Colors.orange,
+      title: '使用中のカテゴリ',
+      message:
+          '「${itemToDelete.label}」には $usageCount 件の支出が含まれます。\n削除にあたり、関連する支出をどうしますか？',
+      actions: [
+        // 一番推奨するアクションを上に（例：移動）
+        FilledButton.tonal(
+          // 少し目立つが警告色ではないボタン
+          onPressed: () => Navigator.pop(context, _DeleteAction.move),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+          child: const Text('関連支出を別のカテゴリに移動'),
+        ),
+        // 危険なアクション
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context, _DeleteAction.deleteAll),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.red,
+            side: const BorderSide(color: Colors.red),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+          child: const Text('関連支出もすべて削除'),
+        ),
+        // キャンセル
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('キャンセル', style: TextStyle(color: Colors.grey)),
+        ),
+      ],
+    );
+
+    if (action == null) return;
+
+    if (action == _DeleteAction.deleteAll) {
       if (!mounted) return;
-      final confirm = await showDialog<bool>(
+
+      // ★★★ ここで「二重警告」のダイアログを表示 ★★★
+      final finalConfirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('カテゴリの削除'),
-          content: Text('カテゴリ「${itemToDelete.label}」を削除しますか？'),
+          // 警告感を出すアイコン
+          icon: const Icon(Icons.warning_rounded, size: 48, color: Colors.red),
+          title: const Text('確認'),
+          // RichTextを使って「件数」だけ赤太字にして強調
+          content: Text.rich(
+            TextSpan(
+              style: const TextStyle(color: Colors.black87), // デフォルトの色
+              children: [
+                TextSpan(text: 'カテゴリ「${itemToDelete.label}」と、\nそれに含まれる '),
+                TextSpan(
+                  text: '$usageCount件のデータ',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red, // ここだけ赤く
+                    fontSize: 16,
+                  ),
+                ),
+                const TextSpan(text: ' が\nすべて完全に削除されます。\n\n'),
+                const TextSpan(
+                  text: 'この操作は元に戻せません。\n本当によろしいですか？',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -148,61 +317,22 @@ class _CategoryManageScreenState extends State<CategoryManageScreen>
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('削除'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+                // textStyle を使用して FontWeight を指定する
+                textStyle: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              child: const Text('削除を実行'),
             ),
           ],
         ),
       );
 
-      if (confirm == true) {
+      // 最終確認で「削除を実行(true)」が選ばれた場合のみ処理を行う
+      if (finalConfirm == true) {
+        await _deleteTransactions(itemToDelete, isExpense);
         _performDelete(isExpense, index);
       }
-      return;
-    }
-
-    if (!mounted) return;
-
-    // ダイアログ表示
-    final action = await showDialog<_DeleteAction>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('カテゴリの削除'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('「${itemToDelete.label}」は $usageCount 件のデータで使用されています。'),
-              const SizedBox(height: 16),
-              const Text('削除にあたり、これらのデータの扱いを選択してください。'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, _DeleteAction.deleteAll),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('データごと削除'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, _DeleteAction.move),
-              child: const Text('移動して削除'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (action == null) return;
-
-    if (action == _DeleteAction.deleteAll) {
-      // 関連データを削除してカテゴリも削除
-      await _deleteTransactions(itemToDelete, isExpense);
-      _performDelete(isExpense, index);
     } else if (action == _DeleteAction.move) {
       // 移動先を選択
       final target = await _showMoveTargetDialog(isExpense, itemToDelete);

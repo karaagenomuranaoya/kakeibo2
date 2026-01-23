@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:fl_chart/fl_chart.dart'; // 使っていませんがimportは維持
 import '../../models/category_tag.dart';
 import '../../models/transaction_item.dart';
 
@@ -18,15 +18,13 @@ class PaymentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ============== ロジック部分はそのまま ==============
     int total = history.fold(0, (s, i) => s + i.amount);
 
-    // ID -> Tag, Label -> Tag のMap作成
     final idToTag = {for (var t in paymentTags) t.id: t};
     final labelToTag = {for (var t in paymentTags) t.label: t};
 
-    // 集計: キーは "ID" または "名前(IDなしの場合)"
     final sums = <String, int>{};
-    // キーから表示情報を引くためのマップ
     final keyToDisplayInfo = <String, CategoryTag>{};
 
     for (var item in history) {
@@ -41,10 +39,10 @@ class PaymentView extends StatelessWidget {
       }
 
       if (tag != null) {
-        key = tag.id; // IDで集計
+        key = tag.id;
         keyToDisplayInfo[key] = tag;
       } else {
-        key = item.payment; // タグが見つからない場合は名前で集計
+        key = item.payment;
       }
 
       sums[key] = (sums[key] ?? 0) + item.amount;
@@ -52,14 +50,14 @@ class PaymentView extends StatelessWidget {
 
     final sortedEntries = sums.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
+    // =================================================
 
     return Container(
       width: double.infinity,
-      color: Colors.white,
+      color: Colors.white, // 背景は白のまま
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       child: Column(
         children: [
-          // 凡例エリア
           if (total > 0)
             Column(
               children: sortedEntries.map((e) {
@@ -68,6 +66,7 @@ class PaymentView extends StatelessWidget {
                 final percentage = (amount / total * 100).toStringAsFixed(1);
                 final tag = keyToDisplayInfo[key];
 
+                // ロジック維持: 表示対象外なら非表示
                 if (tag == null || !tag.isManageablePayment) {
                   return const SizedBox.shrink();
                 }
@@ -77,58 +76,151 @@ class PaymentView extends StatelessWidget {
                 IconData icon = Icons.label;
                 String? paymentId;
 
+                // 締め日・支払日のテキスト作成用
+                String dateInfo = "";
+
                 if (tag != null) {
                   label = tag.label;
                   color = tag.color;
                   icon = tag.displayIcon;
                   paymentId = tag.id;
+
+                  // カード情報のテキスト生成
+                  final List<String> parts = [];
+                  if (tag.closingDay != null) {
+                    final closeText = tag.closingDay == 99
+                        ? "末日"
+                        : "${tag.closingDay}日";
+                    parts.add("$closeText締");
+                  }
+                  if (tag.paymentDay != null) {
+                    final payText = tag.paymentDay == 99
+                        ? "末日"
+                        : "${tag.paymentDay}日";
+                    // 翌月払いなどのオフセット情報を入れたければここにロジック追加
+                    parts.add("$payText払");
+                  }
+                  dateInfo = parts.join(" / ");
                 }
 
-                return Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => onLegendTap?.call(label, color, paymentId),
-                    borderRadius: BorderRadius.circular(4),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 4,
+                // ▼▼▼ ここから見た目をリッチに変更 ▼▼▼
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12), // カード間の余白
+                  decoration: BoxDecoration(
+                    // グラデーションでリッチ感を出す
+                    gradient: LinearGradient(
+                      colors: [
+                        color,
+                        color.withOpacity(0.7), // 少し薄い色へ
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16), // カードらしい角丸
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(icon, color: color, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            label,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => onLegendTap?.call(label, color, paymentId),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 上段: アイコン + カード名 + 金額
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    icon,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        label,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          shadows: [
+                                            Shadow(
+                                              blurRadius: 2,
+                                              color: Colors.black26,
+                                              offset: Offset(0, 1),
+                                            ),
+                                          ],
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      // 締め日情報があればここに表示
+                                      if (dateInfo.isNotEmpty)
+                                        Text(
+                                          dateInfo,
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(
+                                              0.9,
+                                            ),
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '¥$amount',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w800,
+                                        shadows: [
+                                          Shadow(
+                                            blurRadius: 4,
+                                            color: Colors.black26,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      '$percentage%',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.8),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '¥$amount',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            width: 40,
-                            child: Text(
-                              '$percentage%',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.chevron_right,
-                            size: 16,
-                            color: Colors.grey,
-                          ),
-                        ],
+                            // ここにチップ画像などを置くとさらにカードっぽくなりますが、
+                            // とりあえずシンプルに余白のみ
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -136,7 +228,9 @@ class PaymentView extends StatelessWidget {
               }).toList(),
             )
           else
-            const Text('データがありません', style: TextStyle(color: Colors.grey)),
+            const Center(
+              child: Text('データがありません', style: TextStyle(color: Colors.grey)),
+            ),
         ],
       ),
     );
