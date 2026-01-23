@@ -4,6 +4,7 @@ import '../models/category_tag.dart';
 import '../services/history_service.dart';
 import '../widgets/transaction_tile.dart';
 import '../screens/transaction_edit_screen.dart';
+import '../widgets/monthly_report/daily_transaction_list.dart';
 
 // クラス名を _HistoryPage から HistoryMonthlyPage に変更し、publicにしました
 class HistoryMonthlyPage extends StatefulWidget {
@@ -45,6 +46,8 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
   List<CategoryTag> _expenseTags = [];
   List<CategoryTag> _paymentTags = [];
   bool _isLoading = true;
+
+  final Map<int, GlobalKey> _dayKeys = {};
 
   @override
   void initState() {
@@ -94,13 +97,6 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
     }
 
     final int total = _history.fold(0, (s, i) => s + i.amount);
-
-    // ID -> Tag, Label -> Tag のMap作成
-    final idToTag = {for (var t in _expenseTags) t.id: t};
-    final labelToTag = {for (var t in _expenseTags) t.label: t};
-
-    final idToTagCard = {for (var t in _paymentTags) t.id: t};
-    final labelToTagCard = {for (var t in _paymentTags) t.label: t};
 
     return Column(
       children: [
@@ -179,76 +175,27 @@ class _HistoryMonthlyPageState extends State<HistoryMonthlyPage> {
         ),
         // リスト部分
         Expanded(
-          child: _history.isEmpty
-              ? Center(
-                  child: Text(
-                    "この月の履歴はありません",
-                    style: TextStyle(color: Colors.grey.shade400),
+          // DailyTransactionList は Column を返す作りになっているため、
+          // スクロールさせるために SingleChildScrollView で囲みます。
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: DailyTransactionList(
+              history: _history,
+              expenseTags: _expenseTags,
+              cardTags: _paymentTags,
+              dayKeys: _dayKeys, // 定義したキーマップを渡す
+              onTransactionTap: (item) async {
+                // タップ時の処理（編集画面へ遷移）をここに移動
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TransactionEditScreen(item: item),
                   ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.only(bottom: 20, top: 10),
-                  itemCount: _history.length,
-                  separatorBuilder: (c, i) => const Divider(height: 1),
-                  itemBuilder: (c, i) {
-                    final item = _history[i];
-                    IconData? iconCategory;
-                    String? categoryName;
-
-                    // ID優先で検索、なければ名前で検索
-                    CategoryTag? tagCategory;
-                    if (item.expenseId != null) {
-                      tagCategory = idToTag[item.expenseId];
-                    }
-                    if (tagCategory == null) {
-                      tagCategory = labelToTag[item.expense];
-                    }
-
-                    if (tagCategory != null) {
-                      iconCategory = tagCategory.displayIcon;
-                      categoryName = tagCategory.label;
-                    }
-
-                    IconData? iconPayment;
-                    String? paymentName;
-                    Color? cardColor;
-
-                    // ID優先で検索、なければ名前で検索
-                    CategoryTag? tagPayment;
-                    if (item.paymentId != null) {
-                      tagPayment = idToTagCard[item.paymentId];
-                    }
-                    if (tagPayment == null) {
-                      tagPayment = labelToTagCard[item.payment];
-                    }
-
-                    if (tagPayment != null) {
-                      iconPayment = tagPayment.displayIcon;
-                      cardColor = tagPayment.color;
-                      paymentName = tagPayment.label;
-                    }
-
-                    return TransactionTile(
-                      item: item,
-                      categoryColor: widget.color,
-                      categoryIcon: iconCategory,
-                      categoryName: categoryName,
-                      paymentColor: cardColor,
-                      paymentIcon: iconPayment,
-                      showDate: true,
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                TransactionEditScreen(item: item),
-                          ),
-                        );
-                        _load();
-                      },
-                    );
-                  },
-                ),
+                );
+                _load(); // 戻ってきたら再読み込み
+              },
+            ),
+          ),
         ),
       ],
     );
