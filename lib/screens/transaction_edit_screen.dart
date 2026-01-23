@@ -147,7 +147,7 @@ class _TransactionEditScreenState extends State<TransactionEditScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 20),
 
                         // 削除ボタン
                         TextButton.icon(

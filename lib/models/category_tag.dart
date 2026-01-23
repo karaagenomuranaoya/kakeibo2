@@ -103,13 +103,6 @@ class CategoryTag {
 
   static List<CategoryTag> get defaultCards => [
     CategoryTag(
-      id: systemNoRecordId,
-      label: '記録しない',
-      color: Colors.grey.shade300,
-      iconCodePoint: Icons.visibility_off.codePoint,
-      iconFontFamily: Icons.visibility_off.fontFamily,
-    ),
-    CategoryTag(
       label: 'クレジット',
       color: Colors.redAccent,
       closingDay: 99,

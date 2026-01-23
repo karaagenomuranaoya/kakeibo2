@@ -408,7 +408,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
 
       // 既に10桁あって、さらに数字を足そうとしているならブロック
       if (currentDigits >= 10) {
-        _showWarning(context, '10桁までしか入力できません');
+        _showWarning(context, 'これ以上入力できません');
         return;
       }
     }
