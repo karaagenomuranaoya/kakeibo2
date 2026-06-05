@@ -76,7 +76,7 @@ class InputTabTutorial {
                     ),
                     SizedBox(height: 10),
                     Text(
-                      "ここをタップすると入力完了です。\n\n長押しすると、その費目の履歴へジャンプします。",
+                      "ここで費目（カテゴリー）を選択できます。\n\n長押しすると、その費目の履歴へジャンプします。",
                       style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   ],
