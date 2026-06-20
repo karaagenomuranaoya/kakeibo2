@@ -32,7 +32,7 @@ class CategoryTag {
     this.iconFontPackage,
   }) : id =
            id ??
-           "${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(10000)}";
+           "${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(1000000)}";
 
   // 保存された情報からIconDataを復元するgetter
   IconData? get icon {
@@ -45,14 +45,15 @@ class CategoryTag {
   }
 
   // ▼▼ 変更箇所：推定ロジックを削除し、なければデフォルトを返すだけに単純化 ▼▼
+  // ▼▼ 修正 #8: コメント整理（推定ロジック削除完了） ▼▼
   IconData get displayIcon {
     // 設定されているアイコンがあればそれを返す
     if (icon != null) return icon!;
 
-    // 推定ロジックを全削除
-    // どうしてもアイコンがない場合の最終手段
+    // アイコン未設定時のデフォルト値
     return isCircle ? Icons.category : Icons.payment;
   }
+  // ▲▲ 修正ここまで ▲▲
 
   factory CategoryTag.fromJson(Map<String, dynamic> json) {
     return CategoryTag(

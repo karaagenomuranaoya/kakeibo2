@@ -13,6 +13,13 @@ class TransactionRepository {
   // メモリキャッシュ
   List<TransactionItem>? _memoryCache;
 
+  // ▼▼ 追加 #7: キャッシュを手動で無効化するメソッド ▼▼
+  // データ更新後に呼び出すことで、次回の取得時に最新データを読み込む
+  Future<void> invalidateCache() async {
+    _memoryCache = null;
+  }
+  // ▲▲ 追加ここまで ▲▲
+
   /// 全件取得 (メモリキャッシュがあればそれを返す)
   Future<List<TransactionItem>> getAllTransactions({
     bool forceReload = false,

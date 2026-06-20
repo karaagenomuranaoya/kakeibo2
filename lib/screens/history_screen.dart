@@ -51,7 +51,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
       final diff =
           (widget.initialDate!.year - now.year) * 12 +
           (widget.initialDate!.month - now.month);
-      initialPage = 1000 + diff;
+      // ▼▼ 修正: 負のページ番号を防ぐ ▼▼
+      // 古い日付（1900年など）で計算すると負数になるため、
+      // 最小値を0に制限
+      initialPage = (1000 + diff).clamp(0, double.infinity).toInt();
+      // ▲▲ 修正ここまで ▲▲
     }
     _pageController = PageController(initialPage: initialPage);
   }

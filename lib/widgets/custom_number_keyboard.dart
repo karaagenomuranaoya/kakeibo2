@@ -487,17 +487,28 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
   }
 
   void _handleCalculate() {
-    // 1. 計算実行
-    final resultString = SimpleCalculator.calculate(widget.controller.text);
+    // 1. 計算実行前に入力式をチェック
+    final inputText = widget.controller.text;
+
+    // ▼▼ 修正: ゼロ除算を明示的に検出 ▼▼
+    // SimpleCalculatorは「÷0」を0で返すため、入力式から直接判定
+    if (inputText.contains('÷0')) {
+      _showWarning(context, '0では割れません');
+      return;
+    }
+    // ▲▲ 修正ここまで ▲▲
+
+    // 2. 計算実行
+    final resultString = SimpleCalculator.calculate(inputText);
     double? val = double.tryParse(resultString);
 
     if (val == null) return; // 計算不能
 
-    // 2. 例外チェック（ここを強化！）
+    // 3. 例外チェック
 
-    // A. ゼロ除算 (例: 100 ÷ 0) -> 無限大(Infinity)になる
+    // A. NaN や無限大が発生した場合のガード
     if (val.isInfinite || val.isNaN) {
-      _showWarning(context, '0では割れません');
+      _showWarning(context, '計算エラーが発生しました');
       return;
     }
 
@@ -516,7 +527,7 @@ class _CustomNumberKeyboardState extends State<CustomNumberKeyboard> {
     // D. 0円になる (例: 100 - 100)
     // ※ 入力中は0でもいいですが、計算結果として0が確定するのは無意味なので弾きます
     if (val == 0) {
-      _showWarning(context, '金額が0円になってしまいます');
+      _showWarning(context, '金額は1円以上で入力してください');
       return;
     }
 

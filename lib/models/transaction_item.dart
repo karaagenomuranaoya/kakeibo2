@@ -37,13 +37,12 @@ class TransactionItem {
 
   factory TransactionItem.fromJson(Map<String, dynamic> json) {
     return TransactionItem(
-      // IDがない場合は現在のタイムスタンプ＋ランダム値などで代用するが、
-      // 基本は保存されたIDを使う。
+      // ▼▼ 修正: IDの再生成を防ぐ。IDがない場合は date_iso をベースに生成 ▼▼
+      // 同じデータを複数回JSONデコードしても同じIDが生成されるようにする
       id:
           json['id'] as String? ??
-          // フォールバック: IDがない古いデータ用の救済措置
-          (DateTime.now().microsecondsSinceEpoch.toString() +
-              (json['date_iso'] as String)),
+          // フォールバック: date_iso はユニークなので、これをIDの一部に使用
+          "legacy_${json['date_iso']}",
       amount: json['amount'] as int,
       expense: json['expense'] as String,
       expenseId: json['expense_id'] as String?,

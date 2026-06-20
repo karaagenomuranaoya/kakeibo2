@@ -174,14 +174,25 @@ class InputService {
     if (shouldUseCard) {
       if (cardTag != null) {
         paymentMethod = cardTag.label;
-        if (cardTag.closingDay != null && cardTag.paymentDay != null) {
+        // ▼▼ 修正 #9: Null安全性を改善 ▼▼
+        // 変数に一度アンラップすることで、以降の使用時に ! が不要に
+        final closingDay = cardTag.closingDay;
+        final paymentDay = cardTag.paymentDay;
+        if (closingDay != null && paymentDay != null) {
           int monthsToAdd = cardTag.paymentMonthOffset;
-          if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
+          if (closingDay != 99 && date.day > closingDay) {
             monthsToAdd++;
           }
           int targetYear = date.year;
           int targetMonth = date.month + monthsToAdd;
-          int targetDay = cardTag.paymentDay!;
+
+          // ▼▼ 修正: 月が12を超える場合の年・月計算を修正 ▼▼
+          // 例: 11月+2ヶ月=13月 → 翌年1月に修正
+          if (targetMonth > 12) {
+            targetYear += (targetMonth - 1) ~/ 12;
+            targetMonth = ((targetMonth - 1) % 12) + 1;
+          }
+          // ▲▲ 修正ここまで ▲▲
 
           final int lastDayOfMonth = DateTime(
             targetYear,
@@ -189,12 +200,13 @@ class InputService {
             0,
           ).day;
 
-          final int realPaymentDay = (targetDay > lastDayOfMonth)
+          final int realPaymentDay = (paymentDay > lastDayOfMonth)
               ? lastDayOfMonth
-              : targetDay;
+              : paymentDay;
 
           paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
         }
+        // ▲▲ 修正 #9 ここまで ▲▲
       } else {
         paymentMethod = '不明';
       }
@@ -319,14 +331,25 @@ class InputService {
     if (shouldUseCard) {
       if (cardTag != null) {
         paymentMethod = cardTag.label;
-        if (cardTag.closingDay != null && cardTag.paymentDay != null) {
+        // ▼▼ 修正 #9: Null安全性を改善 ▼▼
+        // 変数に一度アンラップすることで、以降の使用時に ! が不要に
+        final closingDay = cardTag.closingDay;
+        final paymentDay = cardTag.paymentDay;
+        if (closingDay != null && paymentDay != null) {
           int monthsToAdd = cardTag.paymentMonthOffset;
-          if (cardTag.closingDay != 99 && date.day > cardTag.closingDay!) {
+          if (closingDay != 99 && date.day > closingDay) {
             monthsToAdd++;
           }
           int targetYear = date.year;
           int targetMonth = date.month + monthsToAdd;
-          int targetDay = cardTag.paymentDay!;
+
+          // ▼▼ 修正: 月が12を超える場合の年・月計算を修正 ▼▼
+          // 例: 11月+2ヶ月=13月 → 翌年1月に修正
+          if (targetMonth > 12) {
+            targetYear += (targetMonth - 1) ~/ 12;
+            targetMonth = ((targetMonth - 1) % 12) + 1;
+          }
+          // ▲▲ 修正ここまで ▲▲
 
           final int lastDayOfMonth = DateTime(
             targetYear,
@@ -334,12 +357,13 @@ class InputService {
             0,
           ).day;
 
-          final int realPaymentDay = (targetDay > lastDayOfMonth)
+          final int realPaymentDay = (paymentDay > lastDayOfMonth)
               ? lastDayOfMonth
-              : targetDay;
+              : paymentDay;
 
           paymentDate = DateTime(targetYear, targetMonth, realPaymentDay);
         }
+        // ▲▲ 修正 #9 ここまで ▲▲
       } else {
         paymentMethod = '不明';
       }

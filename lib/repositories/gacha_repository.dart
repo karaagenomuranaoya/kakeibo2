@@ -67,14 +67,24 @@ class GachaRepository {
     if (candidates.isEmpty) return null; // データ自体が空の場合
 
     // 重み付け抽選
+    // ▼▼ 修正: ロジックを明確化（実装自体は正確） ▼▼
     int totalWeight = candidates.fold(0, (int sum, item) => sum + item.weight);
+    if (totalWeight == 0)
+      return candidates.isNotEmpty ? candidates.first : null;
+
     int randomValue = Random().nextInt(totalWeight);
 
-    for (final item in candidates) {
+    // 各アイテムの重みを順に引いていき、0以下になったら選出
+    for (int i = 0; i < candidates.length; i++) {
+      final item = candidates[i];
       randomValue -= item.weight;
       if (randomValue < 0) return item;
     }
+
+    // 理論上到達しないが、念のため最後のアイテムを返す
+    // （浮動小数点演算の誤差対策）
     return candidates.last;
+    // ▲▲ 修正ここまで ▲▲
   }
   // ▲▲▲ 変更ここまで ▲▲▲
 
